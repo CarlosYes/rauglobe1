@@ -7,7 +7,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
         #canvas-container { width: 100vw; height: 100vh; position: relative; }
         
         /* Contador Superior Estilo Radar */
@@ -106,22 +106,21 @@
         markers.push({ anchor, dot, label });
     }
 
-    // Deteção Automática via IP (Sem janelas de permissão)
+    // Deteção Automática via IP
     async function initRadar() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
             const loc = data.loc.split(',');
             
-            const push = () => db.collection('rau_live_radar').doc(myId).set({
+            const push = () => db.collection('rau_final_radar').doc(myId).set({
                 lat: parseFloat(loc[0]), lng: parseFloat(loc[1]), city: data.city,
                 ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             push(); setInterval(push, 25000);
 
-            // Snapshot em tempo real
-            db.collection('rau_live_radar').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                markers.forEach(m => { if(m.dot.parentNode) m.dot.remove(); if(m.label.parentNode) m.label.remove(); });
+            db.collection('rau_final_radar').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                markers.forEach(m => { m.dot.remove(); m.label.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
                     if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
@@ -145,13 +144,12 @@
             const dist = camera.position.distanceTo(vec);
             vec.project(camera);
             
-            // Lógica de oclusão (só mostra se estiver na "frente" do globo)
             if (dist < 3.0) { 
                 m.dot.style.display = m.label.style.display = 'block';
                 const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
                 m.dot.style.left = x + 'px'; m.dot.style.top = y + 'px';
-                m.label.style.left = (x + 12) + 'px'; m.label.style.top = (y - 12) + 'px';
+                m.label.style.left = (x + 10) + 'px'; m.label.style.top = (y - 12) + 'px';
             } else {
                 m.dot.style.display = m.label.style.display = 'none';
             }
