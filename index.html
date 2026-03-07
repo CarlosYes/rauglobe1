@@ -2,34 +2,34 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO REVOLVER</title>
+    <title>RAU - GLOBO RADAR</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #canvas-container { width: 100vw; height: 100vh; position: relative; }
         
-        /* Painel Superior */
         .hud { 
-            position: absolute; top: 15px; left: 15px; z-index: 1000; 
-            background: rgba(0, 20, 0, 0.85); color: #39ff14; padding: 10px 15px; 
-            border: 1px solid #39ff14; border-radius: 4px; pointer-events: none;
-            box-shadow: 0 0 10px rgba(57,255,20,0.3);
+            position: absolute; top: 20px; left: 20px; z-index: 10000; 
+            background: rgba(0, 30, 0, 0.9); color: #39ff14; padding: 10px 15px; 
+            border: 1px solid #39ff14; border-radius: 2px; pointer-events: none;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
         }
 
-        /* ETIQUETAS IGUAIS AO REVOLVERMAPS */
+        /* ETIQUETAS ESTILO REVOLVERMAPS */
         .city-label {
-            position: absolute; color: #fff; background: rgba(0, 0, 0, 0.8);
-            padding: 3px 10px; border-left: 3px solid #39ff14;
-            font-size: 12px; font-weight: bold; pointer-events: none;
+            position: absolute; color: #fff; background: rgba(0, 0, 0, 0.85);
+            padding: 4px 10px; border-left: 4px solid #39ff14;
+            font-size: 13px; font-weight: bold; pointer-events: none;
             z-index: 5000; text-transform: uppercase; white-space: nowrap;
-            display: none; box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            display: none; box-shadow: 3px 3px 8px rgba(0,0,0,0.7);
+            letter-spacing: 1px;
         }
 
         .dot {
             position: absolute; width: 10px; height: 10px; background: #39ff14;
-            border-radius: 50%; z-index: 4999; box-shadow: 0 0 12px #39ff14;
+            border-radius: 50%; z-index: 4999; box-shadow: 0 0 15px #39ff14;
             transform: translate(-50%, -50%); border: 1.5px solid #fff; display: none;
         }
     </style>
@@ -38,17 +38,16 @@
 
 <div class="hud">
     <b>RADIO AMIGOS UNIDOS</b><br>
-    <span style="font-size: 11px;">OUVINTES ONLINE:</span> <span id="count" style="font-weight: bold;">1</span>
+    <span style="font-size: 11px;">RADAR ONLINE:</span> <span id="count" style="font-size: 1.2em;">1</span>
 </div>
 <div id="canvas-container"></div>
 
 <script>
-    // Configurações Firebase
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
-    const myId = "RAU_" + Math.random().toString(36).substr(2, 6);
+    const myId = "R_" + Math.random().toString(36).substr(2, 6);
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -59,13 +58,13 @@
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
 
-    // Mapa Realista NASA
+    // TEXTURA REALISTA DOS CONTINENTES
     const loader = new THREE.TextureLoader();
     const earth = new THREE.Mesh(
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({ 
             map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            shininess: 5
+            shininess: 10
         })
     );
     globeGroup.add(earth);
@@ -96,7 +95,7 @@
 
         const dot = document.createElement('div'); dot.className = 'dot';
         const label = document.createElement('div'); label.className = 'city-label';
-        label.innerText = (city || "Ouvinte").toUpperCase();
+        label.innerText = (city || "User").toUpperCase();
         document.body.appendChild(dot);
         document.body.appendChild(label);
         markers.push({ anchor, dot, label });
@@ -104,18 +103,18 @@
 
     async function startRadar() {
         try {
-            // Localizador que não pede permissão (via IP)
+            // Localizador que salta bloqueios de domínio
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
             const loc = data.loc.split(',');
             
-            const push = () => db.collection('rau_rev_v2').doc(myId).set({
+            const up = () => db.collection('rau_rev_v3').doc(myId).set({
                 lat: parseFloat(loc[0]), lng: parseFloat(loc[1]), city: data.city,
                 ts: firebase.firestore.FieldValue.serverTimestamp()
             });
-            push(); setInterval(push, 25000);
+            up(); setInterval(up, 25000);
 
-            db.collection('rau_rev_v2').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+            db.collection('rau_rev_v3').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
                 markers.forEach(m => { m.dot.remove(); m.label.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
@@ -127,7 +126,7 @@
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Erro no radar automático."); }
+        } catch(e) { console.error("Falha no IP Tracker"); }
     }
 
     function animate() {
@@ -140,12 +139,13 @@
             const dist = camera.position.distanceTo(vec);
             vec.project(camera);
             
+            // Só mostra etiquetas que estão na face visível
             if (dist < 3.0) {
                 m.dot.style.display = m.label.style.display = 'block';
                 const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
                 m.dot.style.left = x + 'px'; m.dot.style.top = y + 'px';
-                m.label.style.left = (x + 10) + 'px'; m.label.style.top = (y - 10) + 'px';
+                m.label.style.left = (x + 10) + 'px'; m.label.style.top = (y - 12) + 'px';
             } else {
                 m.dot.style.display = m.label.style.display = 'none';
             }
