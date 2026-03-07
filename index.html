@@ -1,42 +1,86 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt">
 <head>
     <meta charset="UTF-8">
+    <title>RADAR RAU - LIVE</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; color: #39ff14; font-family: monospace; text-align: center; }
-        #emergency-msg { position: absolute; top: 50%; width: 100%; z-index: 100; }
-        canvas { display: block; }
+        body { margin: 0; background: #000; overflow: hidden; color: #39ff14; font-family: monospace; }
+        #canvas-radar { position: absolute; width: 100vw; height: 100vh; z-index: 1; cursor: move; }
+        .hud { position: absolute; top: 20px; left: 20px; z-index: 10; border: 2px solid #39ff14; padding: 15px; background: rgba(0,25,0,0.9); pointer-events: none; box-shadow: 0 0 20px #005500; }
+        .ponto { position: absolute; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%, -50%); z-index: 20; border: 1px solid #fff; }
+        .label { position: absolute; font-size: 11px; transform: translate(-50%, -190%); white-space: nowrap; z-index: 21; font-weight: bold; background: rgba(0,0,0,0.8); padding: 3px 6px; }
+        .eu { background: #1a1a1a; border-color: #555; color: #888; }
+        .amigo { background: #39ff14; box-shadow: 0 0 15px #39ff14; color: #39ff14; }
+        .outro { background: #ff0000; box-shadow: 0 0 15px #ff0000; color: #ff0000; }
     </style>
 </head>
 <body>
-    <div id="emergency-msg">A CARREGAR RADAR... (Se isto não sumir, o 3D está desligado)</div>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <div class="hud">
+        <b>RADAR AMIGOS UNIDOS</b><br>
+        SISTEMA: SCANNER ATIVO<br>
+        CONEXÕES: <span id="c">0</span>
+    </div>
+    <div id="canvas-radar"></div>
     <script>
-        try {
-            const scene = new THREE.Scene();
-            const cam = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-            const ren = new THREE.WebGLRenderer({ antialias: true });
-            ren.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(ren.domElement);
+        const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+        const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
+        firebase.initializeApp(cfg); const db = firebase.firestore();
+        const uid = "RAU_" + Math.random().toString(36).substr(2,5);
+        const isA = new URLSearchParams(window.location.search).get('ref') === 'amigo';
 
-            const geo = new THREE.SphereGeometry(1, 32, 32);
-            const mat = new THREE.MeshBasicMaterial({ color: 0x39ff14, wireframe: true });
-            const globe = new THREE.Mesh(geo, mat);
-            scene.add(globe);
-            cam.position.z = 3;
+        const scene = new THREE.Scene();
+        const cam = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const ren = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        ren.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-radar').appendChild(ren.domElement);
 
-            document.getElementById('emergency-msg').style.display = 'none';
+        const g = new THREE.Mesh(new THREE.SphereGeometry(1, 45, 45), new THREE.MeshPhongMaterial({ color: 0x39ff14, wireframe: true, transparent: true, opacity: 0.4 }));
+        scene.add(g); scene.add(new THREE.AmbientLight(0xffffff, 1.2)); cam.position.z = 3.3;
 
-            function anim() {
-                requestAnimationFrame(anim);
-                globe.rotation.y += 0.01;
-                ren.render(scene, cam);
-            }
-            anim();
-        } catch(e) {
-            document.getElementById('emergency-msg').innerHTML = "ERRO: O teu navegador não suporta 3D (WebGL).";
+        let drag = false; let px = 0; let py = 0;
+        window.onmousedown = () => drag = true; window.onmouseup = () => drag = false;
+        window.onmousemove = (e) => { if(drag) { g.rotation.y += (e.clientX - px) * 0.008; g.rotation.x += (e.clientY - py) * 0.008; } px = e.clientX; py = e.clientY; };
+
+        const mks = [];
+        function add(lat, lng, n, t) {
+            const phi = (90-lat)*(Math.PI/180); const tet = (lng+180)*(Math.PI/180);
+            const p = new THREE.Object3D(); p.position.set(-Math.sin(phi)*Math.cos(tet), Math.cos(phi), Math.sin(phi)*Math.sin(tet));
+            g.add(p); const d = document.createElement('div'); d.className = 'ponto ' + t;
+            const l = document.createElement('div'); l.className = 'label ' + t; l.innerText = n;
+            document.body.appendChild(d); document.body.appendChild(l);
+            mks.push({ p, d, l });
         }
+
+        async function init() {
+            try {
+                const res = await fetch("https://ipapi.co/json/"); const dIP = await res.json();
+                const up = () => db.collection('activeUsers').doc(uid).set({ lat: dIP.latitude, lng: dIP.longitude, n: dIP.city, a: isA, t: firebase.firestore.FieldValue.serverTimestamp() });
+                up(); setInterval(up, 25000);
+                db.collection('activeUsers').where('t', '>', new Date(Date.now()-55000)).onSnapshot(s => {
+                    mks.forEach(m => { m.d.remove(); m.l.remove(); g.remove(m.p); }); mks.length = 0;
+                    s.forEach(doc => { const x = doc.data(); let cl = x.a ? 'amigo' : 'outro'; if(doc.id === uid) cl = 'eu'; add(x.lat, x.lng, x.n, cl); });
+                    document.getElementById('c').innerText = s.size;
+                });
+                loop();
+            } catch(e) { console.error("Erro no Radar"); }
+        }
+
+        function loop() {
+            requestAnimationFrame(loop); if(!drag) g.rotation.y += 0.0015;
+            mks.forEach(m => {
+                const v = new THREE.Vector3(); m.p.getWorldPosition(v); v.project(cam);
+                const camD = cam.position.distanceTo(m.p.getWorldPosition(new THREE.Vector3()));
+                const vis = v.z < 1 && camD < cam.position.distanceTo(g.position);
+                m.d.style.display = m.l.style.display = vis ? 'block' : 'none';
+                if(vis) { m.d.style.left = m.l.style.left = (v.x * 0.5 + 0.5) * window.innerWidth + 'px'; m.d.style.top = m.l.style.top = (-v.y * 0.5 + 0.5) * window.innerHeight + 'px'; }
+            });
+            ren.render(scene, cam);
+        }
+        init();
+        window.onresize = () => { cam.aspect = window.innerWidth/window.innerHeight; cam.updateProjectionMatrix(); ren.setSize(window.innerWidth, window.innerHeight); };
     </script>
 </body>
 </html>
