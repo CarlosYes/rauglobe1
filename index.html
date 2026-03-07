@@ -2,27 +2,27 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO FINAL</title>
+    <title>RAU - GLOBO REALTIME</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
         #radar-container { width: 100vw; height: 100vh; position: relative; }
-        .hud { position: absolute; top: 20px; left: 20px; z-index: 2000; background: rgba(0,0,0,0.9); color: #39ff14; padding: 12px; border: 2px solid #39ff14; border-radius: 5px; pointer-events: none; box-shadow: 0 0 15px #004400; }
+        .hud { position: absolute; top: 20px; left: 20px; z-index: 9999; background: rgba(0,0,0,0.9); color: #39ff14; padding: 12px; border: 2px solid #39ff14; border-radius: 5px; pointer-events: none; box-shadow: 0 0 15px #004400; }
         
-        /* Etiquetas - Forçar Visibilidade */
+        /* Etiquetas - Visibilidade Máxima */
         .city-tag {
-            position: absolute; color: #fff; background: rgba(0, 50, 0, 0.9);
-            padding: 5px 12px; border: 1px solid #39ff14; border-radius: 4px;
-            font-size: 14px; font-weight: 900; pointer-events: none;
-            white-space: nowrap; z-index: 1000; text-transform: uppercase;
-            box-shadow: 0 0 10px #39ff14; display: none;
+            position: absolute; color: #fff; background: rgba(0, 40, 0, 0.95);
+            padding: 6px 14px; border: 2px solid #39ff14; border-radius: 4px;
+            font-size: 15px; font-weight: 900; pointer-events: none;
+            white-space: nowrap; z-index: 5000; text-transform: uppercase;
+            box-shadow: 0 0 15px #39ff14;
         }
         .dot {
             position: absolute; width: 14px; height: 14px; background: #39ff14;
-            border: 2px solid #fff; border-radius: 50%; z-index: 999;
-            box-shadow: 0 0 20px #39ff14; pointer-events: none; display: none;
+            border: 2px solid #fff; border-radius: 50%; z-index: 4999;
+            box-shadow: 0 0 25px #39ff14; pointer-events: none;
         }
     </style>
 </head>
@@ -30,11 +30,12 @@
 
 <div class="hud">
     <b style="font-size: 16px;">RADIO AMIGOS UNIDOS</b><br>
-    OUVINTES ONLINE: <span id="count" style="font-size: 20px;">1</span>
+    CONEXÕES ATIVAS: <span id="count" style="font-size: 22px;">1</span>
 </div>
 <div id="radar-container"></div>
 
 <script>
+    // Configuração Protegida
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     firebase.initializeApp(cfg);
@@ -43,7 +44,7 @@
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.getElementById('radar-container').appendChild(renderer.domElement);
 
@@ -86,7 +87,7 @@
 
         const dot = document.createElement('div'); dot.className = 'dot';
         const tag = document.createElement('div'); tag.className = 'city-tag';
-        tag.innerText = city || "Desconhecido";
+        tag.innerText = city ? city.toUpperCase() : "OUVINTE";
         document.body.appendChild(dot);
         document.body.appendChild(tag);
         markers.push({ anchor, dot, tag });
@@ -97,14 +98,15 @@
             const res = await fetch("https://ipapi.co/json/");
             const data = await res.json();
             
-            const up = () => db.collection('live_rau').doc(myId).set({
+            const up = () => db.collection('rau_final_map').doc(myId).set({
                 lat: data.latitude, lng: data.longitude, city: data.city,
                 ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             up(); setInterval(up, 25000);
 
-            db.collection('live_rau').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                markers.forEach(m => { m.dot.remove(); m.tag.remove(); });
+            db.collection('rau_final_map').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                // Remover marcadores antigos com segurança
+                markers.forEach(m => { if(m.dot.parentNode) m.dot.remove(); if(m.tag.parentNode) m.tag.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
                     if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
@@ -128,15 +130,14 @@
             const dist = camera.position.distanceTo(vec);
             vec.project(camera);
 
-            // Aumentei a margem de visibilidade para o nome aparecer mais cedo
-            if (dist < 3.1) {
+            if (dist < 3.05) {
                 m.dot.style.display = m.tag.style.display = 'block';
                 const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
                 m.dot.style.left = x + 'px';
                 m.dot.style.top = y + 'px';
-                m.tag.style.left = (x + 12) + 'px';
-                m.tag.style.top = (y - 12) + 'px';
+                m.tag.style.left = (x + 15) + 'px';
+                m.tag.style.top = (y - 15) + 'px';
             } else {
                 m.dot.style.display = m.tag.style.display = 'none';
             }
