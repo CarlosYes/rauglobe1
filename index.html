@@ -2,161 +2,181 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO RADAR REALTIME</title>
+    <title>RAU - RADAR PROFISSIONAL V4</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
-        #canvas-container { width: 100vw; height: 100vh; position: relative; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+        #canvas-container { width: 100vw; height: 100vh; }
         
-        /* Contador Superior Estilo Radar */
+        /* HUD Superior */
         .hud { 
-            position: absolute; top: 20px; left: 20px; z-index: 10000; 
-            background: rgba(0, 30, 0, 0.9); color: #39ff14; padding: 12px 18px; 
-            border: 1px solid #39ff14; border-radius: 2px; pointer-events: none;
-            box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
-        }
-
-        /* Etiqueta da Cidade - Visual RevolverMaps */
-        .city-label {
-            position: absolute; color: #fff; background: rgba(0, 0, 0, 0.85);
-            padding: 4px 10px; border-left: 4px solid #39ff14;
-            font-size: 13px; font-weight: bold; pointer-events: none;
-            z-index: 5000; text-transform: uppercase; white-space: nowrap;
-            display: none; box-shadow: 3px 3px 8px rgba(0,0,0,0.7);
-            letter-spacing: 1px;
-        }
-
-        /* Ponto de Localização Verde */
-        .dot {
-            position: absolute; width: 10px; height: 10px; background: #39ff14;
-            border-radius: 50%; z-index: 4999; box-shadow: 0 0 15px #39ff14;
-            transform: translate(-50%, -50%); border: 1.5px solid #fff; display: none;
+            position: absolute; top: 20px; left: 20px; z-index: 10; 
+            background: rgba(0, 20, 0, 0.8); color: #39ff14; padding: 15px; 
+            border: 1px solid #39ff14; box-shadow: 0 0 20px rgba(57, 255, 20, 0.2);
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <b style="font-size: 1.1em;">RADAR RADIO AMIGOS UNIDOS</b><br>
-    <hr style="border: 0; border-top: 1px solid #39ff14; margin: 8px 0; opacity: 0.3;">
-    OUVINTES ONLINE: <span id="count" style="font-size: 1.4em; font-weight: bold;">1</span>
+    <strong style="font-size: 1.2em;">RADAR AMIGOS UNIDOS [WEBGL MODE]</strong><br>
+    <small>SISTEMA DE MONITORIZAÇÃO EM TEMPO REAL</small>
+    <hr style="border: 0; border-top: 1px solid #39ff14; margin: 10px 0; opacity: 0.5;">
+    STATUS: <span style="color: #fff;">ONLINE</span> | OUVINTES: <span id="count">0</span>
 </div>
+
 <div id="canvas-container"></div>
 
 <script>
-    // Configurações Firebase
+    // --- FIREBASE CONFIG ---
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
     const myId = "RAU_" + Math.random().toString(36).substr(2, 6);
 
+    // --- THREE.JS SETUP ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
 
-    // Textura Realista NASA
+    // Terra
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
-    const earth = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 64, 64),
-        new THREE.MeshPhongMaterial({ 
-            map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            shininess: 10
-        })
-    );
-    globeGroup.add(earth);
+    const earthGeometry = new THREE.SphereGeometry(1, 64, 64);
+    const earthMaterial = new THREE.MeshPhongMaterial({
+        map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
+        bumpMap: loader.load('https://unpkg.com/three-globe/example/img/earth-topology.png'),
+        bumpScale: 0.05,
+        shininess: 5
+    });
+    const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
+    globeGroup.add(earthMesh);
 
-    scene.add(new THREE.AmbientLight(0xaaaaaa));
-    const light = new THREE.DirectionalLight(0xffffff, 0.8);
-    light.position.set(5, 3, 5);
-    scene.add(light);
+    // Atmosfera (Glow)
+    const atmoGeom = new THREE.SphereGeometry(1.02, 64, 64);
+    const atmoMat = new THREE.MeshBasicMaterial({ color: 0x39ff14, transparent: true, opacity: 0.05, side: THREE.BackSide });
+    globeGroup.add(new THREE.Mesh(atmoGeom, atmoMat));
+
+    scene.add(new THREE.AmbientLight(0x404040, 2));
+    const sun = new THREE.DirectionalLight(0xffffff, 1);
+    sun.position.set(5, 3, 5);
+    scene.add(sun);
     camera.position.z = 3;
 
-    let isDragging = false;
-    document.addEventListener('mousedown', () => isDragging = true);
-    document.addEventListener('mouseup', () => isDragging = false);
-    document.addEventListener('mousemove', (e) => {
-        if(isDragging) {
-            globeGroup.rotation.y += e.movementX * 0.005;
-            globeGroup.rotation.x += e.movementY * 0.005;
-        }
-    });
+    // --- FUNÇÃO PROFISSIONAL: CANVAS TEXTURE (O Pulo do Gato) ---
+    function createLabelSprite(text) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 512; canvas.height = 128;
 
-    let markers = [];
-    function addMarker(lat, lng, city) {
-        const phi = (90 - lat) * (Math.PI / 180);
-        const theta = (lng + 180) * (Math.PI / 180);
-        const anchor = new THREE.Object3D();
-        anchor.position.set(-Math.sin(phi)*Math.cos(theta), Math.cos(phi), Math.sin(phi)*Math.sin(theta));
-        globeGroup.add(anchor);
+        // Estilo da Etiqueta
+        ctx.fillStyle = 'rgba(0, 40, 0, 0.8)';
+        ctx.roundRect ? ctx.roundRect(10, 10, 492, 108, 10) : ctx.fillRect(10, 10, 492, 108);
+        ctx.fill();
+        ctx.strokeStyle = '#39ff14';
+        ctx.lineWidth = 4;
+        ctx.stroke();
 
-        const dot = document.createElement('div'); dot.className = 'dot';
-        const label = document.createElement('div'); label.className = 'city-label';
-        label.innerText = (city || "Ouvinte").toUpperCase();
-        document.body.appendChild(dot);
-        document.body.appendChild(label);
-        markers.push({ anchor, dot, label });
+        ctx.font = 'Bold 48px Courier New';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.fillText(text.toUpperCase(), 256, 75);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.scale.set(0.6, 0.15, 1);
+        return sprite;
     }
 
-    // Deteção Automática via IP
+    function addMarker(lat, lng, cityName) {
+        const phi = (90 - lat) * (Math.PI / 180);
+        const theta = (lng + 180) * (Math.PI / 180);
+        
+        const container = new THREE.Group();
+        const pos = new THREE.Vector3(
+            -Math.sin(phi) * Math.cos(theta),
+            Math.cos(phi),
+            Math.sin(phi) * Math.sin(theta)
+        );
+
+        // Ponto 3D
+        const dotGeom = new THREE.SphereGeometry(0.015, 12, 12);
+        const dotMat = new THREE.MeshBasicMaterial({ color: 0x39ff14 });
+        const dot = new THREE.Mesh(dotGeom, dotMat);
+        dot.position.copy(pos);
+        container.add(dot);
+
+        // Etiqueta 3D (Sprite)
+        const label = createLabelSprite(cityName || "USER");
+        label.position.copy(pos.clone().multiplyScalar(1.1)); // Um pouco acima da superfície
+        container.add(label);
+
+        globeGroup.add(container);
+    }
+
+    // --- LÓGICA DE DADOS ---
     async function initRadar() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
-            const loc = data.loc.split(',');
-            
-            const push = () => db.collection('rau_final_radar').doc(myId).set({
-                lat: parseFloat(loc[0]), lng: parseFloat(loc[1]), city: data.city,
-                ts: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            push(); setInterval(push, 25000);
+            const [lat, lng] = data.loc.split(',').map(Number);
 
-            db.collection('rau_final_radar').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                markers.forEach(m => { m.dot.remove(); m.label.remove(); });
-                markers = [];
+            const updatePos = () => db.collection('rau_v4_pro').doc(myId).set({
+                lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            updatePos(); setInterval(updatePos, 30000);
+
+            db.collection('rau_v4_pro').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                // Limpa marcadores antigos (menos a Terra)
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
-                    if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
+                    if (globeGroup.children[i].type === "Group") globeGroup.remove(globeGroup.children[i]);
                 }
                 snap.forEach(doc => {
                     const d = doc.data();
-                    if(d.lat) addMarker(d.lat, d.lng, d.city);
+                    addMarker(d.lat, d.lng, d.city);
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Falha no Radar"); }
+        } catch(e) { console.error("Radar offline"); }
     }
+
+    // --- INTERATIVIDADE ---
+    let isDragging = false, mouseX = 0, mouseY = 0;
+    document.addEventListener('mousedown', (e) => { isDragging = true; mouseX = e.clientX; mouseY = e.clientY; });
+    document.addEventListener('mouseup', () => isDragging = false);
+    document.addEventListener('mousemove', (e) => {
+        if(isDragging) {
+            globeGroup.rotation.y += (e.clientX - mouseX) * 0.005;
+            globeGroup.rotation.x += (e.clientY - mouseY) * 0.005;
+            mouseX = e.clientX; mouseY = e.clientY;
+        }
+    });
 
     function animate() {
         requestAnimationFrame(animate);
-        if(!isDragging) globeGroup.rotation.y += 0.002;
-
-        markers.forEach(m => {
-            const vec = new THREE.Vector3();
-            m.anchor.getWorldPosition(vec);
-            const dist = camera.position.distanceTo(vec);
-            vec.project(camera);
-            
-            if (dist < 3.0) { 
-                m.dot.style.display = m.label.style.display = 'block';
-                const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
-                const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
-                m.dot.style.left = x + 'px'; m.dot.style.top = y + 'px';
-                m.label.style.left = (x + 10) + 'px'; m.label.style.top = (y - 12) + 'px';
-            } else {
-                m.dot.style.display = m.label.style.display = 'none';
-            }
-        });
+        if(!isDragging) globeGroup.rotation.y += 0.0015;
         renderer.render(scene, camera);
     }
-    initRadar(); animate();
+
+    initRadar();
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
 </script>
 </body>
 </html>
