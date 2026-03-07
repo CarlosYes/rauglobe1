@@ -1,198 +1,77 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Radar RAU - Global Monitor</title>
-    
+    <title>RAU RADAR LIVE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
-
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body, html { 
-            width: 100%; height: 100%; 
-            background-color: #000; 
-            overflow: hidden; 
-            font-family: 'Courier New', monospace;
-        }
-        
-        /* Contentor do Globo */
-        #canvas-radar { 
-            position: absolute; 
-            top: 0; left: 0; 
-            width: 100vw; height: 100vh; 
-            z-index: 1;
-            cursor: move;
-        }
-
-        /* Painel HUD */
-        .interface {
-            position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 20, 0, 0.9); border: 1px solid #39ff14;
-            padding: 15px; color: #39ff14; font-size: 12px;
-            pointer-events: none; border-radius: 4px;
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
-        }
-
-        /* Elementos Flutuantes (Bolinhas) */
-        .ponto {
-            position: absolute; width: 12px; height: 12px; border-radius: 50%;
-            transform: translate(-50%, -50%); z-index: 10; pointer-events: none;
-        }
-        .etiqueta {
-            position: absolute; font-size: 10px; padding: 2px 6px;
-            background: rgba(0,0,0,0.85); transform: translate(-50%, -180%);
-            white-space: nowrap; border-radius: 3px; border: 1px solid;
-            pointer-events: none; z-index: 11;
-        }
-
-        /* Estilos de Conexão */
-        .eu { background: #1a1a1a; border: 1px solid #555; color: #888; border-color: #555; }
-        .conectado { background: #39ff14; box-shadow: 0 0 15px #39ff14; color: #39ff14; border-color: #39ff14; }
-        .desconhecido { background: #ff0000; box-shadow: 0 0 15px #ff0000; color: #ff0000; border-color: #ff0000; }
+        body { margin: 0; background: #000; overflow: hidden; color: #39ff14; font-family: monospace; }
+        #radar { position: absolute; width: 100%; height: 100%; z-index: 1; }
+        .hud { position: absolute; top: 20px; left: 20px; z-index: 10; border: 1px solid #39ff14; padding: 10px; background: rgba(0,20,0,0.9); pointer-events: none; }
+        .dot { position: absolute; width: 10px; height: 10px; border-radius: 50%; transform: translate(-50%, -50%); z-index: 20; }
+        .label { position: absolute; font-size: 10px; transform: translate(-50%, -180%); white-space: nowrap; z-index: 21; }
+        .eu { background: #222; border: 1px solid #555; }
+        .amigo { background: #39ff14; box-shadow: 0 0 10px #39ff14; }
+        .outro { background: #f00; box-shadow: 0 0 10px #f00; }
     </style>
 </head>
 <body>
-
-    <div class="interface">
-        <b style="font-size: 14px;">RADAR AMIGOS UNIDOS</b><br>
-        SISTEMA: ONLINE<br>
-        OUVINTES: <span id="val-count">0</span><br>
-        <div style="margin-top: 8px; font-size: 10px; opacity: 0.7;">
-            <span style="color:#888">● TU</span> | 
-            <span style="color:#39ff14">● AMIGO</span> | 
-            <span style="color:#ff0000">● OUTRO</span>
-        </div>
-    </div>
-
-    <div id="canvas-radar"></div>
-
+    <div class="hud"><b>RADAR AMIGOS UNIDOS</b><br>STATUS: ATIVO<br>CONEXÕES: <span id="c">0</span></div>
+    <div id="radar"></div>
     <script>
-        // Configuração Segura (Base64)
-        const _keys = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-        
-        const config = {
-            apiKey: atob(_keys[0]),
-            authDomain: atob(_keys[1]),
-            projectId: atob(_keys[2]),
-            appId: atob(_keys[3])
-        };
+        const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+        const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
+        firebase.initializeApp(cfg); const db = firebase.firestore();
+        const uid = "U" + Math.random().toString(36).substr(2,5);
+        const isA = new URLSearchParams(window.location.search).get('ref') === 'amigo';
 
-        firebase.initializeApp(config);
-        const db = firebase.firestore();
-        const myID = "ID_" + Math.random().toString(36).substr(2, 5);
-        const refAmigo = new URLSearchParams(window.location.search).get('ref') === 'amigo';
+        const scene = new THREE.Scene();
+        const cam = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const ren = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        ren.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('radar').appendChild(ren.domElement);
 
-        // --- INICIALIZAÇÃO DO GLOBO ---
-        const cena = new THREE.Scene();
-        const camara = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderizador = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        
-        renderizador.setSize(window.innerWidth, window.innerHeight);
-        document.getElementById('canvas-radar').appendChild(renderizador.domElement);
+        const g = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 40), new THREE.MeshPhongMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.2 }));
+        scene.add(g); scene.add(new THREE.AmbientLight(0xffffff, 0.8)); cam.position.z = 3.5;
 
-        // Globo Verde Estilo Radar
-        const geometria = new THREE.SphereGeometry(1, 50, 50);
-        const material = new THREE.MeshPhongMaterial({ 
-            color: 0x00ff00, 
-            wireframe: true, 
-            transparent: true, 
-            opacity: 0.25 
-        });
-        const globo = new THREE.Mesh(geometria, material);
-        cena.add(globo);
-        
-        cena.add(new THREE.AmbientLight(0xffffff, 0.7));
-        camara.position.z = 3.3;
+        let drag = false; let px = 0; let py = 0;
+        window.onmousedown = () => drag = true; window.onmouseup = () => drag = false;
+        window.onmousemove = (e) => { if(drag) { g.rotation.y += (e.clientX - px) * 0.01; g.rotation.x += (e.clientY - py) * 0.01; } px = e.clientX; py = e.clientY; };
 
-        // Controlo de Rato
-        let arrastando = false;
-        let ratoAntigo = { x: 0, y: 0 };
-        window.addEventListener('mousedown', () => arrastando = true);
-        window.addEventListener('mouseup', () => arrastando = false);
-        window.addEventListener('mousemove', (e) => {
-            if(arrastando) {
-                globo.rotation.y += (e.clientX - ratoAntigo.x) * 0.007;
-                globo.rotation.x += (e.clientY - ratoAntigo.y) * 0.007;
-            }
-            ratoAntigo = { x: e.clientX, y: e.clientY };
-        });
-
-        const marcadores = [];
-        function criarMarcador(lat, lng, cidade, tipo) {
-            const phi = (90 - lat) * (Math.PI / 180);
-            const theta = (lng + 180) * (Math.PI / 180);
-            const p = new THREE.Object3D();
-            p.position.set(-Math.sin(phi)*Math.cos(theta), Math.cos(phi), Math.sin(phi)*Math.sin(theta));
-            globo.add(p);
-
-            const div = document.createElement('div'); div.className = 'ponto ' + tipo;
-            const label = document.createElement('div'); label.className = 'etiqueta ' + tipo;
-            label.innerText = cidade;
-            
-            document.body.appendChild(div); document.body.appendChild(label);
-            marcadores.push({ p, div, label });
+        const mks = [];
+        function add(lat, lng, n, t) {
+            const phi = (90-lat)*(Math.PI/180); const tet = (lng+180)*(Math.PI/180);
+            const p = new THREE.Object3D(); p.position.set(-Math.sin(phi)*Math.cos(tet), Math.cos(phi), Math.sin(phi)*Math.sin(tet));
+            g.add(p); const d = document.createElement('div'); d.className = 'dot ' + t;
+            const l = document.createElement('div'); l.className = 'label'; l.innerText = n;
+            document.body.appendChild(d); document.body.appendChild(l);
+            mks.push({ p, d, l });
         }
 
-        async function iniciar() {
-            try {
-                const res = await fetch("https://ipapi.co/json/");
-                const dIP = await res.json();
-                
-                const atualizar = () => {
-                    db.collection('activeUsers').doc(myID).set({
-                        lat: dIP.latitude, lng: dIP.longitude, city: dIP.city,
-                        amigo: refAmigo, time: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                };
-                atualizar(); setInterval(atualizar, 25000);
-
-                db.collection('activeUsers').where('time', '>', new Date(Date.now() - 55000)).onSnapshot(snap => {
-                    marcadores.forEach(m => { m.div.remove(); m.label.remove(); globo.remove(m.p); });
-                    marcadores.length = 0;
-                    snap.forEach(doc => {
-                        const d = doc.data();
-                        let estilo = d.amigo ? 'conectado' : 'desconhecido';
-                        if(doc.id === myID) estilo = 'eu';
-                        criarMarcador(d.lat, d.lng, d.city, estilo);
-                    });
-                    document.getElementById('val-count').innerText = snap.size;
-                });
-                animar();
-            } catch (err) { console.error("Falha no Radar"); }
-        }
-
-        function animar() {
-            requestAnimationFrame(animar);
-            if(!arrastando) globo.rotation.y += 0.0015;
-            
-            marcadores.forEach(m => {
-                const v = new THREE.Vector3();
-                m.p.getWorldPosition(v);
-                v.project(camara);
-                
-                // Oclusão (esconder se estiver atrás do globo)
-                const distPonto = camara.position.distanceTo(m.p.getWorldPosition(new THREE.Vector3()));
-                const visivel = v.z < 1 && distPonto < camara.position.distanceTo(globo.position);
-                
-                m.div.style.display = m.label.style.display = visivel ? 'block' : 'none';
-                if(visivel) {
-                    m.div.style.left = m.label.style.left = (v.x * 0.5 + 0.5) * window.innerWidth + 'px';
-                    m.div.style.top = m.label.style.top = (-v.y * 0.5 + 0.5) * window.innerHeight + 'px';
-                }
+        async function init() {
+            const res = await fetch("https://ipapi.co/json/"); const d = await res.json();
+            const up = () => db.collection('activeUsers').doc(uid).set({ lat: d.latitude, lng: d.longitude, n: d.city, a: isA, t: firebase.firestore.FieldValue.serverTimestamp() });
+            up(); setInterval(up, 25000);
+            db.collection('activeUsers').where('t', '>', new Date(Date.now()-60000)).onSnapshot(s => {
+                mks.forEach(m => { m.d.remove(); m.l.remove(); g.remove(m.p); }); mks.length = 0;
+                s.forEach(doc => { const x = doc.data(); let cl = x.a ? 'amigo' : 'outro'; if(doc.id === uid) cl = 'eu'; add(x.lat, x.lng, x.n, cl); });
+                document.getElementById('c').innerText = s.size;
             });
-            renderizador.render(cena, camara);
+            loop();
         }
 
-        window.onresize = () => {
-            camara.aspect = window.innerWidth / window.innerHeight;
-            camara.updateProjectionMatrix();
-            renderizador.setSize(window.innerWidth, window.innerHeight);
-        };
-
-        iniciar();
+        function loop() {
+            requestAnimationFrame(loop); if(!drag) g.rotation.y += 0.002;
+            mks.forEach(m => {
+                const v = new THREE.Vector3(); m.p.getWorldPosition(v); v.project(cam);
+                const vis = v.z < 1; m.d.style.display = m.l.style.display = vis ? 'block' : 'none';
+                if(vis) { m.d.style.left = m.l.style.left = (v.x * 0.5 + 0.5) * window.innerWidth + 'px'; m.d.style.top = m.l.style.top = (-v.y * 0.5 + 0.5) * window.innerHeight + 'px'; }
+            });
+            ren.render(scene, cam);
+        }
+        init();
     </script>
 </body>
 </html>
