@@ -2,103 +2,93 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - RADAR GEOGRÁFICO PROFISSIONAL</title>
+    <title>RAU - RADAR SYSTEM v5.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-        #canvas-container { width: 100vw; height: 100vh; cursor: move; }
-        
+        #canvas-container { width: 100vw; height: 100vh; }
         .hud { 
             position: absolute; top: 20px; left: 20px; z-index: 100; 
-            background: rgba(0, 40, 0, 0.85); color: #39ff14; padding: 15px; 
-            border: 1px solid #39ff14; box-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
-            pointer-events: none; border-radius: 4px;
+            color: #39ff14; background: rgba(0,20,0,0.9); padding: 15px; 
+            border: 1px solid #39ff14; pointer-events: none;
+            text-transform: uppercase; letter-spacing: 1px;
         }
-        .stats { font-size: 0.8em; color: #fff; margin-top: 5px; }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <strong style="font-size: 1.2em; letter-spacing: 2px;">RAU SYSTEM RADAR</strong><br>
-    <div class="stats">MODO: WEBGL SPRITE RENDERER</div>
-    <hr style="border: 0; border-top: 1px solid #39ff14; margin: 10px 0; opacity: 0.4;">
-    OUVINTES ATIVOS: <span id="count" style="font-weight: bold; font-size: 1.2em;">0</span>
+    <b>RAU Radar Interface</b><br>
+    <small id="city-display">A localizar...</small><br>
+    <hr style="border:0; border-top:1px solid #39ff14; margin:8px 0;">
+    Ouvintes: <span id="count">0</span>
 </div>
 
 <div id="canvas-container"></div>
 
 <script>
-    // --- NÚCLEO DE DADOS (FIREBASE) ---
+    // --- Configuração Firebase ---
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
     const myId = "RAU_" + Math.random().toString(36).substr(2, 6);
 
-    // --- CONFIGURAÇÃO THREE.JS ---
+    // --- Motor 3D ---
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    const globeGroup = new THREE.Group();
-    scene.add(globeGroup);
+    const globe = new THREE.Group();
+    scene.add(globe);
 
-    // Esfera Terrestre Profissional
+    // Textura de Alta Resolução
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
     const earth = new THREE.Mesh(
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({
             map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            bumpMap: loader.load('https://unpkg.com/three-globe/example/img/earth-topology.png'),
-            bumpScale: 0.02,
-            shininess: 8
+            shininess: 5
         })
     );
-    globeGroup.add(earth);
+    globe.add(earth);
 
-    // Luzes
-    scene.add(new THREE.AmbientLight(0x555555));
-    const sun = new THREE.DirectionalLight(0xffffff, 1);
-    sun.position.set(5, 3, 5);
-    scene.add(sun);
+    scene.add(new THREE.AmbientLight(0x404040, 2));
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(5, 3, 5);
+    scene.add(light);
     camera.position.z = 3;
 
-    // --- O PULO DO GATO: TEXTURAS DINÂMICAS PARA CIDADES ---
-    function createCitySprite(name) {
+    // --- Função de Renderização de Texto (WebGL Sprite) ---
+    function makeTextSprite(message) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 512; canvas.height = 128;
-
-        // Fundo da etiqueta
-        ctx.fillStyle = 'rgba(0, 20, 0, 0.7)';
-        ctx.fillRect(0, 40, 512, 60);
+        
+        ctx.fillStyle = 'rgba(0, 40, 0, 0.8)';
+        ctx.fillRect(0, 0, 512, 128);
         ctx.strokeStyle = '#39ff14';
-        ctx.lineWidth = 4;
-        ctx.strokeRect(0, 40, 512, 60);
-
-        // Texto
-        ctx.font = 'Bold 42px Courier New';
-        ctx.fillStyle = '#ffffff';
+        ctx.lineWidth = 6;
+        ctx.strokeRect(0, 0, 512, 128);
+        
+        ctx.font = 'Bold 50px Courier New';
         ctx.textAlign = 'center';
-        ctx.shadowColor = "#39ff14";
-        ctx.shadowBlur = 10;
-        ctx.fillText(name.toUpperCase(), 256, 85);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(message.toUpperCase(), 256, 80);
 
         const texture = new THREE.CanvasTexture(canvas);
-        const material = new THREE.SpriteMaterial({ map: texture, depthTest: true });
-        const sprite = new THREE.Sprite(material);
-        sprite.scale.set(0.5, 0.12, 1);
+        const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: true });
+        const sprite = new THREE.Sprite(spriteMaterial);
+        sprite.scale.set(0.6, 0.15, 1);
         return sprite;
     }
 
-    function addCityToGlobe(lat, lng, cityName) {
+    function addVisitor(lat, lng, cityName) {
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
         const pos = new THREE.Vector3(
@@ -109,66 +99,56 @@
 
         const group = new THREE.Group();
         
-        // Ponto Verde (Pulsante)
+        // Ponto Verde
         const dot = new THREE.Mesh(
-            new THREE.SphereGeometry(0.012, 12, 12),
+            new THREE.SphereGeometry(0.015, 12, 12),
             new THREE.MeshBasicMaterial({ color: 0x39ff14 })
         );
         dot.position.copy(pos);
         group.add(dot);
 
-        // Nome da Cidade
-        const label = createCitySprite(cityName || "Ouvinte");
-        label.position.copy(pos.clone().multiplyScalar(1.08)); // Flutua um pouco acima
+        // Etiqueta WebGL
+        const label = makeTextSprite(cityName || "Ouvinte");
+        label.position.copy(pos.clone().multiplyScalar(1.1));
         group.add(label);
 
-        globeGroup.add(group);
+        globe.add(group);
     }
 
-    // --- SINCRONIZAÇÃO RADAR ---
-    async function startRadar() {
+    // --- Lógica de Localização ---
+    async function init() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
+            document.getElementById('city-display').innerText = data.city + ", " + data.country;
+            
             const [lat, lng] = data.loc.split(',').map(Number);
-
-            const push = () => db.collection('rau_v4').doc(myId).set({
+            const save = () => db.collection('rau_v5').doc(myId).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
-            push(); setInterval(push, 25000);
+            save(); setInterval(save, 25000);
 
-            db.collection('rau_v4').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                for(let i = globeGroup.children.length - 1; i >= 0; i--) {
-                    if (globeGroup.children[i].type === "Group") globeGroup.remove(globeGroup.children[i]);
+            db.collection('rau_v5').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                for(let i = globe.children.length - 1; i >= 0; i--) {
+                    if (globe.children[i].type === "Group") globe.remove(globe.children[i]);
                 }
                 snap.forEach(doc => {
                     const d = doc.data();
-                    if(d.lat) addCityToGlobe(d.lat, d.lng, d.city);
+                    addVisitor(d.lat, d.lng, d.city);
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Erro no Radar"); }
+        } catch(e) { console.error("Erro no radar."); }
     }
 
-    // --- MOVIMENTO E RENDER ---
-    let isDragging = false, mouseX = 0, mouseY = 0;
-    document.addEventListener('mousedown', (e) => { isDragging = true; mouseX = e.clientX; mouseY = e.clientY; });
-    document.addEventListener('mouseup', () => isDragging = false);
-    document.addEventListener('mousemove', (e) => {
-        if(isDragging) {
-            globeGroup.rotation.y += (e.clientX - mouseX) * 0.005;
-            globeGroup.rotation.x += (e.clientY - mouseY) * 0.005;
-            mouseX = e.clientX; mouseY = e.clientY;
-        }
-    });
-
+    // --- Animação ---
     function animate() {
         requestAnimationFrame(animate);
-        if(!isDragging) globeGroup.rotation.y += 0.0015;
+        globe.rotation.y += 0.002;
         renderer.render(scene, camera);
     }
 
-    startRadar();
+    init();
     animate();
 
     window.addEventListener('resize', () => {
