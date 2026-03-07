@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO REALTIME</title>
+    <title>RAU - GLOBO RADAR REALTIME</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
@@ -10,24 +10,25 @@
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
         #canvas-container { width: 100vw; height: 100vh; position: relative; }
         
-        /* Painel de Controle Estilo RevolverMaps */
+        /* Contador Superior */
         .hud { 
             position: absolute; top: 20px; left: 20px; z-index: 10000; 
-            background: rgba(0, 30, 0, 0.9); color: #39ff14; padding: 15px; 
+            background: rgba(0, 30, 0, 0.9); color: #39ff14; padding: 12px 18px; 
             border: 1px solid #39ff14; border-radius: 2px; pointer-events: none;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
         }
 
-        /* ETIQUETA DA CIDADE - O efeito que faltava */
-        .city-tag {
+        /* Etiqueta da Cidade - Estilo RevolverMaps */
+        .city-label {
             position: absolute; color: #fff; background: rgba(0, 0, 0, 0.85);
-            padding: 4px 12px; border-left: 4px solid #39ff14;
+            padding: 4px 10px; border-left: 4px solid #39ff14;
             font-size: 13px; font-weight: bold; pointer-events: none;
             z-index: 5000; text-transform: uppercase; white-space: nowrap;
-            display: none; box-shadow: 3px 3px 10px rgba(0,0,0,0.8);
-            letter-spacing: 1px; pointer-events: none;
+            display: none; box-shadow: 3px 3px 8px rgba(0,0,0,0.7);
+            letter-spacing: 1px;
         }
 
+        /* Ponto Verde */
         .dot {
             position: absolute; width: 10px; height: 10px; background: #39ff14;
             border-radius: 50%; z-index: 4999; box-shadow: 0 0 15px #39ff14;
@@ -38,14 +39,13 @@
 <body>
 
 <div class="hud">
-    <b style="font-size: 1.2em;">RADAR AMIGOS UNIDOS</b><br>
-    <hr style="border: 0; border-top: 1px solid #39ff14; margin: 10px 0; opacity: 0.3;">
-    VISITAS EM TEMPO REAL: <span id="count" style="font-size: 1.5em; font-weight: bold;">1</span>
+    <b style="font-size: 1.2em;">RADAR RADIO AMIGOS UNIDOS</b><br>
+    <hr style="border: 0; border-top: 1px solid #39ff14; margin: 8px 0; opacity: 0.3;">
+    USUÁRIOS ONLINE: <span id="count" style="font-size: 1.4em; font-weight: bold;">1</span>
 </div>
 <div id="canvas-container"></div>
 
 <script>
-    // Firebase Setup
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
@@ -61,7 +61,6 @@
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
 
-    // Textura Realista da Terra
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
     const earth = new THREE.Mesh(
@@ -90,7 +89,7 @@
     });
 
     let markers = [];
-    function createPoint(lat, lng, city) {
+    function addMarker(lat, lng, city) {
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
         const anchor = new THREE.Object3D();
@@ -98,39 +97,38 @@
         globeGroup.add(anchor);
 
         const dot = document.createElement('div'); dot.className = 'dot';
-        const tag = document.createElement('div'); tag.className = 'city-tag';
-        tag.innerText = (city || "Ouvinte").toUpperCase();
+        const label = document.createElement('div'); label.className = 'city-label';
+        label.innerText = (city || "Ouvinte").toUpperCase();
         document.body.appendChild(dot);
-        document.body.appendChild(tag);
-        markers.push({ anchor, dot, tag });
+        document.body.appendChild(label);
+        markers.push({ anchor, dot, label });
     }
 
     async function startRadar() {
         try {
-            // Deteção via IP (Sem cliques/permissões)
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
             const loc = data.loc.split(',');
             
-            const sync = () => db.collection('rau_final_radar').doc(myId).set({
+            const push = () => db.collection('rau_v_final').doc(myId).set({
                 lat: parseFloat(loc[0]), lng: parseFloat(loc[1]), city: data.city,
                 ts: firebase.firestore.FieldValue.serverTimestamp()
             });
-            sync(); setInterval(sync, 25000);
+            push(); setInterval(push, 25000);
 
-            db.collection('rau_final_radar').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                markers.forEach(m => { if(m.dot.parentNode) m.dot.remove(); if(m.tag.parentNode) m.tag.remove(); });
+            db.collection('rau_v_final').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                markers.forEach(m => { m.dot.remove(); m.label.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
                     if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
                 }
                 snap.forEach(doc => {
                     const d = doc.data();
-                    if(d.lat) createPoint(d.lat, d.lng, d.city);
+                    if(d.lat) addMarker(d.lat, d.lng, d.city);
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Radar Offline"); }
+        } catch(e) { console.error("Erro no Radar"); }
     }
 
     function animate() {
@@ -143,15 +141,14 @@
             const dist = camera.position.distanceTo(vec);
             vec.project(camera);
             
-            // Só ativa o nome se a cidade estiver virada para a "frente"
-            if (dist < 3.0) {
-                m.dot.style.display = m.tag.style.display = 'block';
+            if (dist < 3.0) { // Mostra apenas se estiver na face frontal
+                m.dot.style.display = m.label.style.display = 'block';
                 const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
                 m.dot.style.left = x + 'px'; m.dot.style.top = y + 'px';
-                m.tag.style.left = (x + 12) + 'px'; m.tag.style.top = (y - 12) + 'px';
+                m.label.style.left = (x + 10) + 'px'; m.label.style.top = (y - 12) + 'px';
             } else {
-                m.dot.style.display = m.tag.style.display = 'none';
+                m.dot.style.display = m.label.style.display = 'none';
             }
         });
         renderer.render(scene, camera);
