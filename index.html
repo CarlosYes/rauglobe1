@@ -2,149 +2,156 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO REALTIME</title>
+    <title>RAU - GLOBO LIVE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
-        #radar-container { width: 100vw; height: 100vh; position: relative; }
-        .hud { position: absolute; top: 20px; left: 20px; z-index: 9999; background: rgba(0,0,0,0.9); color: #39ff14; padding: 12px; border: 2px solid #39ff14; border-radius: 5px; pointer-events: none; box-shadow: 0 0 15px #004400; }
+        #canvas-container { width: 100vw; height: 100vh; position: relative; }
         
-        /* Etiquetas - Visibilidade Máxima */
-        .city-tag {
-            position: absolute; color: #fff; background: rgba(0, 40, 0, 0.95);
-            padding: 6px 14px; border: 2px solid #39ff14; border-radius: 4px;
-            font-size: 15px; font-weight: 900; pointer-events: none;
-            white-space: nowrap; z-index: 5000; text-transform: uppercase;
-            box-shadow: 0 0 15px #39ff14;
+        .hud { 
+            position: absolute; top: 20px; left: 20px; z-index: 1000; 
+            background: rgba(0,0,0,0.85); color: #39ff14; padding: 12px; 
+            border: 2px solid #39ff14; border-radius: 5px; pointer-events: none;
         }
+
+        /* ETIQUETA DA CIDADE - FORÇAR VISIBILIDADE */
+        .city-tag {
+            position: absolute; color: #fff; background: rgba(0, 50, 0, 0.9);
+            padding: 5px 12px; border: 2px solid #39ff14; border-radius: 4px;
+            font-size: 14px; font-weight: bold; pointer-events: none;
+            white-space: nowrap; z-index: 999; text-transform: uppercase;
+            box-shadow: 0 0 10px #39ff14; transform: translate(15px, -15px);
+        }
+
+        /* PONTO VERDE NEON */
         .dot {
-            position: absolute; width: 14px; height: 14px; background: #39ff14;
-            border: 2px solid #fff; border-radius: 50%; z-index: 4999;
-            box-shadow: 0 0 25px #39ff14; pointer-events: none;
+            position: absolute; width: 12px; height: 12px; background: #39ff14;
+            border: 2px solid #fff; border-radius: 50%; z-index: 998;
+            box-shadow: 0 0 15px #39ff14; pointer-events: none;
         }
     </style>
 </head>
 <body>
 
-<div class="hud">
-    <b style="font-size: 16px;">RADIO AMIGOS UNIDOS</b><br>
-    CONEXÕES ATIVAS: <span id="count" style="font-size: 22px;">1</span>
-</div>
-<div id="radar-container"></div>
+    <div class="hud">
+        <b>RADIO AMIGOS UNIDOS</b><br>
+        OUVINTES: <span id="user-count">1</span>
+    </div>
+    <div id="canvas-container"></div>
 
-<script>
-    // Configuração Protegida
-    const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
-    firebase.initializeApp(cfg);
-    const db = firebase.firestore();
-    const myId = "RAU_" + Math.random().toString(36).substr(2, 5);
+    <script>
+        // Configuração Firebase
+        const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+        const config = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
+        firebase.initializeApp(config);
+        const db = firebase.firestore();
+        const myId = "RAU_" + Math.random().toString(36).substr(2, 5);
 
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.getElementById('radar-container').appendChild(renderer.domElement);
+        // --- CENA 3D ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    const globeGroup = new THREE.Group();
-    scene.add(globeGroup);
+        const globeGroup = new THREE.Group();
+        scene.add(globeGroup);
 
-    const loader = new THREE.TextureLoader();
-    const earth = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 64, 64),
-        new THREE.MeshPhongMaterial({
-            map: loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg'),
-            specularMap: loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_specular_2048.jpg'),
-            shininess: 5
-        })
-    );
-    globeGroup.add(earth);
+        const loader = new THREE.TextureLoader();
+        const earth = new THREE.Mesh(
+            new THREE.SphereGeometry(1, 64, 64),
+            new THREE.MeshPhongMaterial({
+                map: loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg'),
+                specularMap: loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_specular_2048.jpg'),
+                shininess: 5
+            })
+        );
+        globeGroup.add(earth);
+        scene.add(new THREE.DirectionalLight(0xffffff, 1.2).set(5,3,5));
+        scene.add(new THREE.AmbientLight(0x666666));
+        camera.position.z = 3;
 
-    scene.add(new THREE.DirectionalLight(0xffffff, 1.2).set(5, 3, 5));
-    scene.add(new THREE.AmbientLight(0x666666));
-    camera.position.z = 3;
-
-    let isDragging = false;
-    document.addEventListener('mousedown', () => isDragging = true);
-    document.addEventListener('mouseup', () => isDragging = false);
-    document.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            globeGroup.rotation.y += e.movementX * 0.007;
-            globeGroup.rotation.x += e.movementY * 0.007;
-        }
-    });
-
-    let markers = [];
-
-    function createMarker(lat, lng, city) {
-        const phi = (90 - lat) * (Math.PI / 180);
-        const theta = (lng + 180) * (Math.PI / 180);
-        const anchor = new THREE.Object3D();
-        anchor.position.set(-Math.sin(phi)*Math.cos(theta), Math.cos(phi), Math.sin(phi)*Math.sin(theta));
-        globeGroup.add(anchor);
-
-        const dot = document.createElement('div'); dot.className = 'dot';
-        const tag = document.createElement('div'); tag.className = 'city-tag';
-        tag.innerText = city ? city.toUpperCase() : "OUVINTE";
-        document.body.appendChild(dot);
-        document.body.appendChild(tag);
-        markers.push({ anchor, dot, tag });
-    }
-
-    async function init() {
-        try {
-            const res = await fetch("https://ipapi.co/json/");
-            const data = await res.json();
-            
-            const up = () => db.collection('rau_final_map').doc(myId).set({
-                lat: data.latitude, lng: data.longitude, city: data.city,
-                ts: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            up(); setInterval(up, 25000);
-
-            db.collection('rau_final_map').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                // Remover marcadores antigos com segurança
-                markers.forEach(m => { if(m.dot.parentNode) m.dot.remove(); if(m.tag.parentNode) m.tag.remove(); });
-                markers = [];
-                for(let i = globeGroup.children.length - 1; i >= 0; i--) {
-                    if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
-                }
-                snap.forEach(doc => {
-                    const d = doc.data();
-                    if(d.lat) createMarker(d.lat, d.lng, d.city);
-                });
-                document.getElementById('count').innerText = snap.size;
-            });
-        } catch(e) {}
-    }
-
-    function animate() {
-        requestAnimationFrame(animate);
-        if (!isDragging) globeGroup.rotation.y += 0.0015;
-
-        markers.forEach(m => {
-            const vec = new THREE.Vector3();
-            m.anchor.getWorldPosition(vec);
-            const dist = camera.position.distanceTo(vec);
-            vec.project(camera);
-
-            if (dist < 3.05) {
-                m.dot.style.display = m.tag.style.display = 'block';
-                const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
-                const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
-                m.dot.style.left = x + 'px';
-                m.dot.style.top = y + 'px';
-                m.tag.style.left = (x + 15) + 'px';
-                m.tag.style.top = (y - 15) + 'px';
-            } else {
-                m.dot.style.display = m.tag.style.display = 'none';
+        // ROTAÇÃO COM RATO
+        let isDragging = false;
+        document.addEventListener('mousedown', () => isDragging = true);
+        document.addEventListener('mouseup', () => isDragging = false);
+        document.addEventListener('mousemove', (e) => {
+            if(isDragging) {
+                globeGroup.rotation.y += e.movementX * 0.007;
+                globeGroup.rotation.x += e.movementY * 0.007;
             }
         });
-        renderer.render(scene, camera);
-    }
-    init(); animate();
-</script>
+
+        let markers = [];
+        function createPoint(lat, lng, cityName) {
+            const phi = (90 - lat) * (Math.PI / 180);
+            const theta = (lng + 180) * (Math.PI / 180);
+            const anchor = new THREE.Object3D();
+            anchor.position.set(-Math.sin(phi)*Math.cos(theta), Math.cos(phi), Math.sin(phi)*Math.sin(theta));
+            globeGroup.add(anchor);
+
+            const dot = document.createElement('div'); dot.className = 'dot';
+            const tag = document.createElement('div'); tag.className = 'city-tag';
+            tag.innerText = cityName.toUpperCase();
+            document.body.appendChild(dot);
+            document.body.appendChild(tag);
+            markers.push({ anchor, dot, tag });
+        }
+
+        async function init() {
+            try {
+                const res = await fetch("https://ipapi.co/json/");
+                const data = await res.json();
+                
+                const push = () => db.collection('rau_v5').doc(myId).set({
+                    lat: data.latitude, lng: data.longitude, city: data.city,
+                    ts: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                push(); setInterval(push, 25000);
+
+                db.collection('rau_v5').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                    markers.forEach(m => { m.dot.remove(); m.tag.remove(); });
+                    markers = [];
+                    // Limpar âncoras
+                    for(let i = globeGroup.children.length - 1; i >= 0; i--) {
+                        if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
+                    }
+                    snap.forEach(doc => {
+                        const d = doc.data();
+                        if(d.lat) createPoint(d.lat, d.lng, d.city);
+                    });
+                    document.getElementById('user-count').innerText = snap.size;
+                });
+            } catch(e) { console.error("Erro GPS"); }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(!isDragging) globeGroup.rotation.y += 0.0015;
+
+            markers.forEach(m => {
+                const vec = new THREE.Vector3();
+                m.anchor.getWorldPosition(vec);
+                const dist = camera.position.distanceTo(vec);
+                vec.project(camera);
+
+                if (dist < 3.0) { // Só mostra se estiver na frente
+                    m.dot.style.display = m.tag.style.display = 'block';
+                    const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
+                    const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
+                    m.dot.style.left = x + 'px';
+                    m.dot.style.top = y + 'px';
+                    m.tag.style.left = x + 'px';
+                    m.tag.style.top = y + 'px';
+                } else {
+                    m.dot.style.display = m.tag.style.display = 'none';
+                }
+            });
+            renderer.render(scene, camera);
+        }
+        init(); animate();
+    </script>
 </body>
 </html>
