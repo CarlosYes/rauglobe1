@@ -2,27 +2,27 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO ESTÁVEL</title>
+    <title>RAU - GLOBO RADAR</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
-        #canvas-container { width: 100vw; height: 100vh; }
+        #canvas-container { width: 100vw; height: 100vh; position: relative; }
         .hud { 
             position: absolute; top: 15px; left: 15px; z-index: 1000; 
             color: #39ff14; background: rgba(0,0,0,0.8); padding: 10px;
-            border: 1px solid #39ff14; border-radius: 4px; pointer-events: none;
+            border: 2px solid #39ff14; border-radius: 5px; pointer-events: none;
         }
-        .city-tag {
-            position: absolute; color: #fff; background: rgba(0, 40, 0, 0.9);
+        .city-label {
+            position: absolute; color: #fff; background: rgba(0, 50, 0, 0.9);
             padding: 4px 10px; border: 1px solid #39ff14; border-radius: 4px;
             font-size: 13px; font-weight: bold; pointer-events: none;
             z-index: 500; text-transform: uppercase; white-space: nowrap;
         }
         .dot {
             position: absolute; width: 10px; height: 10px; background: #39ff14;
-            border-radius: 50%; z-index: 400; box-shadow: 0 0 10px #39ff14;
+            border-radius: 50%; z-index: 400; box-shadow: 0 0 15px #39ff14;
             transform: translate(-50%, -50%); border: 1px solid #fff;
         }
     </style>
@@ -31,14 +31,13 @@
 
 <div class="hud">
     <b>RADIO AMIGOS UNIDOS</b><br>
-    STATUS: <span id="st">LIGADO</span> | ONLINE: <span id="count">1</span>
+    SINAL: <span id="st">LIGADO</span> | ONLINE: <span id="count">1</span>
 </div>
 <div id="canvas-container"></div>
 
 <script>
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
-    
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
     const myId = "RAU_" + Math.random().toString(36).substr(2, 5);
@@ -52,25 +51,29 @@
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
 
-    // Carregamento de textura com Plano B (Cor sólida se a imagem falhar)
-    const loader = new THREE.TextureLoader();
+    // GLOBO AZUL DE SEGURANÇA (Aparece mesmo sem internet)
+    const geometry = new THREE.SphereGeometry(1, 64, 64);
     const material = new THREE.MeshPhongMaterial({ 
-        color: 0x222222, // Fundo cinza caso a imagem falhe
-        map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', undefined, undefined, (err) => {
-            console.log("Erro ao carregar mapa, usando cor sólida.");
-        })
+        color: 0x0a1a2f, 
+        emissive: 0x051020,
+        shininess: 10 
     });
-
-    const earth = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), material);
+    const earth = new THREE.Mesh(geometry, material);
     globeGroup.add(earth);
 
-    scene.add(new THREE.AmbientLight(0x888888));
+    // WIREFRAME (Rede de linhas para o globo parecer tecnológico)
+    const wireframe = new THREE.Mesh(
+        new THREE.SphereGeometry(1.001, 40, 40),
+        new THREE.MeshBasicMaterial({ color: 0x39ff14, wireframe: true, transparent: true, opacity: 0.1 })
+    );
+    globeGroup.add(wireframe);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(5, 3, 5);
     scene.add(light);
     camera.position.z = 3;
 
-    // Rotação com o rato
     let isDragging = false;
     document.addEventListener('mousedown', () => isDragging = true);
     document.addEventListener('mouseup', () => isDragging = false);
@@ -82,7 +85,7 @@
     });
 
     let markers = [];
-    function addPoint(lat, lng, city) {
+    function addMarker(lat, lng, city) {
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
         const anchor = new THREE.Object3D();
@@ -90,38 +93,38 @@
         globeGroup.add(anchor);
 
         const dot = document.createElement('div'); dot.className = 'dot';
-        const tag = document.createElement('div'); tag.className = 'city-tag';
+        const tag = document.createElement('div'); tag.className = 'city-label';
         tag.innerText = (city || "Ouvinte").toUpperCase();
         document.body.appendChild(dot);
         document.body.appendChild(tag);
         markers.push({ anchor, dot, tag });
     }
 
-    async function run() {
+    async function init() {
         try {
-            // Leitor de localização ultra-rápido
-            const res = await fetch("https://ipapi.co/json/");
+            const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
+            const loc = data.loc.split(',');
             
-            const up = () => db.collection('rau_v7').doc(myId).set({
-                lat: data.latitude, lng: data.longitude, city: data.city,
+            const up = () => db.collection('rau_v9').doc(myId).set({
+                lat: parseFloat(loc[0]), lng: parseFloat(loc[1]), city: data.city,
                 ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             up(); setInterval(up, 25000);
 
-            db.collection('rau_v7').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                markers.forEach(m => { m.dot.remove(); m.tag.remove(); });
+            db.collection('rau_v9').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                markers.forEach(m => { if(m.dot.parentNode) m.dot.remove(); if(m.tag.parentNode) m.tag.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
                     if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
                 }
                 snap.forEach(doc => {
                     const d = doc.data();
-                    if(d.lat) addPoint(d.lat, d.lng, d.city);
+                    if(d.lat) addMarker(d.lat, d.lng, d.city);
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { document.getElementById('st').innerText = "MAP ERROR"; }
+        } catch(e) { document.getElementById('st').innerText = "ERRO GPS"; }
     }
 
     function animate() {
@@ -142,7 +145,7 @@
         });
         renderer.render(scene, camera);
     }
-    run(); animate();
+    init(); animate();
 </script>
 </body>
 </html>
