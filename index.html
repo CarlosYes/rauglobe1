@@ -2,29 +2,30 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO LIVE</title>
+    <title>RAU - GLOBO HTTPS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
         #canvas-container { width: 100vw; height: 100vh; position: relative; }
         .hud { 
-            position: absolute; top: 15px; left: 15px; z-index: 1000; 
-            color: #39ff14; background: rgba(0,0,0,0.85); padding: 12px; 
+            position: absolute; top: 20px; left: 20px; z-index: 9999; 
+            background: rgba(0,0,0,0.9); color: #39ff14; padding: 12px; 
             border: 2px solid #39ff14; border-radius: 5px; pointer-events: none;
         }
-        .city-label {
+        .city-tag {
             position: absolute; color: #fff; background: rgba(0, 40, 0, 0.95);
             padding: 6px 14px; border: 2px solid #39ff14; border-radius: 4px;
             font-size: 15px; font-weight: 900; pointer-events: none;
             white-space: nowrap; z-index: 5000; text-transform: uppercase;
-            box-shadow: 0 0 15px #39ff14;
+            box-shadow: 0 0 15px #39ff14; display: none;
         }
-        .green-dot {
+        .dot {
             position: absolute; width: 14px; height: 14px; background: #39ff14;
             border: 2px solid #fff; border-radius: 50%; z-index: 4999;
-            box-shadow: 0 0 25px #39ff14; pointer-events: none; transform: translate(-50%, -50%);
+            box-shadow: 0 0 25px #39ff14; pointer-events: none; 
+            transform: translate(-50%, -50%); display: none;
         }
     </style>
 </head>
@@ -32,7 +33,7 @@
 
 <div class="hud">
     <b style="font-size: 16px;">RADIO AMIGOS UNIDOS</b><br>
-    CONEXÕES ATIVAS: <span id="count" style="font-size: 22px;">1</span>
+    CONEXÕES: <span id="count" style="font-size: 22px;">1</span>
 </div>
 <div id="canvas-container"></div>
 
@@ -57,12 +58,10 @@
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({
             map: loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg'),
-            specularMap: loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_specular_2048.jpg'),
             shininess: 5
         })
     );
     globeGroup.add(earth);
-
     scene.add(new THREE.DirectionalLight(0xffffff, 1.2).set(5, 3, 5));
     scene.add(new THREE.AmbientLight(0x666666));
     camera.position.z = 3;
@@ -85,28 +84,29 @@
         anchor.position.set(-Math.sin(phi)*Math.cos(theta), Math.cos(phi), Math.sin(phi)*Math.sin(theta));
         globeGroup.add(anchor);
 
-        const dot = document.createElement('div'); dot.className = 'green-dot';
-        const label = document.createElement('div'); label.className = 'city-tag';
-        label.innerText = (city || "Ouvinte").toUpperCase();
+        const dot = document.createElement('div'); dot.className = 'dot';
+        const tag = document.createElement('div'); tag.className = 'city-tag';
+        tag.innerText = (city || "Ouvinte").toUpperCase();
         document.body.appendChild(dot);
-        document.body.appendChild(label);
-        markers.push({ anchor, dot, label });
+        document.body.appendChild(tag);
+        markers.push({ anchor, dot, tag });
     }
 
-    async function start() {
+    async function init() {
         try {
-            // NOVO LEITOR DE IP (MAIS ESTÁVEL)
-            const res = await fetch("http://ip-api.com/json/");
+            // USANDO IPINFO COM HTTPS (PLANO SEGURO)
+            const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
+            const coords = data.loc.split(',');
             
-            const up = () => db.collection('rau_map_final').doc(myId).set({
-                lat: data.lat, lng: data.lon, city: data.city || data.regionName,
+            const up = () => db.collection('rau_final_safe').doc(myId).set({
+                lat: parseFloat(coords[0]), lng: parseFloat(coords[1]), city: data.city,
                 ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             up(); setInterval(up, 25000);
 
-            db.collection('rau_map_final').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                markers.forEach(m => { if(m.dot.parentNode) m.dot.remove(); if(m.label.parentNode) m.label.remove(); });
+            db.collection('rau_final_safe').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                markers.forEach(m => { m.dot.remove(); m.tag.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
                     if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
@@ -117,7 +117,7 @@
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Erro na leitura do mapa"); }
+        } catch(e) { console.error("Erro GPS HTTPS"); }
     }
 
     function animate() {
@@ -129,16 +129,16 @@
             const dist = camera.position.distanceTo(vec);
             vec.project(camera);
             if (dist < 3.0) {
-                m.dot.style.display = m.label.style.display = 'block';
+                m.dot.style.display = m.tag.style.display = 'block';
                 const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
                 m.dot.style.left = x + 'px'; m.dot.style.top = y + 'px';
-                m.label.style.left = (x + 15) + 'px'; m.label.style.top = (y - 15) + 'px';
-            } else { m.dot.style.display = m.label.style.display = 'none'; }
+                m.tag.style.left = (x + 15) + 'px'; m.tag.style.top = (y - 15) + 'px';
+            } else { m.dot.style.display = m.tag.style.display = 'none'; }
         });
         renderer.render(scene, camera);
     }
-    start(); animate();
+    init(); animate();
 </script>
 </body>
 </html>
