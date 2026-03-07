@@ -2,16 +2,17 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - RADAR REALTIME</title>
+    <title>RAU - RADAR INTERATIVO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-        #canvas-container { width: 100vw; height: 100vh; }
+        #canvas-container { width: 100vw; height: 100vh; cursor: grab; }
+        #canvas-container:active { cursor: grabbing; }
         .hud { 
             position: absolute; top: 20px; left: 20px; z-index: 100; 
-            color: #39ff14; background: rgba(0, 10, 0, 0.9); padding: 15px; 
+            color: #39ff14; background: rgba(0, 15, 0, 0.9); padding: 15px; 
             border: 1px solid #39ff14; pointer-events: none; border-radius: 4px;
         }
     </style>
@@ -19,33 +20,32 @@
 <body>
 
 <div class="hud">
-    <b style="font-size: 1.2em;">RADAR AMIGOS UNIDOS</b><br>
-    <span id="my-loc">A localizar sinal...</span><br>
+    <b style="font-size: 1.2em;">RADAR RADIO AMIGOS UNIDOS</b><br>
+    <span id="my-loc">Sincronizando...</span><br>
     <hr style="border:0; border-top:1px solid #39ff14; margin:8px 0; opacity: 0.3;">
-    OUVINTES ATIVOS: <span id="count" style="font-size: 1.3em;">1</span>
+    OUVINTES ONLINE: <span id="count" style="font-size: 1.3em;">1</span>
 </div>
 
 <div id="canvas-container"></div>
 
 <script>
-    // 1. CONFIGURAÇÃO FIREBASE
+    // 1. FIREBASE CONFIG
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
-    const myId = "USER_" + Math.random().toString(36).substr(2, 5);
+    const myId = "RAU_" + Math.random().toString(36).substr(2, 5);
 
-    // 2. SETUP THREE.JS
+    // 2. THREE.JS ENGINE
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    const globeGroup = new THREE.Group();
-    scene.add(globeGroup);
+    const mainGroup = new THREE.Group();
+    scene.add(mainGroup);
 
-    // Esfera
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
     const earth = new THREE.Mesh(
@@ -55,27 +55,25 @@
             shininess: 5
         })
     );
-    globeGroup.add(earth);
+    mainGroup.add(earth);
 
-    scene.add(new THREE.AmbientLight(0xbbbbbb));
-    const light = new THREE.DirectionalLight(0xffffff, 0.8);
-    light.position.set(5, 3, 5);
-    scene.add(light);
+    scene.add(new THREE.AmbientLight(0xcccccc));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+    sun.position.set(5, 3, 5);
+    scene.add(sun);
     camera.position.z = 3;
 
-    // 3. CRIAÇÃO DE ETIQUETA WEBGL (O Pulo do Gato Real)
-    function createTextSprite(text) {
+    // 3. SPRITE DE TEXTO WEBGL
+    function createLabel(text) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 512; canvas.height = 128;
-        
-        ctx.fillStyle = 'rgba(0, 30, 0, 0.9)';
+        ctx.fillStyle = 'rgba(0, 40, 0, 0.85)';
         ctx.fillRect(0, 30, 512, 70);
         ctx.strokeStyle = '#39ff14';
         ctx.lineWidth = 4;
         ctx.strokeRect(0, 30, 512, 70);
-        
-        ctx.font = 'Bold 44px Courier New';
+        ctx.font = 'Bold 42px Courier New';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.fillText(text.toUpperCase(), 256, 80);
@@ -86,7 +84,7 @@
         return sprite;
     }
 
-    function addMarker(lat, lng, cityName) {
+    function addMarker(lat, lng, city) {
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
         const pos = new THREE.Vector3(
@@ -95,63 +93,67 @@
             Math.sin(phi) * Math.sin(theta)
         );
 
-        const markerGroup = new THREE.Group();
-        markerGroup.name = "visitor"; // Para limpeza fácil
-
-        // Ponto verde
-        const dot = new THREE.Mesh(
-            new THREE.SphereGeometry(0.015, 12, 12),
-            new THREE.MeshBasicMaterial({ color: 0x39ff14 })
-        );
+        const mGroup = new THREE.Group();
+        mGroup.name = "visitor";
+        
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
         dot.position.copy(pos);
-        markerGroup.add(dot);
+        mGroup.add(dot);
 
-        // Etiqueta
-        const label = createTextSprite(cityName || "Ouvinte");
+        const label = createLabel(city || "Ouvinte");
         label.position.copy(pos.clone().multiplyScalar(1.08));
-        markerGroup.add(label);
+        mGroup.add(label);
 
-        globeGroup.add(markerGroup);
+        mainGroup.add(mGroup);
     }
 
-    // 4. LOGICA DE DADOS
-    async function runRadar() {
+    // 4. CONTROLO DO RATO (O que estava em falta)
+    let isDragging = false;
+    let mouseX = 0, mouseY = 0;
+
+    document.addEventListener('mousedown', (e) => { isDragging = true; mouseX = e.clientX; mouseY = e.clientY; });
+    document.addEventListener('mouseup', () => { isDragging = false; });
+    document.addEventListener('mousemove', (e) => {
+        if(isDragging) {
+            const deltaX = e.clientX - mouseX;
+            const deltaY = e.clientY - mouseY;
+            mainGroup.rotation.y += deltaX * 0.007;
+            mainGroup.rotation.x += deltaY * 0.007;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        }
+    });
+
+    // 5. DATA SYNC
+    async function start() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
+            document.getElementById('my-loc').innerText = "Vindo de: " + data.city;
             const [lat, lng] = data.loc.split(',').map(Number);
-            document.getElementById('my-loc').innerText = "Tu em: " + data.city;
 
-            const send = () => db.collection('rau_final_v1').doc(myId).set({
+            const update = () => db.collection('rau_v6').doc(myId).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
-            send(); setInterval(send, 25000);
+            update(); setInterval(update, 25000);
 
-            db.collection('rau_final_v1').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                // Limpar marcadores antigos
-                const toRemove = [];
-                globeGroup.traverse(child => { if(child.name === "visitor") toRemove.push(child); });
-                toRemove.forEach(c => globeGroup.remove(c));
-
-                snap.forEach(doc => {
-                    const d = doc.data();
-                    addMarker(d.lat, d.lng, d.city);
-                });
+            db.collection('rau_v6').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                const old = [];
+                mainGroup.traverse(c => { if(c.name === "visitor") old.push(c); });
+                old.forEach(o => mainGroup.remove(o));
+                snap.forEach(doc => addMarker(doc.data().lat, doc.data().lng, doc.data().city));
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Erro no Radar"); }
+        } catch(e) { console.error("Falha GPS"); }
     }
 
-    // 5. ANIMAÇÃO
     function animate() {
         requestAnimationFrame(animate);
-        globeGroup.rotation.y += 0.002;
+        if(!isDragging) mainGroup.rotation.y += 0.002;
         renderer.render(scene, camera);
     }
 
-    runRadar();
-    animate();
-
+    start(); animate();
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
