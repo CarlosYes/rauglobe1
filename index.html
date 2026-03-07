@@ -2,28 +2,34 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO RADAR</title>
+    <title>RAU - GLOBO REALISTA</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
-        #canvas-container { width: 100vw; height: 100vh; position: relative; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; cursor: grab; }
+        
         .hud { 
-            position: absolute; top: 15px; left: 15px; z-index: 1000; 
-            color: #39ff14; background: rgba(0,0,0,0.8); padding: 10px;
+            position: absolute; top: 20px; left: 20px; z-index: 1000; 
+            background: rgba(0,0,0,0.85); color: #39ff14; padding: 12px; 
             border: 2px solid #39ff14; border-radius: 5px; pointer-events: none;
+            box-shadow: 0 0 15px rgba(0,255,0,0.2);
         }
-        .city-label {
-            position: absolute; color: #fff; background: rgba(0, 50, 0, 0.9);
-            padding: 4px 10px; border: 1px solid #39ff14; border-radius: 4px;
-            font-size: 13px; font-weight: bold; pointer-events: none;
+
+        /* ETIQUETAS DAS CIDADES - BEM VISÍVEIS */
+        .city-tag {
+            position: absolute; color: #fff; background: rgba(0, 40, 0, 0.9);
+            padding: 5px 12px; border: 1px solid #39ff14; border-radius: 4px;
+            font-size: 14px; font-weight: bold; pointer-events: none;
             z-index: 500; text-transform: uppercase; white-space: nowrap;
+            box-shadow: 0 0 10px #39ff14;
         }
+
         .dot {
-            position: absolute; width: 10px; height: 10px; background: #39ff14;
+            position: absolute; width: 12px; height: 12px; background: #39ff14;
             border-radius: 50%; z-index: 400; box-shadow: 0 0 15px #39ff14;
-            transform: translate(-50%, -50%); border: 1px solid #fff;
+            transform: translate(-50%, -50%); border: 2px solid #fff; pointer-events: none;
         }
     </style>
 </head>
@@ -31,7 +37,7 @@
 
 <div class="hud">
     <b>RADIO AMIGOS UNIDOS</b><br>
-    SINAL: <span id="st">LIGADO</span> | ONLINE: <span id="count">1</span>
+    OUVINTES ONLINE: <span id="count">1</span>
 </div>
 <div id="canvas-container"></div>
 
@@ -51,29 +57,24 @@
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
 
-    // GLOBO AZUL DE SEGURANÇA (Aparece mesmo sem internet)
-    const geometry = new THREE.SphereGeometry(1, 64, 64);
-    const material = new THREE.MeshPhongMaterial({ 
-        color: 0x0a1a2f, 
-        emissive: 0x051020,
-        shininess: 10 
-    });
-    const earth = new THREE.Mesh(geometry, material);
+    // Carregar a textura dos continentes (NASA Blue Marble)
+    const loader = new THREE.TextureLoader();
+    const earthTex = 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg';
+    
+    const earth = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 64, 64),
+        new THREE.MeshPhongMaterial({ map: loader.load(earthTex) })
+    );
     globeGroup.add(earth);
 
-    // WIREFRAME (Rede de linhas para o globo parecer tecnológico)
-    const wireframe = new THREE.Mesh(
-        new THREE.SphereGeometry(1.001, 40, 40),
-        new THREE.MeshBasicMaterial({ color: 0x39ff14, wireframe: true, transparent: true, opacity: 0.1 })
-    );
-    globeGroup.add(wireframe);
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    // Luz para iluminar os continentes
+    scene.add(new THREE.AmbientLight(0x999999));
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(5, 3, 5);
     scene.add(light);
     camera.position.z = 3;
 
+    // Rotação com o rato
     let isDragging = false;
     document.addEventListener('mousedown', () => isDragging = true);
     document.addEventListener('mouseup', () => isDragging = false);
@@ -85,7 +86,7 @@
     });
 
     let markers = [];
-    function addMarker(lat, lng, city) {
+    function createMarker(lat, lng, city) {
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
         const anchor = new THREE.Object3D();
@@ -93,7 +94,7 @@
         globeGroup.add(anchor);
 
         const dot = document.createElement('div'); dot.className = 'dot';
-        const tag = document.createElement('div'); tag.className = 'city-label';
+        const tag = document.createElement('div'); tag.className = 'city-tag';
         tag.innerText = (city || "Ouvinte").toUpperCase();
         document.body.appendChild(dot);
         document.body.appendChild(tag);
@@ -106,25 +107,25 @@
             const data = await res.json();
             const loc = data.loc.split(',');
             
-            const up = () => db.collection('rau_v9').doc(myId).set({
+            const up = () => db.collection('rau_final_live').doc(myId).set({
                 lat: parseFloat(loc[0]), lng: parseFloat(loc[1]), city: data.city,
                 ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             up(); setInterval(up, 25000);
 
-            db.collection('rau_v9').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                markers.forEach(m => { if(m.dot.parentNode) m.dot.remove(); if(m.tag.parentNode) m.tag.remove(); });
+            db.collection('rau_final_live').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                markers.forEach(m => { m.dot.remove(); m.tag.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
                     if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
                 }
                 snap.forEach(doc => {
                     const d = doc.data();
-                    if(d.lat) addMarker(d.lat, d.lng, d.city);
+                    if(d.lat) createMarker(d.lat, d.lng, d.city);
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { document.getElementById('st').innerText = "ERRO GPS"; }
+        } catch(e) {}
     }
 
     function animate() {
@@ -140,7 +141,7 @@
                 const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
                 m.dot.style.left = x + 'px'; m.dot.style.top = y + 'px';
-                m.tag.style.left = (x + 10) + 'px'; m.tag.style.top = (y - 10) + 'px';
+                m.tag.style.left = (x + 12) + 'px'; m.tag.style.top = (y - 12) + 'px';
             } else { m.dot.style.display = m.tag.style.display = 'none'; }
         });
         renderer.render(scene, camera);
