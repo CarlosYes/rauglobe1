@@ -2,82 +2,85 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO HTTPS</title>
+    <title>RAU - GLOBO RECONSTRUTOR</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
-        #canvas-container { width: 100vw; height: 100vh; position: relative; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: Arial, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; cursor: grab; }
         .hud { 
-            position: absolute; top: 20px; left: 20px; z-index: 9999; 
-            background: rgba(0,0,0,0.9); color: #39ff14; padding: 12px; 
+            position: absolute; top: 20px; left: 20px; z-index: 1000; 
+            background: rgba(0,0,0,0.8); color: #39ff14; padding: 12px; 
             border: 2px solid #39ff14; border-radius: 5px; pointer-events: none;
         }
         .city-tag {
-            position: absolute; color: #fff; background: rgba(0, 40, 0, 0.95);
-            padding: 6px 14px; border: 2px solid #39ff14; border-radius: 4px;
-            font-size: 15px; font-weight: 900; pointer-events: none;
-            white-space: nowrap; z-index: 5000; text-transform: uppercase;
-            box-shadow: 0 0 15px #39ff14; display: none;
+            position: absolute; color: #fff; background: rgba(0, 40, 0, 0.9);
+            padding: 5px 10px; border: 1px solid #39ff14; border-radius: 4px;
+            font-size: 14px; font-weight: bold; pointer-events: none;
+            z-index: 500; text-transform: uppercase; white-space: nowrap;
         }
         .dot {
-            position: absolute; width: 14px; height: 14px; background: #39ff14;
-            border: 2px solid #fff; border-radius: 50%; z-index: 4999;
-            box-shadow: 0 0 25px #39ff14; pointer-events: none; 
-            transform: translate(-50%, -50%); display: none;
+            position: absolute; width: 12px; height: 12px; background: #39ff14;
+            border-radius: 50%; z-index: 400; pointer-events: none;
+            box-shadow: 0 0 15px #39ff14; transform: translate(-50%, -50%); border: 2px solid #fff;
         }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <b style="font-size: 16px;">RADIO AMIGOS UNIDOS</b><br>
-    CONEXÕES: <span id="count" style="font-size: 22px;">1</span>
+    <b>RADIO AMIGOS UNIDOS</b><br>
+    SINAL: <span id="status">A INICIAR...</span> | ONLINE: <span id="count">0</span>
 </div>
 <div id="canvas-container"></div>
 
 <script>
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
-    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    
+    firebase.initializeApp(cfg);
     const db = firebase.firestore();
-    const myId = "R_" + Math.random().toString(36).substr(2, 5);
+    const myId = "RAU_" + Math.random().toString(36).substr(2, 5);
 
+    // --- CENA BÁSICA ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
 
+    // Criação do Globo (Mapa da NASA)
     const loader = new THREE.TextureLoader();
-    const earth = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 64, 64),
-        new THREE.MeshPhongMaterial({
-            map: loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg'),
-            shininess: 5
-        })
-    );
+    const earthMap = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg';
+    
+    const geometry = new THREE.SphereGeometry(1, 64, 64);
+    const material = new THREE.MeshPhongMaterial({ map: loader.load(earthMap) });
+    const earth = new THREE.Mesh(geometry, material);
     globeGroup.add(earth);
-    scene.add(new THREE.DirectionalLight(0xffffff, 1.2).set(5, 3, 5));
-    scene.add(new THREE.AmbientLight(0x666666));
+
+    scene.add(new THREE.AmbientLight(0xbbbbbb));
+    const sun = new THREE.DirectionalLight(0xffffff, 1);
+    sun.position.set(5, 3, 5);
+    scene.add(sun);
     camera.position.z = 3;
 
+    // --- ROTAÇÃO ---
     let isDragging = false;
     document.addEventListener('mousedown', () => isDragging = true);
     document.addEventListener('mouseup', () => isDragging = false);
     document.addEventListener('mousemove', (e) => {
-        if (isDragging) {
+        if(isDragging) {
             globeGroup.rotation.y += e.movementX * 0.007;
             globeGroup.rotation.x += e.movementY * 0.007;
         }
     });
 
     let markers = [];
-    function addMarker(lat, lng, city) {
+    function addCity(lat, lng, name) {
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
         const anchor = new THREE.Object3D();
@@ -86,26 +89,25 @@
 
         const dot = document.createElement('div'); dot.className = 'dot';
         const tag = document.createElement('div'); tag.className = 'city-tag';
-        tag.innerText = (city || "Ouvinte").toUpperCase();
+        tag.innerText = (name || "Ouvinte").toUpperCase();
         document.body.appendChild(dot);
         document.body.appendChild(tag);
         markers.push({ anchor, dot, tag });
     }
 
     async function init() {
+        document.getElementById('status').innerText = "OK";
         try {
-            // USANDO IPINFO COM HTTPS (PLANO SEGURO)
-            const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
+            const res = await fetch("https://ipapi.co/json/");
             const data = await res.json();
-            const coords = data.loc.split(',');
             
-            const up = () => db.collection('rau_final_safe').doc(myId).set({
-                lat: parseFloat(coords[0]), lng: parseFloat(coords[1]), city: data.city,
+            const up = () => db.collection('rau_v6').doc(myId).set({
+                lat: data.latitude, lng: data.longitude, city: data.city,
                 ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             up(); setInterval(up, 25000);
 
-            db.collection('rau_final_safe').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+            db.collection('rau_v6').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
                 markers.forEach(m => { m.dot.remove(); m.tag.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
@@ -113,16 +115,17 @@
                 }
                 snap.forEach(doc => {
                     const d = doc.data();
-                    if(d.lat) addMarker(d.lat, d.lng, d.city);
+                    if(d.lat) addCity(d.lat, d.lng, d.city);
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Erro GPS HTTPS"); }
+        } catch(e) { console.log("Offline Mode"); }
     }
 
     function animate() {
         requestAnimationFrame(animate);
-        if (!isDragging) globeGroup.rotation.y += 0.0015;
+        if(!isDragging) globeGroup.rotation.y += 0.0015;
+
         markers.forEach(m => {
             const vec = new THREE.Vector3();
             m.anchor.getWorldPosition(vec);
@@ -133,7 +136,7 @@
                 const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
                 m.dot.style.left = x + 'px'; m.dot.style.top = y + 'px';
-                m.tag.style.left = (x + 15) + 'px'; m.tag.style.top = (y - 15) + 'px';
+                m.tag.style.left = (x + 10) + 'px'; m.tag.style.top = (y - 10) + 'px';
             } else { m.dot.style.display = m.tag.style.display = 'none'; }
         });
         renderer.render(scene, camera);
