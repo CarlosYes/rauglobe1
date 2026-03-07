@@ -10,7 +10,7 @@
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #canvas-container { width: 100vw; height: 100vh; position: relative; }
         
-        /* Painel Superior */
+        /* Contador Superior Estilo Radar */
         .hud { 
             position: absolute; top: 20px; left: 20px; z-index: 10000; 
             background: rgba(0, 30, 0, 0.9); color: #39ff14; padding: 12px 18px; 
@@ -18,7 +18,7 @@
             box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
         }
 
-        /* Etiqueta Estilo RevolverMaps */
+        /* Etiqueta da Cidade - Visual RevolverMaps */
         .city-label {
             position: absolute; color: #fff; background: rgba(0, 0, 0, 0.85);
             padding: 4px 10px; border-left: 4px solid #39ff14;
@@ -28,7 +28,7 @@
             letter-spacing: 1px;
         }
 
-        /* Ponto Verde */
+        /* Ponto de Localização Verde */
         .dot {
             position: absolute; width: 10px; height: 10px; background: #39ff14;
             border-radius: 50%; z-index: 4999; box-shadow: 0 0 15px #39ff14;
@@ -39,13 +39,14 @@
 <body>
 
 <div class="hud">
-    <b style="font-size: 1.2em;">RADAR RADIO AMIGOS UNIDOS</b><br>
+    <b style="font-size: 1.1em;">RADAR RADIO AMIGOS UNIDOS</b><br>
     <hr style="border: 0; border-top: 1px solid #39ff14; margin: 8px 0; opacity: 0.3;">
     OUVINTES ONLINE: <span id="count" style="font-size: 1.4em; font-weight: bold;">1</span>
 </div>
 <div id="canvas-container"></div>
 
 <script>
+    // Configurações Firebase
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
@@ -61,6 +62,7 @@
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
 
+    // Textura Realista NASA
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
     const earth = new THREE.Mesh(
@@ -104,21 +106,22 @@
         markers.push({ anchor, dot, label });
     }
 
-    async function startRadar() {
+    // Deteção Automática via IP (Sem janelas de permissão)
+    async function initRadar() {
         try {
-            // Localizador por IP (Sem janelas de permissão)
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
             const loc = data.loc.split(',');
             
-            const up = () => db.collection('rau_final_radar').doc(myId).set({
+            const push = () => db.collection('rau_live_radar').doc(myId).set({
                 lat: parseFloat(loc[0]), lng: parseFloat(loc[1]), city: data.city,
                 ts: firebase.firestore.FieldValue.serverTimestamp()
             });
-            up(); setInterval(up, 25000);
+            push(); setInterval(push, 25000);
 
-            db.collection('rau_final_radar').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                markers.forEach(m => { m.dot.remove(); m.label.remove(); });
+            // Snapshot em tempo real
+            db.collection('rau_live_radar').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                markers.forEach(m => { if(m.dot.parentNode) m.dot.remove(); if(m.label.parentNode) m.label.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
                     if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
@@ -129,7 +132,7 @@
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Erro no Radar"); }
+        } catch(e) { console.error("Falha no Radar"); }
     }
 
     function animate() {
@@ -142,7 +145,8 @@
             const dist = camera.position.distanceTo(vec);
             vec.project(camera);
             
-            if (dist < 3.0) { // Oculta etiquetas no lado oposto do globo
+            // Lógica de oclusão (só mostra se estiver na "frente" do globo)
+            if (dist < 3.0) { 
                 m.dot.style.display = m.label.style.display = 'block';
                 const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
@@ -154,7 +158,7 @@
         });
         renderer.render(scene, camera);
     }
-    startRadar(); animate();
+    initRadar(); animate();
 </script>
 </body>
 </html>
