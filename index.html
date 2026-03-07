@@ -3,170 +3,196 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Radar Amigos Unidos - Live</title>
+    <title>Radar RAU - Global Monitor</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body, html { 
-            margin: 0; padding: 0; width: 100%; height: 100%; 
-            background: #000; overflow: hidden; font-family: 'Courier New', monospace;
+            width: 100%; height: 100%; 
+            background-color: #000; 
+            overflow: hidden; 
+            font-family: 'Courier New', monospace;
         }
         
-        /* Garante que o globo ocupe o ecrã todo */
-        #radar-canvas { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; 
+        /* Contentor do Globo */
+        #canvas-radar { 
+            position: absolute; 
+            top: 0; left: 0; 
+            width: 100vw; height: 100vh; 
+            z-index: 1;
+            cursor: move;
         }
 
-        .hud {
-            position: absolute; top: 15px; left: 15px; z-index: 100;
-            background: rgba(0, 20, 0, 0.85); border: 1px solid #39ff14;
-            padding: 12px; color: #39ff14; font-size: 12px;
-            pointer-events: none; border-radius: 5px;
+        /* Painel HUD */
+        .interface {
+            position: absolute; top: 20px; left: 20px; z-index: 100;
+            background: rgba(0, 20, 0, 0.9); border: 1px solid #39ff14;
+            padding: 15px; color: #39ff14; font-size: 12px;
+            pointer-events: none; border-radius: 4px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
         }
 
-        .dot {
-            position: absolute; width: 10px; height: 10px; border-radius: 50%;
+        /* Elementos Flutuantes (Bolinhas) */
+        .ponto {
+            position: absolute; width: 12px; height: 12px; border-radius: 50%;
             transform: translate(-50%, -50%); z-index: 10; pointer-events: none;
         }
-        
-        .label {
-            position: absolute; font-size: 10px; padding: 2px 5px;
-            background: rgba(0,0,0,0.8); transform: translate(-50%, -170%);
-            white-space: nowrap; border-radius: 3px; z-index: 11;
+        .etiqueta {
+            position: absolute; font-size: 10px; padding: 2px 6px;
+            background: rgba(0,0,0,0.85); transform: translate(-50%, -180%);
+            white-space: nowrap; border-radius: 3px; border: 1px solid;
+            pointer-events: none; z-index: 11;
         }
 
-        /* Cores */
-        .me { background: #1a1a1a; border: 1px solid #444; color: #777; }
-        .friend { background: #39ff14; box-shadow: 0 0 15px #39ff14; color: #39ff14; }
-        .stranger { background: #ff0000; box-shadow: 0 0 15px #ff0000; color: #ff0000; }
+        /* Estilos de Conexão */
+        .eu { background: #1a1a1a; border: 1px solid #555; color: #888; border-color: #555; }
+        .conectado { background: #39ff14; box-shadow: 0 0 15px #39ff14; color: #39ff14; border-color: #39ff14; }
+        .desconhecido { background: #ff0000; box-shadow: 0 0 15px #ff0000; color: #ff0000; border-color: #ff0000; }
     </style>
 </head>
 <body>
 
-    <div class="hud">
-        <b>[ RADAR AMIGOS UNIDOS ]</b><br>
-        STATUS: MONITORIZANDO...<br>
-        VISITANTES: <span id="count">0</span>
+    <div class="interface">
+        <b style="font-size: 14px;">RADAR AMIGOS UNIDOS</b><br>
+        SISTEMA: ONLINE<br>
+        OUVINTES: <span id="val-count">0</span><br>
+        <div style="margin-top: 8px; font-size: 10px; opacity: 0.7;">
+            <span style="color:#888">● TU</span> | 
+            <span style="color:#39ff14">● AMIGO</span> | 
+            <span style="color:#ff0000">● OUTRO</span>
+        </div>
     </div>
 
-    <div id="radar-canvas"></div>
+    <div id="canvas-radar"></div>
 
     <script>
-        // Configuração Ofuscada (Segura)
-        const _v = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+        // Configuração Segura (Base64)
+        const _keys = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
         
-        const firebaseConfig = {
-            apiKey: atob(_v[0]),
-            authDomain: atob(_v[1]),
-            projectId: atob(_v[2]),
-            appId: atob(_v[3])
+        const config = {
+            apiKey: atob(_keys[0]),
+            authDomain: atob(_keys[1]),
+            projectId: atob(_keys[2]),
+            appId: atob(_keys[3])
         };
 
-        firebase.initializeApp(firebaseConfig);
+        firebase.initializeApp(config);
         const db = firebase.firestore();
-        const userId = "U_" + Math.random().toString(36).substr(2, 4);
-        const isFriend = new URLSearchParams(window.location.search).get('ref') === 'amigo';
+        const myID = "ID_" + Math.random().toString(36).substr(2, 5);
+        const refAmigo = new URLSearchParams(window.location.search).get('ref') === 'amigo';
 
-        // --- CENA THREE.JS ---
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        // --- INICIALIZAÇÃO DO GLOBO ---
+        const cena = new THREE.Scene();
+        const camara = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderizador = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.getElementById('radar-canvas').appendChild(renderer.domElement);
+        renderizador.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-radar').appendChild(renderizador.domElement);
 
-        // Globo Wireframe Verde
-        const globe = new THREE.Mesh(
-            new THREE.SphereGeometry(1, 40, 40),
-            new THREE.MeshPhongMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.2 })
-        );
-        scene.add(globe);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-        camera.position.z = 3.5;
+        // Globo Verde Estilo Radar
+        const geometria = new THREE.SphereGeometry(1, 50, 50);
+        const material = new THREE.MeshPhongMaterial({ 
+            color: 0x00ff00, 
+            wireframe: true, 
+            transparent: true, 
+            opacity: 0.25 
+        });
+        const globo = new THREE.Mesh(geometria, material);
+        cena.add(globo);
+        
+        cena.add(new THREE.AmbientLight(0xffffff, 0.7));
+        camara.position.z = 3.3;
 
-        // Interatividade
-        let isDragging = false;
-        let prevMouse = { x: 0, y: 0 };
-        window.addEventListener('mousedown', () => isDragging = true);
-        window.addEventListener('mouseup', () => isDragging = false);
+        // Controlo de Rato
+        let arrastando = false;
+        let ratoAntigo = { x: 0, y: 0 };
+        window.addEventListener('mousedown', () => arrastando = true);
+        window.addEventListener('mouseup', () => arrastando = false);
         window.addEventListener('mousemove', (e) => {
-            if(isDragging) {
-                globe.rotation.y += (e.clientX - prevMouse.x) * 0.01;
-                globe.rotation.x += (e.clientY - prevMouse.y) * 0.01;
+            if(arrastando) {
+                globo.rotation.y += (e.clientX - ratoAntigo.x) * 0.007;
+                globo.rotation.x += (e.clientY - ratoAntigo.y) * 0.007;
             }
-            prevMouse = { x: e.clientX, y: e.clientY };
+            ratoAntigo = { x: e.clientX, y: e.clientY };
         });
 
-        const markers = [];
-        function addPoint(lat, lng, name, type) {
+        const marcadores = [];
+        function criarMarcador(lat, lng, cidade, tipo) {
             const phi = (90 - lat) * (Math.PI / 180);
             const theta = (lng + 180) * (Math.PI / 180);
-            const obj = new THREE.Object3D();
-            obj.position.set(-Math.sin(phi)*Math.cos(theta), Math.cos(phi), Math.sin(phi)*Math.sin(theta));
-            globe.add(obj);
+            const p = new THREE.Object3D();
+            p.position.set(-Math.sin(phi)*Math.cos(theta), Math.cos(phi), Math.sin(phi)*Math.sin(theta));
+            globo.add(p);
 
-            const d = document.createElement('div'); d.className = 'dot ' + type;
-            const l = document.createElement('div'); l.className = 'label'; l.innerText = name;
-            document.body.appendChild(d); document.body.appendChild(l);
-            markers.push({ obj, d, l });
+            const div = document.createElement('div'); div.className = 'ponto ' + tipo;
+            const label = document.createElement('div'); label.className = 'etiqueta ' + tipo;
+            label.innerText = cidade;
+            
+            document.body.appendChild(div); document.body.appendChild(label);
+            marcadores.push({ p, div, label });
         }
 
-        async function initRadar() {
+        async function iniciar() {
             try {
                 const res = await fetch("https://ipapi.co/json/");
-                const data = await res.json();
+                const dIP = await res.json();
                 
-                const push = () => {
-                    db.collection('activeUsers').doc(userId).set({
-                        lat: data.latitude, lng: data.longitude, name: data.city,
-                        isFriend: isFriend, last: firebase.firestore.FieldValue.serverTimestamp()
+                const atualizar = () => {
+                    db.collection('activeUsers').doc(myID).set({
+                        lat: dIP.latitude, lng: dIP.longitude, city: dIP.city,
+                        amigo: refAmigo, time: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 };
-                push(); setInterval(push, 20000);
+                atualizar(); setInterval(atualizar, 25000);
 
-                db.collection('activeUsers').where('last', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                    markers.forEach(m => { m.d.remove(); m.l.remove(); globe.remove(m.obj); });
-                    markers.length = 0;
+                db.collection('activeUsers').where('time', '>', new Date(Date.now() - 55000)).onSnapshot(snap => {
+                    marcadores.forEach(m => { m.div.remove(); m.label.remove(); globo.remove(m.p); });
+                    marcadores.length = 0;
                     snap.forEach(doc => {
                         const d = doc.data();
-                        let t = d.isFriend ? 'friend' : 'stranger';
-                        if(doc.id === userId) t = 'me';
-                        addPoint(d.lat, d.lng, d.name, t);
+                        let estilo = d.amigo ? 'conectado' : 'desconhecido';
+                        if(doc.id === myID) estilo = 'eu';
+                        criarMarcador(d.lat, d.lng, d.city, estilo);
                     });
-                    document.getElementById('count').innerText = snap.size;
+                    document.getElementById('val-count').innerText = snap.size;
                 });
-                animate();
-            } catch (e) { console.error("Erro GPS"); }
+                animar();
+            } catch (err) { console.error("Falha no Radar"); }
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            if(!isDragging) globe.rotation.y += 0.002;
+        function animar() {
+            requestAnimationFrame(animar);
+            if(!arrastando) globo.rotation.y += 0.0015;
             
-            markers.forEach(m => {
+            marcadores.forEach(m => {
                 const v = new THREE.Vector3();
-                m.obj.getWorldPosition(v);
-                v.project(camera);
-                const show = v.z < 1;
-                m.d.style.display = m.l.style.display = show ? 'block' : 'none';
-                if(show) {
-                    m.d.style.left = m.l.style.left = (v.x * 0.5 + 0.5) * window.innerWidth + 'px';
-                    m.d.style.top = m.l.style.top = (-v.y * 0.5 + 0.5) * window.innerHeight + 'px';
+                m.p.getWorldPosition(v);
+                v.project(camara);
+                
+                // Oclusão (esconder se estiver atrás do globo)
+                const distPonto = camara.position.distanceTo(m.p.getWorldPosition(new THREE.Vector3()));
+                const visivel = v.z < 1 && distPonto < camara.position.distanceTo(globo.position);
+                
+                m.div.style.display = m.label.style.display = visivel ? 'block' : 'none';
+                if(visivel) {
+                    m.div.style.left = m.label.style.left = (v.x * 0.5 + 0.5) * window.innerWidth + 'px';
+                    m.div.style.top = m.label.style.top = (-v.y * 0.5 + 0.5) * window.innerHeight + 'px';
                 }
             });
-            renderer.render(scene, camera);
+            renderizador.render(cena, camara);
         }
 
         window.onresize = () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            camara.aspect = window.innerWidth / window.innerHeight;
+            camara.updateProjectionMatrix();
+            renderizador.setSize(window.innerWidth, window.innerHeight);
         };
 
-        initRadar();
+        iniciar();
     </script>
 </body>
 </html>
