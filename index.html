@@ -2,83 +2,41 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR GLOBAL</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; color: #00ff00; font-family: 'Courier New', monospace; }
-        #canvas-container { position: absolute; width: 100%; height: 100%; z-index: 1; cursor: move; }
-        .hud { position: absolute; top: 20px; left: 20px; z-index: 10; border: 2px solid #00ff00; padding: 15px; background: rgba(0,20,0,0.9); pointer-events: none; box-shadow: 0 0 15px #00ff00; }
-        .dot { position: absolute; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%, -50%); z-index: 20; border: 1px solid #fff; }
-        .label { position: absolute; font-size: 11px; transform: translate(-50%, -190%); white-space: nowrap; z-index: 21; font-weight: bold; background: rgba(0,0,0,0.7); padding: 2px 5px; }
-        .eu { background: #111; border-color: #444; color: #777; }
-        .amigo { background: #00ff00; box-shadow: 0 0 15px #00ff00; color: #00ff00; }
-        .outro { background: #ff0000; box-shadow: 0 0 15px #ff0000; color: #ff0000; }
+        body { margin: 0; background: #000; color: #39ff14; font-family: monospace; text-align: center; }
+        #emergency-msg { position: absolute; top: 50%; width: 100%; z-index: 100; }
+        canvas { display: block; }
     </style>
 </head>
 <body>
-    <div class="hud">
-        <b style="font-size: 16px;">RADIO AMIGOS UNIDOS</b><br>
-        SISTEMA: OPERACIONAL<br>
-        CONEXÕES: <span id="c">0</span>
-    </div>
-    <div id="canvas-container"></div>
+    <div id="emergency-msg">A CARREGAR RADAR... (Se isto não sumir, o 3D está desligado)</div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-        const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
-        firebase.initializeApp(cfg); const db = firebase.firestore();
-        const uid = "U" + Math.random().toString(36).substr(2,5);
-        const isA = new URLSearchParams(window.location.search).get('ref') === 'amigo';
+        try {
+            const scene = new THREE.Scene();
+            const cam = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+            const ren = new THREE.WebGLRenderer({ antialias: true });
+            ren.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(ren.domElement);
 
-        const scene = new THREE.Scene();
-        const cam = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-        const ren = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        ren.setSize(window.innerWidth, window.innerHeight);
-        document.getElementById('canvas-container').appendChild(ren.domElement);
+            const geo = new THREE.SphereGeometry(1, 32, 32);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x39ff14, wireframe: true });
+            const globe = new THREE.Mesh(geo, mat);
+            scene.add(globe);
+            cam.position.z = 3;
 
-        const g = new THREE.Mesh(new THREE.SphereGeometry(1, 50, 50), new THREE.MeshPhongMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.4 }));
-        scene.add(g); scene.add(new THREE.AmbientLight(0xffffff, 1)); cam.position.z = 3.5;
+            document.getElementById('emergency-msg').style.display = 'none';
 
-        let drag = false; let px = 0; let py = 0;
-        window.onmousedown = () => drag = true; window.onmouseup = () => drag = false;
-        window.onmousemove = (e) => { if(drag) { g.rotation.y += (e.clientX - px) * 0.01; g.rotation.x += (e.clientY - py) * 0.01; } px = e.clientX; py = e.clientY; };
-
-        const mks = [];
-        function add(lat, lng, n, t) {
-            const phi = (90-lat)*(Math.PI/180); const tet = (lng+180)*(Math.PI/180);
-            const p = new THREE.Object3D(); p.position.set(-Math.sin(phi)*Math.cos(tet), Math.cos(phi), Math.sin(phi)*Math.sin(tet));
-            g.add(p); const d = document.createElement('div'); d.className = 'dot ' + t;
-            const l = document.createElement('div'); l.className = 'label ' + t; l.innerText = n;
-            document.body.appendChild(d); document.body.appendChild(l);
-            mks.push({ p, d, l });
+            function anim() {
+                requestAnimationFrame(anim);
+                globe.rotation.y += 0.01;
+                ren.render(scene, cam);
+            }
+            anim();
+        } catch(e) {
+            document.getElementById('emergency-msg').innerHTML = "ERRO: O teu navegador não suporta 3D (WebGL).";
         }
-
-        async function init() {
-            try {
-                const res = await fetch("https://ipapi.co/json/"); const d = await res.json();
-                const up = () => db.collection('activeUsers').doc(uid).set({ lat: d.latitude, lng: d.longitude, n: d.city, a: isA, t: firebase.firestore.FieldValue.serverTimestamp() });
-                up(); setInterval(up, 20000);
-                db.collection('activeUsers').where('t', '>', new Date(Date.now()-60000)).onSnapshot(s => {
-                    mks.forEach(m => { m.d.remove(); m.l.remove(); g.remove(m.p); }); mks.length = 0;
-                    s.forEach(doc => { const x = doc.data(); let cl = x.a ? 'amigo' : 'outro'; if(doc.id === uid) cl = 'eu'; add(x.lat, x.lng, x.n, cl); });
-                    document.getElementById('c').innerText = s.size;
-                });
-                loop();
-            } catch(e) { console.log("Erro GPS"); }
-        }
-
-        function loop() {
-            requestAnimationFrame(loop); if(!drag) g.rotation.y += 0.002;
-            mks.forEach(m => {
-                const v = new THREE.Vector3(); m.p.getWorldPosition(v); v.project(cam);
-                const vis = v.z < 1; m.d.style.display = m.l.style.display = vis ? 'block' : 'none';
-                if(vis) { m.d.style.left = m.l.style.left = (v.x * 0.5 + 0.5) * window.innerWidth + 'px'; m.d.style.top = m.l.style.top = (-v.y * 0.5 + 0.5) * window.innerHeight + 'px'; }
-            });
-            ren.render(scene, cam);
-        }
-        init();
-        window.onresize = () => { cam.aspect = window.innerWidth/window.innerHeight; cam.updateProjectionMatrix(); ren.setSize(window.innerWidth, window.innerHeight); };
     </script>
 </body>
 </html>
