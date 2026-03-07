@@ -2,24 +2,25 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO AUTOMÁTICO</title>
+    <title>RAU - GLOBO OFICIAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
         #canvas-container { width: 100vw; height: 100vh; position: relative; }
         
         .hud { 
             position: absolute; top: 20px; left: 20px; z-index: 10000; 
             background: rgba(0,0,0,0.85); color: #39ff14; padding: 12px; 
             border: 2px solid #39ff14; border-radius: 5px; pointer-events: none;
+            box-shadow: 0 0 15px rgba(0,255,0,0.3);
         }
 
         .city-tag {
-            position: absolute; color: #fff; background: rgba(0, 50, 0, 0.95);
-            padding: 5px 12px; border: 2px solid #39ff14; border-radius: 4px;
-            font-size: 14px; font-weight: bold; pointer-events: none;
+            position: absolute; color: #fff; background: rgba(0, 50, 0, 0.9);
+            padding: 5px 12px; border: 1px solid #39ff14; border-radius: 4px;
+            font-size: 14px; font-weight: 900; pointer-events: none;
             white-space: nowrap; z-index: 9999; text-transform: uppercase;
             box-shadow: 0 0 10px #39ff14; display: none;
         }
@@ -34,8 +35,8 @@
 <body>
 
 <div class="hud">
-    <b>RADIO AMIGOS UNIDOS</b><br>
-    STATUS: <span style="color:white">LIVE</span> | ONLINE: <span id="count">1</span>
+    <b style="font-size: 1.1em;">RADIO AMIGOS UNIDOS</b><br>
+    OUVINTES ONLINE: <span id="count">1</span>
 </div>
 <div id="canvas-container"></div>
 
@@ -65,9 +66,9 @@
     globeGroup.add(earth);
 
     scene.add(new THREE.AmbientLight(0xaaaaaa));
-    const light = new THREE.DirectionalLight(0xffffff, 0.8);
-    light.position.set(5, 3, 5);
-    scene.add(light);
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    sun.position.set(5, 3, 5);
+    scene.add(sun);
     camera.position.z = 3;
 
     let isDragging = false;
@@ -96,23 +97,21 @@
         markers.push({ anchor, dot, tag });
     }
 
-    // FUNÇÃO SILENCIOSA (SEM CLIQUES)
-    async function startSilent() {
+    async function startAuto() {
         try {
-            // Tenta obter dados por IP sem perguntar nada
-            const res = await fetch("https://ipapi.co/json/");
+            // Usando ipinfo com token para garantir funcionamento no GitHub
+            const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
+            const coords = data.loc.split(',');
             
-            if(data.latitude) {
-                const up = () => db.collection('rau_v10_auto').doc(myId).set({
-                    lat: data.latitude, lng: data.longitude, city: data.city,
-                    ts: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                up(); setInterval(up, 25000);
-            }
+            const up = () => db.collection('rau_final_auto').doc(myId).set({
+                lat: parseFloat(coords[0]), lng: parseFloat(coords[1]), city: data.city,
+                ts: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            up(); setInterval(up, 25000);
 
-            db.collection('rau_v10_auto').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                markers.forEach(m => { m.dot.remove(); m.tag.remove(); });
+            db.collection('rau_final_auto').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                markers.forEach(m => { if(m.dot.parentNode) m.dot.remove(); if(m.tag.parentNode) m.tag.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
                     if (globeGroup.children[i].type === "Object3D") globeGroup.remove(globeGroup.children[i]);
@@ -123,7 +122,7 @@
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Falha no rastreio automático."); }
+        } catch(e) { console.error("Erro na detecção automática."); }
     }
 
     function animate() {
@@ -144,7 +143,7 @@
         });
         renderer.render(scene, camera);
     }
-    startSilent(); animate();
+    startAuto(); animate();
 </script>
 </body>
 </html>
