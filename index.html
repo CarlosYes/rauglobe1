@@ -2,34 +2,32 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - GLOBO REALISTA</title>
+    <title>RAU - GLOBO AUTOMÁTICO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
-        #canvas-container { width: 100vw; height: 100vh; cursor: grab; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: relative; }
         
         .hud { 
-            position: absolute; top: 20px; left: 20px; z-index: 1000; 
+            position: absolute; top: 20px; left: 20px; z-index: 10000; 
             background: rgba(0,0,0,0.85); color: #39ff14; padding: 12px; 
             border: 2px solid #39ff14; border-radius: 5px; pointer-events: none;
-            box-shadow: 0 0 15px rgba(0,255,0,0.2);
         }
 
-        /* ETIQUETAS DAS CIDADES - BEM VISÍVEIS */
         .city-tag {
-            position: absolute; color: #fff; background: rgba(0, 40, 0, 0.9);
-            padding: 5px 12px; border: 1px solid #39ff14; border-radius: 4px;
+            position: absolute; color: #fff; background: rgba(0, 50, 0, 0.95);
+            padding: 5px 12px; border: 2px solid #39ff14; border-radius: 4px;
             font-size: 14px; font-weight: bold; pointer-events: none;
-            z-index: 500; text-transform: uppercase; white-space: nowrap;
-            box-shadow: 0 0 10px #39ff14;
+            white-space: nowrap; z-index: 9999; text-transform: uppercase;
+            box-shadow: 0 0 10px #39ff14; display: none;
         }
 
         .dot {
             position: absolute; width: 12px; height: 12px; background: #39ff14;
-            border-radius: 50%; z-index: 400; box-shadow: 0 0 15px #39ff14;
-            transform: translate(-50%, -50%); border: 2px solid #fff; pointer-events: none;
+            border-radius: 50%; z-index: 9998; box-shadow: 0 0 15px #39ff14;
+            transform: translate(-50%, -50%); border: 2px solid #fff; display: none;
         }
     </style>
 </head>
@@ -37,7 +35,7 @@
 
 <div class="hud">
     <b>RADIO AMIGOS UNIDOS</b><br>
-    OUVINTES ONLINE: <span id="count">1</span>
+    STATUS: <span style="color:white">LIVE</span> | ONLINE: <span id="count">1</span>
 </div>
 <div id="canvas-container"></div>
 
@@ -57,24 +55,21 @@
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
 
-    // Carregar a textura dos continentes (NASA Blue Marble)
     const loader = new THREE.TextureLoader();
-    const earthTex = 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg';
-    
     const earth = new THREE.Mesh(
         new THREE.SphereGeometry(1, 64, 64),
-        new THREE.MeshPhongMaterial({ map: loader.load(earthTex) })
+        new THREE.MeshPhongMaterial({ 
+            map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg') 
+        })
     );
     globeGroup.add(earth);
 
-    // Luz para iluminar os continentes
-    scene.add(new THREE.AmbientLight(0x999999));
-    const light = new THREE.DirectionalLight(0xffffff, 1);
+    scene.add(new THREE.AmbientLight(0xaaaaaa));
+    const light = new THREE.DirectionalLight(0xffffff, 0.8);
     light.position.set(5, 3, 5);
     scene.add(light);
     camera.position.z = 3;
 
-    // Rotação com o rato
     let isDragging = false;
     document.addEventListener('mousedown', () => isDragging = true);
     document.addEventListener('mouseup', () => isDragging = false);
@@ -86,7 +81,7 @@
     });
 
     let markers = [];
-    function createMarker(lat, lng, city) {
+    function addMarker(lat, lng, city) {
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
         const anchor = new THREE.Object3D();
@@ -101,19 +96,22 @@
         markers.push({ anchor, dot, tag });
     }
 
-    async function init() {
+    // FUNÇÃO SILENCIOSA (SEM CLIQUES)
+    async function startSilent() {
         try {
-            const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
+            // Tenta obter dados por IP sem perguntar nada
+            const res = await fetch("https://ipapi.co/json/");
             const data = await res.json();
-            const loc = data.loc.split(',');
             
-            const up = () => db.collection('rau_final_live').doc(myId).set({
-                lat: parseFloat(loc[0]), lng: parseFloat(loc[1]), city: data.city,
-                ts: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            up(); setInterval(up, 25000);
+            if(data.latitude) {
+                const up = () => db.collection('rau_v10_auto').doc(myId).set({
+                    lat: data.latitude, lng: data.longitude, city: data.city,
+                    ts: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                up(); setInterval(up, 25000);
+            }
 
-            db.collection('rau_final_live').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+            db.collection('rau_v10_auto').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
                 markers.forEach(m => { m.dot.remove(); m.tag.remove(); });
                 markers = [];
                 for(let i = globeGroup.children.length - 1; i >= 0; i--) {
@@ -121,11 +119,11 @@
                 }
                 snap.forEach(doc => {
                     const d = doc.data();
-                    if(d.lat) createMarker(d.lat, d.lng, d.city);
+                    if(d.lat) addMarker(d.lat, d.lng, d.city);
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) {}
+        } catch(e) { console.error("Falha no rastreio automático."); }
     }
 
     function animate() {
@@ -136,7 +134,7 @@
             m.anchor.getWorldPosition(vec);
             const dist = camera.position.distanceTo(vec);
             vec.project(camera);
-            if (dist < 3.0) {
+            if (dist < 3.05) {
                 m.dot.style.display = m.tag.style.display = 'block';
                 const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
                 const y = (-vec.y * 0.5 + 0.5) * window.innerHeight;
@@ -146,7 +144,7 @@
         });
         renderer.render(scene, camera);
     }
-    init(); animate();
+    startSilent(); animate();
 </script>
 </body>
 </html>
