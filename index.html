@@ -2,20 +2,31 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v192.0 - VISIBILIDADE TOTAL</title>
+    <title>RAU MONITOR v194.0 - VISITOR HUD</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; user-select: none; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 15, 0, 0.9); border-left: 3px solid #39ff14;
+            background: rgba(0, 10, 0, 0.9); border-left: 3px solid #39ff14;
             padding: 15px; width: 280px; pointer-events: none;
             backdrop-filter: blur(10px);
         }
-        .monitor-display { background: rgba(0, 0, 0, 0.9); border: 1px solid #1a1a1a; padding: 12px; }
-        #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; }
+        .monitor-display { background: rgba(0, 5, 0, 0.95); border: 1px solid #1a1a1a; padding: 12px; }
+        #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; }
         #mon-status { font-size: 10px; color: #39ff14; opacity: 0.8; margin-top: 8px; border-top: 1px solid #39ff1444; padding-top: 8px; white-space: pre-line; line-height: 1.4; }
+        
+        /* Label de Cidade flutuante no Canvas */
+        .visitor-label {
+            position: absolute; pointer-events: none;
+            background: rgba(0, 0, 0, 0.8); border: 1px solid #39ff14;
+            color: #fff; padding: 4px 8px; font-size: 12px;
+            border-radius: 4px; display: flex; align-items: center; gap: 8px;
+            white-space: nowrap; transform: translate(-50%, -150%);
+            z-index: 500;
+        }
+        .flag-icon { width: 20px; height: 14px; object-fit: cover; border: 1px solid #555; }
         canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; outline: none; }
     </style>
 </head>
@@ -23,62 +34,57 @@
 
 <div id="rau-ui">
     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-        <div id="led" style="width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14;"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">CORE v192.0 | LINK ESTÁVEL</span>
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14;"></div>
+        <span style="font-size: 11px; letter-spacing: 1px;">CORE v194.0 | HUD ACTIVE</span>
     </div>
     <div class="monitor-display">
-        <span id="mon-city">AQUIRING SIGNAL...</span>
-        <div id="mon-status">Aguardando telemetria...</div>
+        <span id="mon-city">AQUIRING DATA...</span>
+        <div id="mon-status">Sincronizando nó e bandeiras...</div>
     </div>
 </div>
+
+<div id="labels-container" style="position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></div>
 
 <script>
     const RAU_SYSTEM = {
         scene: new THREE.Scene(),
         camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000),
         renderer: new THREE.WebGLRenderer({ antialias: true }),
-        controls: null, globe: null, markers: new THREE.Group(), currentIP: null,
+        controls: null, globe: null, markers: new THREE.Group(), 
+        activeNode: null, currentIP: null,
 
         init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.setClearColor(0x000000, 1);
             document.body.appendChild(this.renderer.domElement);
 
-            // Iluminação - Essencial para o globo não ser um círculo preto
             this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
             const sun = new THREE.DirectionalLight(0xffffff, 0.6);
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
 
-            // Criação do Globo (Material Visível Imediato)
             const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, shininess: 15 });
+            const mat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, shininess: 20 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
-            
-            // Grupo de marcadores colado ao globo
             this.globe.add(this.markers);
 
-            // Giro Suave (Damping)
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
             this.controls.dampingFactor = 0.05;
             this.controls.autoRotate = true;
             this.controls.autoRotateSpeed = 0.6;
-            this.camera.position.z = 3.5;
+            this.camera.position.z = 3.6;
 
             this.animate();
-            this.loadTexture();
+            this.loadAssets();
             this.track();
             setInterval(() => this.track(), 10000);
         },
 
-        loadTexture() {
-            const loader = new THREE.TextureLoader();
-            // URL de textura robusta
-            loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg', (tex) => {
+        loadAssets() {
+            new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
-                this.globe.material.color.set(0xffffff);
                 this.globe.material.needsUpdate = true;
             });
         },
@@ -89,18 +95,19 @@
                 const data = await res.json();
                 if (data.ip && data.ip !== this.currentIP) {
                     this.currentIP = data.ip;
-                    this.updateUI(data);
+                    this.updateVisitor(data);
                 }
-            } catch (e) {
-                document.getElementById('mon-status').innerText = "Link instável...";
-            }
+            } catch (e) { console.log("Link error"); }
         },
 
-        updateUI(data) {
-            document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
-            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nLOCAL: ${data.country_code}\nISP: ${data.org}\nSTATUS: TRACKING`;
+        updateVisitor(data) {
+            document.getElementById('mon-city').innerText = data.city || "RAU NODE";
+            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nPAÍS: ${data.country_name}\nISP: ${data.org}\nSTATUS: LIVE`;
 
             this.markers.clear();
+            const container = document.getElementById('labels-container');
+            container.innerHTML = '';
+
             const phi = (90 - data.latitude) * (Math.PI / 180);
             const theta = (data.longitude + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3(
@@ -109,24 +116,55 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            // Ponto Verde de Visita
-            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
+            // Marcador 3D
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // Anel de Radar
-            const ring = new THREE.Mesh(new THREE.RingGeometry(0.04, 0.05, 32), new THREE.MeshBasicMaterial({ color: 0x39ff14, transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
-            ring.position.copy(pos.clone().multiplyScalar(1.001));
-            ring.lookAt(0,0,0);
-            this.markers.add(ring);
+            // Guardar o nó ativo para atualizar a posição do label na tela
+            this.activeNode = {
+                mesh: dot,
+                city: data.city,
+                country: data.country_code.toLowerCase()
+            };
 
-            // Focar suavemente no ponto
+            // Criar Elemento HTML do Label
+            const label = document.createElement('div');
+            label.className = 'visitor-label';
+            label.id = 'hud-label';
+            label.innerHTML = `
+                <img src="https://flagcdn.com/w40/${this.activeNode.country}.png" class="flag-icon">
+                <span>${this.activeNode.city}</span>
+            `;
+            container.appendChild(label);
+
+            // Focar suavemente
             this.camera.position.lerp(pos.clone().multiplyScalar(3.5), 0.05);
         },
 
         animate() {
             requestAnimationFrame(() => this.animate());
-            if (this.controls) this.controls.update(); // Isso garante o giro suave (damping)
+            if (this.controls) this.controls.update();
+
+            // Atualizar posição do Label HTML conforme o globo gira
+            if (this.activeNode) {
+                const vector = this.activeNode.mesh.getWorldPosition(new THREE.Vector3());
+                vector.project(this.camera);
+
+                const x = (vector.x * .5 + .5) * window.innerWidth;
+                const y = (vector.y * -.5 + .5) * window.innerHeight;
+                
+                const label = document.getElementById('hud-label');
+                if (label) {
+                    // Esconder o label se ele estiver "atrás" do globo
+                    if(vector.z > 1) { label.style.display = 'none'; } 
+                    else { 
+                        label.style.display = 'flex';
+                        label.style.left = `${x}px`;
+                        label.style.top = `${y}px`;
+                    }
+                }
+            }
             this.renderer.render(this.scene, this.camera);
         }
     };
