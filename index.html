@@ -2,128 +2,183 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - OMEGA v20.0</title>
+    <title>RAU - TITANIUM v21.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-        #rau-interface {
-            position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 20, 0, 0.9); color: #39ff14; padding: 20px;
-            border: 2px solid #39ff14; border-radius: 8px; pointer-events: none;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #rau-ui {
+            position: absolute; top: 25px; left: 25px; z-index: 1000;
+            background: rgba(0, 10, 0, 0.9); color: #39ff14; padding: 20px;
+            border-left: 4px solid #39ff14; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            pointer-events: none; min-width: 200px;
         }
-        .data-line { margin: 5px 0; font-size: 0.9em; }
-        #diag-log { position: absolute; bottom: 15px; left: 15px; color: #39ff14; font-size: 10px; opacity: 0.6; }
+        .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .value { font-size: 14px; color: #fff; margin-bottom: 10px; display: block; }
+        #count { font-size: 32px; font-weight: 900; color: #39ff14; }
+        #diag { position: absolute; bottom: 15px; left: 15px; color: #39ff14; font-size: 10px; opacity: 0.5; }
         canvas { cursor: grab; }
+        canvas:active { cursor: grabbing; }
     </style>
 </head>
 <body>
 
-<div id="rau-interface">
-    <div style="font-weight: 900; letter-spacing: 2px; border-bottom: 1px solid #39ff14; padding-bottom: 5px; margin-bottom: 10px;">RAU SYSTEM v20.0</div>
-    <div class="data-line">📍 LOCAL: <span id="city" style="color: #fff;">...</span></div>
-    <div class="data-line">📡 STATUS: <span id="st" style="color: #fff;">A LIGAR</span></div>
-    <div class="data-line" style="margin-top: 15px;">👥 ONLINE: <span id="count" style="font-size: 1.8em; font-weight: 900;">0</span></div>
-    <div id="pref-indicator" style="font-size: 0.7em; color: #888; margin-top: 10px;">PREFERÊNCIAS: <span style="color:#39ff14">SYNC OK</span></div>
+<div id="rau-ui">
+    <div style="font-weight: 900; letter-spacing: 2px; margin-bottom: 15px;">RAU SYSTEM v21.0</div>
+    
+    <span class="label">Localização</span>
+    <span id="city" class="value">A detetar...</span>
+    
+    <span class="label">Estado do Link</span>
+    <span id="st" class="value" style="color: #ff3333;">Desconectado</span>
+    
+    <hr style="border: 0; border-top: 1px solid rgba(57,255,20,0.2); margin: 15px 0;">
+    
+    <span class="label">Unidades Ativas</span>
+    <div id="count">0</div>
+    
+    <div style="margin-top: 10px; font-size: 11px;">
+        🔈 <span id="pref-vol">Vol: --</span> | 🔄 <span id="pref-auto">Auto: --</span>
+    </div>
 </div>
 
-<div id="diag-log">SISTEMA PRONTO.</div>
+<div id="diag">Iniciando Protocolo Titanium...</div>
 
 <script>
-    // --- GESTÃO DE MEMÓRIA (Volume e Autoplay) ---
-    const STORAGE_KEY = 'rau_user_settings';
-    let userSettings = JSON.parse(localStorage.getItem(STORAGE_KEY)) || { volume: 0.7, autoplay: true };
+    // 1. GESTÃO DE PREFERÊNCIAS (Volume e Autoplay)
+    const getPrefs = () => ({
+        vol: localStorage.getItem('rau_v') || "0.7",
+        auto: localStorage.getItem('rau_a') || "true"
+    });
 
-    const saveSettings = (vol, auto) => {
-        userSettings = { volume: vol, autoplay: auto };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(userSettings));
-        // Envia para o Firebase para backup
-        if (db && myNode) db.collection('RAU_CONFIGS').doc(myNode).set(userSettings, {merge: true});
+    const updateUIState = (p) => {
+        document.getElementById('pref-vol').innerText = "Vol: " + Math.round(p.vol * 100) + "%";
+        document.getElementById('pref-auto').innerText = "Auto: " + (p.auto === "true" ? "ON" : "OFF");
     };
 
-    // --- CONFIGURAÇÃO FIREBASE ---
-    const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
-    firebase.initializeApp(cfg);
+    // 2. CONFIGURAÇÃO FIREBASE
+    const _c = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+    const cfg = { apiKey: atob(_c[0]), authDomain: atob(_c[1]), projectId: atob(_c[2]), appId: atob(_c[3]) };
+    
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
-    const myNode = "NODE_" + Math.random().toString(36).substr(2, 5);
+    const nodeID = "RAU_" + Math.random().toString(36).substr(2, 6);
 
-    // --- ENGINE 3D ---
+    // 3. ENGINE 3D
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
     document.body.appendChild(renderer.domElement);
 
-    const world = new THREE.Group(); scene.add(world);
-    const globe = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), new THREE.MeshPhongMaterial({
-        map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-        shininess: 5
-    }));
+    const world = new THREE.Group(); 
+    scene.add(world);
+
+    const globe = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 64, 64),
+        new THREE.MeshPhongMaterial({
+            map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
+            shininess: 5
+        })
+    );
     world.add(globe);
     scene.add(new THREE.AmbientLight(0xffffff, 1.2));
     camera.position.z = 3.5;
 
+    // 4. GESTÃO DE MARCADORES
     const markers = new Map();
-    function renderNodes(nodes) {
-        const ids = new Set(nodes.map(n => n.id));
-        nodes.forEach(n => {
-            if (!markers.has(n.id)) {
-                const phi = (90 - n.lat) * (Math.PI / 180), theta = (n.lng + 180) * (Math.PI / 180);
-                const pos = new THREE.Vector3().setFromSphericalCoords(1.02, phi, theta);
+
+    function syncVisuals(data) {
+        const ids = new Set(data.map(d => d.id));
+        data.forEach(d => {
+            if (!markers.has(d.id)) {
+                const phi = (90 - d.lat) * (Math.PI / 180), theta = (d.lng + 180) * (Math.PI / 180);
+                const pos = new THREE.Vector3().setFromSphericalCoords(1.03, phi, theta);
+                
                 const g = new THREE.Group();
-                g.add(new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 })));
-                const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-                canvas.width = 200; canvas.height = 60; ctx.fillStyle = 'rgba(0,30,0,0.8)'; ctx.fillRect(0,0,200,60);
+                const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
+                dot.position.copy(pos);
+                g.add(dot);
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 200; canvas.height = 60;
+                ctx.fillStyle = 'rgba(0,40,0,0.85)'; ctx.fillRect(0,0,200,60);
                 ctx.font = 'bold 18px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-                ctx.fillText(n.city.toUpperCase(), 100, 38);
-                const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-                s.position.copy(pos.clone().multiplyScalar(1.15)); s.scale.set(0.4, 0.12, 1);
-                g.add(s); world.add(g); markers.set(n.id, g);
+                ctx.fillText(d.city.toUpperCase(), 100, 38);
+
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+                sprite.position.copy(pos.clone().multiplyScalar(1.12));
+                sprite.scale.set(0.4, 0.12, 1);
+                g.add(sprite);
+
+                world.add(g);
+                markers.set(d.id, g);
             }
         });
         markers.forEach((obj, id) => { if (!ids.has(id)) { world.remove(obj); markers.delete(id); } });
     }
 
-    // --- LÓGICA DE CONTROLO ---
+    // 5. INTERAÇÃO E LOOP
     let isDown = false, lx, ly;
-    document.addEventListener('mousedown', (e) => { isDown = true; lx = e.clientX; ly = e.clientY; });
+    window.addEventListener('mousedown', (e) => { isDown = true; lx = e.clientX; ly = e.clientY; });
     window.addEventListener('mouseup', () => isDown = false);
-    window.addEventListener('mousemove', (e) => { 
-        if (isDown) { 
-            world.rotation.y += (e.clientX-lx)*0.007; 
-            world.rotation.x += (e.clientY-ly)*0.007; 
-            lx=e.clientX; ly=e.clientY; 
-        } 
+    window.addEventListener('mousemove', (e) => {
+        if (isDown) {
+            world.rotation.y += (e.clientX - lx) * 0.007;
+            world.rotation.x += (e.clientY - ly) * 0.007;
+            lx = e.clientX; ly = e.clientY;
+        }
     });
 
-    // --- INICIALIZAÇÃO ---
-    async function init() {
+    // 6. UPLINK CRÍTICO
+    async function start() {
         try {
+            const prefs = getPrefs();
+            updateUIState(prefs);
+
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
             document.getElementById('city').innerText = res.city.toUpperCase();
             const [lat, lng] = res.loc.split(',').map(Number);
-            
-            const uplink = () => db.collection('RAU_LIVE').doc(myNode).set({ 
+
+            const push = () => db.collection('RAU_V21').doc(nodeID).set({
                 lat, lng, city: res.city, ts: firebase.firestore.FieldValue.serverTimestamp(),
-                settings: userSettings
-            }).then(() => { document.getElementById('st').innerText = "ONLINE"; });
-
-            uplink(); setInterval(uplink, 25000);
-
-            db.collection('RAU_LIVE').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                const list = []; snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
-                renderNodes(list); document.getElementById('count').innerText = snap.size;
+                v: prefs.vol, a: prefs.auto
+            }).then(() => {
+                document.getElementById('st').innerText = "CONECTADO";
+                document.getElementById('st').style.color = "#39ff14";
+                document.getElementById('diag').innerText = "Uplink estável.";
+            }).catch(e => {
+                document.getElementById('diag').innerText = "ERRO: Verifica as Rules do Firebase.";
             });
-        } catch (e) { document.getElementById('diag-log').innerText = "ERRO DE LIGAÇÃO"; }
+
+            push(); setInterval(push, 25000);
+
+            db.collection('RAU_V21').where('ts', '>', new Date(Date.now() - 65000)).onSnapshot(snap => {
+                const list = [];
+                snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+                syncVisuals(list);
+                document.getElementById('count').innerText = snap.size;
+            });
+        } catch (e) { document.getElementById('diag').innerText = "Erro de Rede."; }
     }
 
-    function animate() { requestAnimationFrame(animate); if(!isDown) world.rotation.y += 0.0015; renderer.render(scene, camera); }
-    init(); animate();
+    function animate() {
+        requestAnimationFrame(animate);
+        if (!isDown) world.rotation.y += 0.0015;
+        renderer.render(scene, camera);
+    }
 
-    // EXPOSTO PARA O TEU PLAYER: window.saveSettings(0.5, true);
+    start(); animate();
+
+    // EXPOSTO PARA O TEU PLAYER
+    window.setRAUPrefs = (vol, auto) => {
+        localStorage.setItem('rau_v', vol);
+        localStorage.setItem('rau_a', auto);
+        updateUIState({vol, auto});
+    };
 </script>
 </body>
 </html>
