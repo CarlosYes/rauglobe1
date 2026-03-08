@@ -41,17 +41,16 @@
     renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    const mainGroup = new THREE.Group(); // O "Mundo"
+    const mainGroup = new THREE.Group(); 
     scene.add(mainGroup);
 
-    // Luzes (Set-up de Estúdio)
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const sun = new THREE.DirectionalLight(0xffffff, 0.6);
     sun.position.set(5, 3, 5);
     scene.add(sun);
     camera.position.z = 3;
 
-    // 2. TERRA (Textura de Alta Definição)
+    // 2. TERRA
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
     const earth = new THREE.Mesh(
@@ -64,18 +63,16 @@
     );
     mainGroup.add(earth);
 
-    // 3. ETIQUETAS E MARCADORES (Sistema de Sprites)
+    // 3. SISTEMA DE ETIQUETAS
     function createTacticalLabel(text) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 512; canvas.height = 128;
-        
         ctx.fillStyle = 'rgba(0, 40, 0, 0.95)';
         ctx.fillRect(10, 20, 492, 88);
         ctx.strokeStyle = '#39ff14';
         ctx.lineWidth = 6;
         ctx.strokeRect(10, 20, 492, 88);
-        
         ctx.font = 'Bold 42px Courier New';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
@@ -110,7 +107,7 @@
         mainGroup.add(unitGroup);
     }
 
-    // 4. INTERATIVIDADE (CONTROLO ABSOLUTO)
+    // 4. INTERATIVIDADE
     let isDragging = false;
     let mouseX = 0, mouseY = 0;
 
@@ -127,7 +124,7 @@
         }
     });
 
-    // 5. FIREBASE (Real-time Sync)
+    // 5. FIREBASE REAL-TIME
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
@@ -147,7 +144,6 @@
             reportIn(); setInterval(reportIn, 25000);
 
             db.collection('rau_v_final').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                // Limpeza cirúrgica: remove apenas as unidades, não a Terra
                 const toRemove = [];
                 mainGroup.children.forEach(c => { if(c.name === "unit") toRemove.push(c); });
                 toRemove.forEach(c => mainGroup.remove(c));
