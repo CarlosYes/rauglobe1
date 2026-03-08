@@ -2,52 +2,53 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - DEEP SPACE v15.0</title>
+    <title>RAU - OPERATIONAL v16.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-        #rau-master-ui {
+        #rau-ui {
             position: absolute; top: 30px; left: 30px; z-index: 1000;
-            background: rgba(0, 10, 0, 0.95); color: #39ff14; padding: 25px;
-            border-left: 5px solid #39ff14; box-shadow: 0 0 30px rgba(0,255,0,0.2);
-            pointer-events: none;
+            background: rgba(0, 15, 0, 0.95); color: #39ff14; padding: 25px;
+            border: 2px solid #39ff14; border-radius: 5px; pointer-events: none;
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.2);
         }
-        #system-alert { 
-            position: absolute; bottom: 20px; right: 20px; 
-            color: #ff0000; font-size: 11px; font-weight: bold;
+        #diag-log { 
+            position: absolute; bottom: 20px; left: 20px; 
+            color: #ff3333; font-size: 11px; max-width: 400px; font-weight: bold;
         }
-        .pulse { animation: p 1s infinite; }
-        @keyframes p { 50% { opacity: 0.3; } }
-        canvas { cursor: move; }
+        .live { color: #ff0000; animation: blink 0.8s infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        canvas { cursor: crosshair; }
     </style>
 </head>
 <body>
 
-<div id="rau-master-ui">
-    <div style="font-weight: 900; letter-spacing: 3px;">RAU COMMAND v15.0</div>
+<div id="rau-ui">
+    <b style="letter-spacing: 3px; font-size: 1.2em;">RAU COMMAND v16.0</b><br>
     <div style="margin-top: 10px; font-size: 0.9em;">
-        STATUS: <span id="conn" class="pulse">A LIGAR...</span><br>
-        NÓ ATIVO: <span id="city" style="color:#fff">---</span><br>
-        <hr style="border:0; border-top:1px solid #39ff14; margin:10px 0; opacity: 0.3;">
-        OPERATIVOS ONLINE: <span id="count" style="font-size: 2em; color:#fff; font-weight: 900;">0</span>
+        <span class="live">●</span> CANAL: <span id="status" style="color:#fff">A LIGAR...</span><br>
+        NÓ: <span id="city" style="color:#fff">---</span><br>
+        <hr style="border:0; border-top:1px solid #39ff14; margin:10px 0; opacity: 0.2;">
+        UNIDADES ATIVAS: <span id="count" style="font-size: 2em; font-weight: 900; color:#fff">0</span>
     </div>
 </div>
 
-<div id="system-alert"></div>
+<div id="diag-log">AGUARDANDO DADOS DO SISTEMA...</div>
 
 <script>
-    const alertUser = (m) => { document.getElementById('system-alert').innerText = "ALERTA: " + m; };
+    const diag = (m) => { document.getElementById('diag-log').innerText = "DIAGNÓSTICO: " + m; };
 
-    // 1. FIREBASE CORE (Nova Coleção RAU_ULTIMATE)
-    const _v = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const config = { apiKey: atob(_v[0]), authDomain: atob(_v[1]), projectId: atob(_v[2]), appId: atob(_v[3]) };
-    if (!firebase.apps.length) firebase.initializeApp(config);
+    // 1. FIREBASE CORE (Nova Coleção para Reset de Índices)
+    const _c = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+    const cfg = { apiKey: atob(_c[0]), authDomain: atob(_c[1]), projectId: atob(_c[2]), appId: atob(_c[3]) };
+    
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
-    const sessionToken = "NODE_" + Math.random().toString(36).substr(2, 5);
+    const myID = "OP_" + Math.random().toString(36).substr(2, 5);
 
-    // 2. ENGINE 3D (Otimização de Geometria)
+    // 2. ENGINE 3D
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -60,103 +61,100 @@
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({
             map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            shininess: 10
+            shininess: 5
         })
     );
     world.add(globe);
     scene.add(new THREE.AmbientLight(0xffffff, 1.2));
     camera.position.z = 3.5;
 
-    // 3. GESTÃO DE MARCADORES (Persistent Pool)
-    const nodeCache = new Map();
+    // 3. CACHE DE MARCADORES
+    const markers = new Map();
 
-    function updateGlobe(nodes) {
-        const activeIds = new Set(nodes.map(n => n.id));
-
-        nodes.forEach(n => {
-            if (!nodeCache.has(n.id)) {
-                const phi = (90 - n.lat) * (Math.PI / 180);
-                const theta = (n.lng + 180) * (Math.PI / 180);
+    function updateRadar(data) {
+        const ids = new Set(data.map(d => d.id));
+        data.forEach(d => {
+            if (!markers.has(d.id)) {
+                const phi = (90 - d.lat) * (Math.PI / 180);
+                const theta = (d.lng + 180) * (Math.PI / 180);
                 const pos = new THREE.Vector3().setFromSphericalCoords(1.02, phi, theta);
 
-                const group = new THREE.Group();
+                const g = new THREE.Group();
                 const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
                 dot.position.copy(pos);
-                group.add(dot);
+                g.add(dot);
 
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                canvas.width = 256; canvas.height = 64;
-                ctx.fillStyle = 'rgba(0,30,0,0.9)'; ctx.fillRect(0,0,256,64);
-                ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 4; ctx.strokeRect(0,0,256,64);
-                ctx.font = 'bold 22px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-                ctx.fillText(n.city.toUpperCase(), 128, 40);
+                canvas.width = 200; canvas.height = 60;
+                ctx.fillStyle = 'rgba(0,30,0,0.9)'; ctx.fillRect(0,0,200,60);
+                ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 4; ctx.strokeRect(0,0,200,60);
+                ctx.font = 'bold 18px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+                ctx.fillText(d.city.toUpperCase(), 100, 38);
 
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: true }));
                 sprite.position.copy(pos.clone().multiplyScalar(1.15));
-                sprite.scale.set(0.4, 0.1, 1);
-                group.add(sprite);
+                sprite.scale.set(0.4, 0.12, 1);
+                g.add(sprite);
 
-                world.add(group);
-                nodeCache.set(n.id, group);
+                world.add(g);
+                markers.set(d.id, g);
             }
         });
-
-        nodeCache.forEach((obj, id) => {
-            if (!activeIds.has(id)) { world.remove(obj); nodeCache.delete(id); }
-        });
+        markers.forEach((obj, id) => { if (!ids.has(id)) { world.remove(obj); markers.delete(id); } });
     }
 
-    // 4. CONTROLOS INERCIAIS
-    let drag = false, lastX, lastY;
-    document.addEventListener('mousedown', (e) => { drag = true; lastX = e.clientX; lastY = e.clientY; });
-    window.addEventListener('mouseup', () => drag = false);
+    // 4. CONTROLOS
+    let down = false, lx, ly;
+    document.addEventListener('mousedown', (e) => { down = true; lx = e.clientX; ly = e.clientY; });
+    window.addEventListener('mouseup', () => down = false);
     window.addEventListener('mousemove', (e) => {
-        if (drag) {
-            world.rotation.y += (e.clientX - lastX) * 0.007;
-            world.rotation.x += (e.clientY - lastY) * 0.007;
-            lastX = e.clientX; lastY = e.clientY;
+        if (down) {
+            world.rotation.y += (e.clientX - lx) * 0.007;
+            world.rotation.x += (e.clientY - ly) * 0.007;
+            lx = e.clientX; ly = e.clientY;
         }
     });
 
-    // 5. UPLINK MASTER (A Solução Real)
-    async function start() {
+    // 5. O SEGREDO: TESTE DE ESCRITA E LEITURA
+    async function activate() {
         try {
+            diag("A contactar satélite IP...");
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
             document.getElementById('city').innerText = res.city.toUpperCase();
             const [lat, lng] = res.loc.split(',').map(Number);
 
-            const push = () => db.collection('RAU_ULTIMATE').doc(sessionToken).set({
+            diag("A tentar escrever na base de dados...");
+            const up = () => db.collection('RAU_OPERATIONAL').doc(myID).set({
                 lat, lng, city: res.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
-                document.getElementById('conn').innerText = "ONLINE";
-                document.getElementById('conn').style.color = "#39ff14";
+                document.getElementById('status').innerText = "LINK ESTÁVEL";
+                document.getElementById('status').style.color = "#39ff14";
+                diag("Uplink OK. Aguardando sinal de outros nós...");
             }).catch(e => {
-                alertUser("ACESSO NEGADO: VERIFICA AS REGRAS DO FIREBASE");
-                console.error(e);
+                diag("ERRO FIREBASE: " + e.message + " - Verifique as 'Rules' no console!");
             });
 
-            push(); setInterval(push, 20000);
+            up(); setInterval(up, 25000);
 
-            // Ouvinte de dados (Real-Time)
-            db.collection('RAU_ULTIMATE').where('ts', '>', new Date(Date.now() - 60000))
+            db.collection('RAU_OPERATIONAL').where('ts', '>', new Date(Date.now() - 60000))
               .onSnapshot(snap => {
                   const list = [];
                   snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
-                  updateGlobe(list);
+                  updateRadar(list);
                   document.getElementById('count').innerText = snap.size;
-              }, err => alertUser("ERRO DE SNAPSHOT: " + err.message));
+              }, err => diag("ERRO DE LEITURA: " + err.message));
 
-        } catch (e) { alertUser("ERRO CRÍTICO DE REDE"); }
+        } catch (e) { diag("ERRO CRÍTICO: " + e.message); }
     }
 
     function loop() {
         requestAnimationFrame(loop);
-        if (!drag) world.rotation.y += 0.002;
+        if (!down) world.rotation.y += 0.0015;
         renderer.render(scene, camera);
     }
 
-    start(); loop();
+    activate(); loop();
 </script>
 </body>
 </html>
