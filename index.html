@@ -2,44 +2,45 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v64.0 - EFFICACY</title>
+    <title>RAU RADAR v65.0 - OMEGA</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 10, 0, 0.98); border: 2px solid #39ff14;
+            background: rgba(0, 15, 0, 0.95); border: 2px solid #39ff14;
             padding: 20px; width: 280px; box-shadow: 0 0 40px rgba(0, 255, 0, 0.5);
         }
-        #count { font-size: 4.5em; font-weight: 900; color: #fff; display: block; line-height: 0.8; margin-bottom: 5px; }
+        #count { font-size: 4.5em; font-weight: 900; color: #fff; display: block; line-height: 0.8; }
         .label { font-size: 10px; font-weight: bold; text-transform: uppercase; opacity: 0.7; }
-        #monitor { margin-top: 15px; padding: 12px; background: #001a00; border: 1px solid #1a331a; border-radius: 4px; }
-        #city-name { font-size: 20px; color: #fff; font-weight: bold; display: block; text-shadow: 0 0 10px #39ff14; }
-        #net-status { font-size: 9px; color: #39ff14; margin-top: 10px; display: block; border-top: 1px solid #1a331a; padding-top: 8px; }
+        #monitor { margin-top: 15px; padding: 12px; background: #001a00; border: 1px solid #1a331a; }
+        #city-name { font-size: 20px; color: #fff; font-weight: bold; display: block; }
+        #net-status { font-size: 9px; color: #39ff14; margin-top: 10px; display: block; opacity: 0.6; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div class="label">RAU COMMAND v64.0</div>
-    <span id="count">0</span>
+    <div class="label">RAU COMMAND v65.0</div>
+    <span id="count">1</span>
     <div class="label">SINAIS ACTIVOS</div>
     
     <div id="monitor">
-        <span id="city-name">INICIALIZANDO...</span>
-        <span id="net-status">ESTABELECENDO LIGAÇÃO...</span>
+        <span id="city-name">RASTREANDO...</span>
+        <span id="net-status">SISTEMA OMEGA ATIVO</span>
     </div>
 </div>
 
 <script>
-    // 🔗 CONFIGURAÇÃO OBRIGATÓRIA:
-    // Se não tens o servidor no Render, este radar continuará em 0.
-    const SERVER_URL = "https://TEU-SERVIDOR.onrender.com"; 
-    const socket = io(SERVER_URL, { transports: ['websocket'], upgrade: false });
+    // 🔗 CONFIGURAÇÃO OMEGA:
+    const ABLY_KEY = 'SUA_API_KEY_AQUI'; 
+    const ably = new Ably.Realtime(ABLY_KEY);
+    const channel = ably.channels.get('rau-radar');
 
     let scene, camera, renderer, controls, globeGroup;
+    let peers = {};
 
     function init() {
         scene = new THREE.Scene();
@@ -65,39 +66,43 @@
         scene.add(new THREE.AmbientLight(0xffffff, 2.5));
 
         animate();
+        startTracking();
     }
 
-    // LÓGICA DE REDE EFICAZ
-    socket.on('connect', async () => {
-        document.getElementById('net-status').innerText = "CONECTADO AO SERVIDOR ✓";
-        
+    async function startTracking() {
         try {
-            // Usando GeoJS (Mais estável que ipapi)
             const res = await fetch(`https://get.geojs.io/v1/ip/geo.json?t=${Date.now()}`);
             const data = await res.json();
-            
-            socket.emit('report-location', {
+            const myData = {
+                id: ably.connection.id,
                 city: data.city || "SINAL RAU",
-                lat: parseFloat(data.latitude) || 0,
-                lon: parseFloat(data.longitude) || 0,
-                country: (data.country_code || "un").toLowerCase()
-            });
+                lat: parseFloat(data.latitude),
+                lon: parseFloat(data.longitude)
+            };
+            
+            // Publica a sua posição e entra no canal de presença
+            channel.presence.enter(myData);
+            document.getElementById('city-name').innerText = myData.city.toUpperCase();
         } catch(e) {
-            // Fallback imediato: Se a localização falhar, entra como sinal anónimo (não trava em 0)
-            socket.emit('report-location', { city: "ANÓNIMO", lat: 0, lon: 0, country: "un" });
+            channel.presence.enter({ id: ably.connection.id, city: "OCULTO", lat: 0, lon: 0 });
         }
+    }
+
+    // Escuta quem entra e quem sai (Tempo Real)
+    channel.presence.subscribe(() => {
+        channel.presence.get((err, members) => {
+            if(err) return;
+            document.getElementById('count').innerText = members.length;
+            updateMarkers(members);
+        });
     });
 
-    socket.on('update-peers', (peers) => {
-        const peerList = Object.values(peers);
-        document.getElementById('count').innerText = peerList.length;
-
-        // Limpar apenas os pontos (manter o globo)
+    function updateMarkers(members) {
         for(let i = globeGroup.children.length - 1; i > 0; i--) globeGroup.remove(globeGroup.children[i]);
 
-        peerList.forEach(p => {
-            const isLocal = p.id === socket.id;
-            if(isLocal) document.getElementById('city-name').innerText = p.city.toUpperCase();
+        members.forEach(member => {
+            const p = member.data;
+            const isLocal = member.connectionId === ably.connection.id;
             
             const phi = (90 - p.lat) * (Math.PI / 180);
             const theta = (p.lon + 180) * (Math.PI / 180);
@@ -107,12 +112,7 @@
             dot.position.copy(pos);
             globeGroup.add(dot);
         });
-    });
-
-    socket.on('connect_error', () => {
-        document.getElementById('net-status').innerText = "ERRO: SERVIDOR OFFLINE";
-        document.getElementById('city-name').innerText = "SEM SINAL";
-    });
+    }
 
     function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
     init();
