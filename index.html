@@ -2,30 +2,36 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v48.0</title>
+    <title>RAU RADAR v49.0 - ZOOM ACTIVE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 10, 0, 0.9); color: #39ff14; padding: 20px;
-            border: 1px solid #39ff14; border-radius: 2px; pointer-events: none;
+            border: 1px solid #39ff14; pointer-events: none;
             box-shadow: 0 0 30px rgba(0, 255, 0, 0.1);
         }
-        #count { font-size: 3em; font-weight: 900; color: #fff; display: block; line-height: 1; margin: 5px 0; }
+        #count { font-size: 3em; font-weight: 900; color: #fff; display: block; line-height: 1; }
         .label { font-size: 10px; letter-spacing: 1px; color: #39ff14; font-weight: bold; text-transform: uppercase; }
         #city-name { color: #fff; font-weight: bold; border-bottom: 1px solid #39ff14; }
-        canvas { cursor: grab; }
-        canvas:active { cursor: grabbing; }
+        .controls-hint { font-size: 9px; color: #555; margin-top: 5px; line-height: 1.4; }
+        canvas { cursor: move; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div class="label">RADAR DE COMANDO v48.0</div>
+    <div class="label">RADAR INTERATIVO v49.0</div>
     <span id="count">1</span>
-    <div class="label">LOCALIZAÇÃO: <span id="city-name">A DETETAR...</span></div>
-    <div style="font-size: 9px; color: #555; margin-top:5px;">(USA O RATO PARA GIRAR O GLOBO)</div>
+    <div class="label">CIDADE DETETADA: <span id="city-name">...</span></div>
+    
+    <div class="controls-hint">
+        🖱️ CLICA E ARRASTA: GIRAR<br>
+        🖱️ RODA DO RATO: ZOOM (IN/OUT)<br>
+        🖱️ BOTÃO DIREITO: MOVER GLOBO
+    </div>
 
     <div style="margin-top:15px; border-top:1px solid #222; font-size:11px;">
         💾 PLAYER MEMORY:<br>
@@ -34,7 +40,7 @@
 </div>
 
 <script>
-    // 1. MEMÓRIA
+    // 1. MEMÓRIA DO PLAYER (Mantida)
     const rauStore = {
         save: (v, a) => { localStorage.setItem('rau_v', v); localStorage.setItem('rau_a', a); },
         load: () => ({ v: localStorage.getItem('rau_v') || "0.85", a: localStorage.getItem('rau_a') || "true" })
@@ -43,12 +49,19 @@
     document.getElementById('v-val').innerText = Math.round(myData.v * 100) + "%";
     document.getElementById('a-val').innerText = myData.a === "true" ? "ON" : "OFF";
 
-    // 2. SCENE SETUP
+    // 2. AMBIENTE 3D
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
+
+    // 3. CONTROLOS DE ÓRBITA (ZOOM E ROTAÇÃO)
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; // Suaviza o movimento
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 2; // Limite de Zoom In
+    controls.maxDistance = 10; // Limite de Zoom Out
 
     const world = new THREE.Group(); scene.add(world);
     const globe = new THREE.Mesh(
@@ -62,22 +75,7 @@
     scene.add(new THREE.AmbientLight(0xffffff, 1.4));
     camera.position.z = 3.5;
 
-    // 3. ROTAÇÃO COM O RATO (INTERATIVIDADE)
-    let isDragging = false;
-    let previousMousePosition = { x: 0, y: 0 };
-
-    window.addEventListener('mousedown', () => isDragging = true);
-    window.addEventListener('mouseup', () => isDragging = false);
-    window.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            const deltaMove = { x: e.offsetX - previousMousePosition.x, y: e.offsetY - previousMousePosition.y };
-            world.rotation.y += deltaMove.x * 0.005;
-            world.rotation.x += deltaMove.y * 0.005;
-        }
-        previousMousePosition = { x: e.offsetX, y: e.offsetY };
-    });
-
-    // 4. GPS E ETIQUETA (BRUGES FIX)
+    // 4. GPS E ETIQUETA (PRECIZÃO EUROPA)
     async function activateRadar() {
         try {
             const res = await fetch("https://ipapi.co/json/").then(r => r.json());
@@ -85,7 +83,7 @@
             document.getElementById('city-name').innerText = city;
 
             const lat = res.latitude, lng = res.longitude;
-            // FÓRMULA DE PRECISÃO PARA ESFERA
+            // Conversão matemática para alinhar Bruges corretamente
             const phi = (90 - lat) * (Math.PI / 180);
             const theta = (lng + 180) * (Math.PI / 180);
             
@@ -93,18 +91,18 @@
             pos.setFromSphericalCoords(1.02, phi, theta);
 
             // Marcador
-            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             world.add(dot);
 
-            // Etiqueta
+            // Etiqueta Visual
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            canvas.width = 300; canvas.height = 100;
-            ctx.fillStyle = 'rgba(0, 40, 0, 0.9)'; ctx.fillRect(0, 0, 300, 100);
-            ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 10; ctx.strokeRect(0, 0, 300, 100);
-            ctx.font = 'bold 36px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-            ctx.fillText(city, 150, 60);
+            canvas.width = 320; canvas.height = 100;
+            ctx.fillStyle = 'rgba(0, 40, 0, 0.85)'; ctx.fillRect(0, 0, 320, 100);
+            ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 12; ctx.strokeRect(0, 0, 320, 100);
+            ctx.font = 'bold 38px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+            ctx.fillText(city, 160, 60);
 
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
             sprite.position.copy(pos.clone().multiplyScalar(1.2));
@@ -116,12 +114,20 @@
 
     function animate() {
         requestAnimationFrame(animate);
-        if (!isDragging) world.rotation.y += 0.0015; // Roda sozinho se não mexeres
+        controls.update(); // Necessário para o Zoom/Damping
+        // world.rotation.y += 0.001; // Rotação automática desativada para não atrapalhar o zoom
         renderer.render(scene, camera);
     }
 
     activateRadar();
     animate();
+
+    // AJUSTE DE JANELA
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
 </script>
 </body>
 </html>
