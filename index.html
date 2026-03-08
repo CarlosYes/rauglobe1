@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v66.0 - GLOBAL CONNECT</title>
+    <title>RAU RADAR v67.0 - VPN BYPASS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -11,34 +11,31 @@
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 15, 0, 0.98); border: 2px solid #39ff14;
+            background: rgba(0, 10, 0, 0.98); border: 2px solid #39ff14;
             padding: 20px; width: 280px; box-shadow: 0 0 50px rgba(0, 255, 0, 0.4);
         }
         #count { font-size: 4.5em; font-weight: 900; color: #fff; display: block; line-height: 0.8; }
         .label { font-size: 10px; font-weight: bold; text-transform: uppercase; opacity: 0.7; }
         #monitor { margin-top: 15px; padding: 12px; background: #001a00; border: 1px solid #1a331a; }
-        #city-name { font-size: 20px; color: #fff; font-weight: bold; display: block; }
+        #city-name { font-size: 18px; color: #fff; font-weight: bold; display: block; }
         #status { font-size: 9px; margin-top: 8px; color: #39ff14; opacity: 0.6; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div class="label">RAU COMMAND v66.0</div>
+    <div class="label">RAU COMMAND v67.0</div>
     <span id="count">0</span>
     <div class="label">SINAIS ACTIVOS</div>
     
     <div id="monitor">
         <span id="city-name">RASTREANDO...</span>
-        <div id="status">ESTADO: SINCRONIZANDO GLOBO...</div>
+        <div id="status">ESTADO: BYPASS VPN ATIVO</div>
     </div>
 </div>
 
 <script>
-    // 🔗 CONFIGURAÇÃO DE LIGAÇÃO (PROTOCOLO FIREBASE)
-    const firebaseConfig = {
-        databaseURL: "https://rau-globe-default-rtdb.firebaseio.com" // Canal público de teste
-    };
+    const firebaseConfig = { databaseURL: "https://rau-globe-default-rtdb.firebaseio.com" };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const presenceRef = db.ref("presence");
@@ -70,55 +67,59 @@
         scene.add(new THREE.AmbientLight(0xffffff, 2.5));
 
         animate();
-        syncPresence();
+        locateWithBypass();
     }
 
-    async function syncPresence() {
-        try {
-            const res = await fetch(`https://get.geojs.io/v1/ip/geo.json`);
-            const data = await res.json();
-            
-            const userData = {
-                city: data.city || "RAU-NODE",
-                lat: parseFloat(data.latitude),
-                lon: parseFloat(data.longitude),
-                lastActive: Date.now()
-            };
+    async function locateWithBypass() {
+        const sources = [
+            "https://get.geojs.io/v1/ip/geo.json",
+            "https://ipapi.co/json/",
+            "https://api.db-ip.com/v2/free/self"
+        ];
 
-            document.getElementById('city-name').innerText = userData.city.toUpperCase();
-            document.getElementById('status').innerText = "ESTADO: SINAL ACTIVADO ✓";
+        let locationData = null;
 
-            // Regista entrada e remove ao fechar a página
-            myUserRef.set(userData);
-            myUserRef.onDisconnect().remove();
-
-        } catch(e) {
-            myUserRef.set({ city: "ANÓNIMO", lat: 0, lon: 0, lastActive: Date.now() });
+        // Tenta cada fonte até uma funcionar
+        for (let url of sources) {
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.latitude || data.lat) {
+                    locationData = {
+                        city: data.city || data.city_name || "VPN NODE",
+                        lat: parseFloat(data.latitude || data.lat),
+                        lon: parseFloat(data.longitude || data.lng || data.lon),
+                        country: (data.country_code || data.country || "un").toLowerCase()
+                    };
+                    break; 
+                }
+            } catch (e) { console.log("Fonte bloqueada por VPN, tentando próxima..."); }
         }
 
-        // Escuta todos os utilizadores online
+        // SE TUDO FALHAR (VPN TOTAL), USA COORDENADAS PADRÃO PARA NÃO FICAR EM 0
+        if (!locationData) {
+            locationData = { city: "SINAL PROTEGIDO", lat: 38.7, lon: -9.1, country: "pt" }; // Ex: Lisboa Default
+            document.getElementById('status').innerText = "ESTADO: MODO SEGURO ATIVO";
+        }
+
+        myUserRef.set({...locationData, lastActive: Date.now()});
+        myUserRef.onDisconnect().remove();
+        document.getElementById('city-name').innerText = locationData.city.toUpperCase();
+
         presenceRef.on("value", (snapshot) => {
-            const allUsers = snapshot.val() || {};
-            const userArray = Object.values(allUsers);
-            document.getElementById('count').innerText = userArray.length;
-            updateMarkers(userArray);
+            const users = Object.values(snapshot.val() || {});
+            document.getElementById('count').innerText = users.length;
+            updateMarkers(users);
         });
     }
 
     function updateMarkers(users) {
-        // Limpa apenas os pontos
         for(let i = globeGroup.children.length - 1; i > 0; i--) globeGroup.remove(globeGroup.children[i]);
-
         users.forEach(u => {
             const phi = (90 - u.lat) * (Math.PI / 180);
             const theta = (u.lon + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3(-(Math.sin(phi)*Math.cos(theta))*1.02, Math.cos(phi)*1.02, (Math.sin(phi)*Math.sin(theta))*1.02);
-
-            const isMe = (u.lat === parseFloat(myUserRef.lat)); // Simplificação
-            const dot = new THREE.Mesh(
-                new THREE.SphereGeometry(0.02, 16, 16), 
-                new THREE.MeshBasicMaterial({ color: 0x39ff14 })
-            );
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.022, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             globeGroup.add(dot);
         });
