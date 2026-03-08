@@ -2,23 +2,24 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v175.0 - ENGINE RECOVERY</title>
+    <title>RAU MONITOR v177.0 - VPN-TRACKER & ATMOS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; user-select: none; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 15, 0, 0.95); border-left: 3px solid #39ff14;
-            padding: 15px; width: 280px; pointer-events: none;
+            background: rgba(0, 15, 0, 0.85); border-left: 3px solid #39ff14;
+            padding: 15px; width: 300px; pointer-events: none;
+            backdrop-filter: blur(8px);
         }
         .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
         #led { width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        .monitor-display { background: #050505; border: 1px solid #1a1a1a; padding: 12px; }
+        .monitor-display { background: rgba(5, 5, 5, 0.6); border: 1px solid #1a1a1a; padding: 12px; }
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; }
         #mon-flag-ui { height: 18px; margin-right: 8px; vertical-align: middle; display: none; }
-        #mon-status { font-size: 10px; color: #39ff14; opacity: 0.7; margin-top: 8px; border-top: 1px solid #1a1a1a; padding-top: 8px; }
+        #mon-status { font-size: 10px; color: #39ff14; opacity: 0.8; margin-top: 8px; border-top: 1px solid #39ff1444; padding-top: 8px; line-height: 1.4; }
         canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; }
     </style>
 </head>
@@ -27,23 +28,24 @@
 <div id="rau-ui">
     <div class="status-row">
         <div id="led"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">CORE v175.0 | RECOVERED</span>
+        <span style="font-size: 11px; letter-spacing: 1px;">CORE v177.0 | VPN-SENSITIVE</span>
     </div>
     <div class="monitor-display">
         <div style="display: flex; align-items: center;">
             <img id="mon-flag-ui" src="">
-            <span id="mon-city">RECONNECTING...</span>
+            <span id="mon-city">SCANNING...</span>
         </div>
-        <div id="mon-status">Restaurando motor gráfico...</div>
+        <div id="mon-status">Rastreando túnel de rede...</div>
     </div>
 </div>
 
 <script>
     const RAU_SYSTEM = {
         scene: new THREE.Scene(),
-        camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000),
-        renderer: new THREE.WebGLRenderer({ antialias: true, alpha: true }),
-        controls: null, globe: null, markers: new THREE.Group(), currentIP: null,
+        camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000),
+        renderer: new THREE.WebGLRenderer({ antialias: true }),
+        controls: null, globe: null, markers: new THREE.Group(), 
+        stars: null, currentIP: null,
 
         init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -54,59 +56,89 @@
             this.controls.enableDamping = true;
             this.controls.autoRotate = true;
             this.controls.autoRotateSpeed = 0.5;
-            this.camera.position.z = 3.5;
+            this.camera.position.z = 4;
 
-            // 1. Criar Globo Imediatamente (Sem esperar textura)
+            // 1. Globo e Luzes
             const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x050505, shininess: 10 });
+            const mat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 15 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.scene.add(this.markers);
-
-            // 2. Luzes (Essencial para não ficar preto)
             this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
 
-            // 3. Carregar Textura em Background
             new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
-                this.globe.material.color.set(0xffffff);
                 this.globe.material.needsUpdate = true;
             });
 
+            this.updateEnvironment();
             this.animate();
+            
+            // Verificação rápida inicial e depois a cada 8 segundos
             this.checkNetwork();
-            setInterval(() => this.checkNetwork(), 5000);
+            setInterval(() => this.checkNetwork(), 8000);
+        },
+
+        updateEnvironment() {
+            const hour = new Date().getHours();
+            const isNight = (hour < 6 || hour > 18);
+
+            if (isNight) {
+                this.scene.background = new THREE.Color(0x000003);
+                this.createStars();
+            } else {
+                if (this.stars) this.scene.remove(this.stars);
+                this.scene.background = new THREE.Color(0x446688);
+                this.scene.fog = new THREE.FogExp2(0x446688, 0.1);
+            }
+        },
+
+        createStars() {
+            if (this.stars) return;
+            const starGeo = new THREE.BufferGeometry();
+            const coords = [];
+            for (let i = 0; i < 8000; i++) {
+                coords.push((Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500);
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(coords, 3));
+            this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.8 }));
+            this.scene.add(this.stars);
         },
 
         async checkNetwork() {
             try {
-                const res = await fetch(`https://ipapi.co/json/?v=${Date.now()}`);
+                // Adicionado Cache-Buster v=${Date.now()} para detectar VPN instantaneamente
+                const res = await fetch(`https://ipapi.co/json/?nocache=${Date.now()}`);
                 const data = await res.json();
-                if (data.ip !== this.currentIP) {
+
+                if (data.ip && data.ip !== this.currentIP) {
+                    console.log("NOVO IP DETECTADO:", data.ip);
                     this.currentIP = data.ip;
                     this.deployMarkers(data);
                 }
-            } catch (e) { console.log("Network lag..."); }
+            } catch (e) { 
+                document.getElementById('mon-status').innerText = "LINK LAGGING... RE-SCANNING";
+            }
         },
 
         deployMarkers(data) {
-            const { latitude: lat, longitude: lon, city, country_code: iso } = data;
-            const cityUpper = (city || "DETECTED").toUpperCase();
-            const isoLower = iso.toLowerCase();
+            const { latitude: lat, longitude: lon, city, country_code: iso, org } = data;
+            const cityUpper = (city || "UNKNOWN").toUpperCase();
+            const isoLower = iso ? iso.toLowerCase() : "un";
 
-            // UI
+            // UI Update
             document.getElementById('mon-city').innerText = cityUpper;
             const flagUi = document.getElementById('mon-flag-ui');
             flagUi.src = `https://flagcdn.com/w80/${isoLower}.png`;
             flagUi.style.display = 'inline-block';
-            document.getElementById('mon-status').innerText = `IP: ${data.ip} | NODE: ${iso} | ACTIVE`;
+            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nNODE: ${iso}\nPROVIDER: ${org || 'N/A'}\nSTATUS: TUNNEL ACTIVE`;
 
             this.markers.clear();
-
-            // Posicionamento
+            
+            // Lat/Lon para 3D
             const phi = (90 - lat) * (Math.PI / 180);
             const theta = (lon + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3(
@@ -115,32 +147,24 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            // Ponto LED
-            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
+            // LED de localização
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.025, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // Bandeira (Sem travar o código)
-            new THREE.TextureLoader().load(`https://flagcdn.com/w160/${isoLower}.png`, (fTex) => {
-                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex }));
-                sprite.position.copy(pos.clone().multiplyScalar(1.15));
-                sprite.scale.set(0.28, 0.16, 1);
-                this.markers.add(sprite);
-            });
-
-            // Nome da Cidade (Canvas HD)
+            // Label da Cidade
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = 512; canvas.height = 128;
-            ctx.fillStyle = '#39ff14'; ctx.font = 'bold 54px Courier New';
+            ctx.fillStyle = '#39ff14'; ctx.font = 'bold 50px Courier New';
             ctx.textAlign = 'center'; ctx.fillText(cityUpper, 256, 80);
             const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-            label.position.copy(pos.clone().multiplyScalar(1.32));
-            label.scale.set(0.7, 0.18, 1);
+            label.position.copy(pos.clone().multiplyScalar(1.3));
+            label.scale.set(0.8, 0.2, 1);
             this.markers.add(label);
 
-            // Auto-focus
-            this.camera.position.lerp(pos.clone().multiplyScalar(3.8), 0.1);
+            // Focar a câmera suavemente no novo ponto
+            this.camera.position.lerp(pos.clone().multiplyScalar(4), 0.05);
         },
 
         animate() {
