@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v49.0 - ZOOM ACTIVE</title>
+    <title>RAU RADAR v50.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -11,39 +11,31 @@
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 10, 0, 0.9); color: #39ff14; padding: 20px;
             border: 1px solid #39ff14; pointer-events: none;
-            box-shadow: 0 0 30px rgba(0, 255, 0, 0.1);
         }
-        #count { font-size: 3em; font-weight: 900; color: #fff; display: block; line-height: 1; }
+        #count { font-size: 3em; font-weight: 900; color: #fff; display: block; }
         .label { font-size: 10px; letter-spacing: 1px; color: #39ff14; font-weight: bold; text-transform: uppercase; }
-        #city-name { color: #fff; font-weight: bold; border-bottom: 1px solid #39ff14; }
-        .controls-hint { font-size: 9px; color: #555; margin-top: 5px; line-height: 1.4; }
-        canvas { cursor: move; }
+        #city-name { color: #fff; font-weight: bold; }
+        .mem-info { margin-top: 15px; border-top: 1px solid #222; font-size: 11px; padding-top: 10px; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div class="label">RADAR INTERATIVO v49.0</div>
+    <div class="label">RAU COMMAND v50.0</div>
     <span id="count">1</span>
-    <div class="label">CIDADE DETETADA: <span id="city-name">...</span></div>
+    <div class="label">LOCAL: <span id="city-name">...</span></div>
     
-    <div class="controls-hint">
-        🖱️ CLICA E ARRASTA: GIRAR<br>
-        🖱️ RODA DO RATO: ZOOM (IN/OUT)<br>
-        🖱️ BOTÃO DIREITO: MOVER GLOBO
-    </div>
-
-    <div style="margin-top:15px; border-top:1px solid #222; font-size:11px;">
+    <div class="mem-info">
         💾 PLAYER MEMORY:<br>
         <span style="color:#39ff14">🔈 VOL: <span id="v-val">--</span> | 🔄 AUTO: <span id="a-val">--</span></span>
     </div>
 </div>
 
 <script>
-    // 1. MEMÓRIA DO PLAYER (Mantida)
+    // 1. MEMÓRIA DO PLAYER
     const rauStore = {
         save: (v, a) => { localStorage.setItem('rau_v', v); localStorage.setItem('rau_a', a); },
-        load: () => ({ v: localStorage.getItem('rau_v') || "0.85", a: localStorage.getItem('rau_a') || "true" })
+        load: () => ({ v: localStorage.getItem('rau_v') || "0.80", a: localStorage.getItem('rau_a') || "true" })
     };
     const myData = rauStore.load();
     document.getElementById('v-val').innerText = Math.round(myData.v * 100) + "%";
@@ -56,14 +48,16 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // 3. CONTROLOS DE ÓRBITA (ZOOM E ROTAÇÃO)
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true; // Suaviza o movimento
-    controls.dampingFactor = 0.05;
-    controls.minDistance = 2; // Limite de Zoom In
-    controls.maxDistance = 10; // Limite de Zoom Out
+    controls.enableDamping = true;
+    controls.minDistance = 1.5;
+    controls.maxDistance = 8;
 
-    const world = new THREE.Group(); scene.add(world);
+    const world = new THREE.Group(); 
+    // Rotação inicial para alinhar o mapa (meridiano de Greenwich)
+    world.rotation.y = -Math.PI / 2;
+    scene.add(world);
+
     const globe = new THREE.Mesh(
         new THREE.SphereGeometry(1, 64, 64), 
         new THREE.MeshPhongMaterial({
@@ -72,10 +66,10 @@
         })
     );
     world.add(globe);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
-    camera.position.z = 3.5;
+    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+    camera.position.set(0, 0.5, 3.5);
 
-    // 4. GPS E ETIQUETA (PRECIZÃO EUROPA)
+    // 3. GPS E ETIQUETA (BRUGES FIX)
     async function activateRadar() {
         try {
             const res = await fetch("https://ipapi.co/json/").then(r => r.json());
@@ -83,46 +77,47 @@
             document.getElementById('city-name').innerText = city;
 
             const lat = res.latitude, lng = res.longitude;
-            // Conversão matemática para alinhar Bruges corretamente
-            const phi = (90 - lat) * (Math.PI / 180);
-            const theta = (lng + 180) * (Math.PI / 180);
             
-            const pos = new THREE.Vector3();
-            pos.setFromSphericalCoords(1.02, phi, theta);
+            // Conversão de Coordenadas Geográficas para 3D (X, Y, Z)
+            const radLat = (lat) * (Math.PI / 180);
+            const radLng = (lng) * (Math.PI / 180);
+            
+            const radius = 1.01;
+            const x = radius * Math.cos(radLat) * Math.sin(radLng);
+            const y = radius * Math.sin(radLat);
+            const z = radius * Math.cos(radLat) * Math.cos(radLng);
 
             // Marcador
             const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
-            dot.position.copy(pos);
+            dot.position.set(x, y, z);
             world.add(dot);
 
-            // Etiqueta Visual
+            // Etiqueta
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            canvas.width = 320; canvas.height = 100;
-            ctx.fillStyle = 'rgba(0, 40, 0, 0.85)'; ctx.fillRect(0, 0, 320, 100);
-            ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 12; ctx.strokeRect(0, 0, 320, 100);
-            ctx.font = 'bold 38px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-            ctx.fillText(city, 160, 60);
+            canvas.width = 350; canvas.height = 100;
+            ctx.fillStyle = 'rgba(0, 50, 0, 0.9)'; ctx.fillRect(0, 0, 350, 100);
+            ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 15; ctx.strokeRect(0, 0, 350, 100);
+            ctx.font = 'bold 40px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+            ctx.fillText(city, 175, 65);
 
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-            sprite.position.copy(pos.clone().multiplyScalar(1.2));
-            sprite.scale.set(0.8, 0.25, 1);
+            sprite.position.set(x * 1.2, y * 1.2, z * 1.2);
+            sprite.scale.set(0.9, 0.28, 1);
             world.add(sprite);
 
-        } catch (e) { document.getElementById('city-name').innerText = "ERROR"; }
+        } catch (e) { document.getElementById('city-name').innerText = "GEO ERROR"; }
     }
 
     function animate() {
         requestAnimationFrame(animate);
-        controls.update(); // Necessário para o Zoom/Damping
-        // world.rotation.y += 0.001; // Rotação automática desativada para não atrapalhar o zoom
+        controls.update();
         renderer.render(scene, camera);
     }
 
     activateRadar();
     animate();
 
-    // AJUSTE DE JANELA
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
