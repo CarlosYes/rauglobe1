@@ -70,6 +70,7 @@
         scene.add(globe);
 
         const loader = new THREE.TextureLoader();
+        loader.crossOrigin = 'Anonymous';
         loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
             globe.material.map = tex; 
             globe.material.needsUpdate = true;
@@ -139,7 +140,9 @@
         anchorGroup.add(point);
 
         // Bandeira no Globo
-        new THREE.TextureLoader().load(`https://flagcdn.com/w160/${country}.png`, (fTex) => {
+        const flagLoader = new THREE.TextureLoader();
+        flagLoader.crossOrigin = 'Anonymous';
+        flagLoader.load(`https://flagcdn.com/w160/${country}.png`, (fTex) => {
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex }));
             sprite.position.copy(pos.clone().multiplyScalar(1.15));
             sprite.scale.set(0.25, 0.15, 1);
