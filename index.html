@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v67.0 - VPN BYPASS</title>
+    <title>RAU RADAR v67.0 - PERFORMANCE BOOST</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -11,14 +11,16 @@
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 10, 0, 0.98); border: 2px solid #39ff14;
-            padding: 20px; width: 280px; box-shadow: 0 0 50px rgba(0, 255, 0, 0.4);
+            background: rgba(0, 10, 0, 0.9); border: 2px solid #39ff14;
+            padding: 20px; width: 280px; box-shadow: 0 0 30px rgba(0, 255, 0, 0.2);
+            pointer-events: none; /* Evita interferir na rotação do globo */
         }
         #count { font-size: 4.5em; font-weight: 900; color: #fff; display: block; line-height: 0.8; }
         .label { font-size: 10px; font-weight: bold; text-transform: uppercase; opacity: 0.7; }
         #monitor { margin-top: 15px; padding: 12px; background: #001a00; border: 1px solid #1a331a; }
         #city-name { font-size: 18px; color: #fff; font-weight: bold; display: block; }
         #status { font-size: 9px; margin-top: 8px; color: #39ff14; opacity: 0.6; }
+        canvas { display: block; }
     </style>
 </head>
 <body>
@@ -26,7 +28,7 @@
 <div id="rau-ui">
     <div class="label">RAU COMMAND v67.0</div>
     <span id="count">0</span>
-    <div class="label">SINAIS ACTIVOS</div>
+    <div class="label">SINAIS ATIVOS</div>
     
     <div id="monitor">
         <span id="city-name">RASTREANDO...</span>
@@ -35,39 +37,62 @@
 </div>
 
 <script>
+    // --- CONFIGURAÇÃO FIREBASE ---
     const firebaseConfig = { databaseURL: "https://rau-globe-default-rtdb.firebaseio.com" };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const presenceRef = db.ref("presence");
     const myUserRef = presenceRef.push();
 
-    let scene, camera, renderer, controls, globeGroup;
+    let scene, camera, renderer, controls, globeGroup, markersGroup;
 
     function init() {
         scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        // Renderer otimizado com preservação de buffer
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+        renderer.setPixelRatio(window.devicePixelRatio > 1 ? 2 : 1); // Melhora performance em telas retina
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
         
         controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.autoRotate = true; camera.position.z = 3.5;
+        controls.enableDamping = true; // Suaviza o movimento do mouse
+        controls.dampingFactor = 0.05;
+        controls.autoRotate = true; 
+        controls.autoRotateSpeed = 0.8;
+        camera.position.z = 3.5;
 
         globeGroup = new THREE.Group();
+        markersGroup = new THREE.Group(); // Grupo separado para os pontos
         scene.add(globeGroup);
+        scene.add(markersGroup);
 
-        const globe = new THREE.Mesh(
-            new THREE.SphereGeometry(1, 64, 64),
-            new THREE.MeshPhongMaterial({
-                map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-                shininess: 5
-            })
-        );
+        // Geometria e Material únicos para economizar memória (BufferGeometry é mais rápido)
+        const globeGeo = new THREE.SphereGeometry(1, 64, 64);
+        const texture = new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
+            // Só inicia a renderização pesada quando a imagem carregar
+            animate();
+        });
+
+        const globeMat = new THREE.MeshPhongMaterial({ map: texture, shininess: 5 });
+        const globe = new THREE.Mesh(globeGeo, globeMat);
         globeGroup.add(globe);
-        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
 
-        animate();
+        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1);
+        sunLight.position.set(5, 3, 5);
+        scene.add(sunLight);
+
         locateWithBypass();
+        
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
     async function locateWithBypass() {
@@ -78,8 +103,6 @@
         ];
 
         let locationData = null;
-
-        // Tenta cada fonte até uma funcionar
         for (let url of sources) {
             try {
                 const res = await fetch(url);
@@ -93,13 +116,11 @@
                     };
                     break; 
                 }
-            } catch (e) { console.log("Fonte bloqueada por VPN, tentando próxima..."); }
+            } catch (e) { console.warn("Bypass em curso..."); }
         }
 
-        // SE TUDO FALHAR (VPN TOTAL), USA COORDENADAS PADRÃO PARA NÃO FICAR EM 0
         if (!locationData) {
-            locationData = { city: "SINAL PROTEGIDO", lat: 38.7, lon: -9.1, country: "pt" }; // Ex: Lisboa Default
-            document.getElementById('status').innerText = "ESTADO: MODO SEGURO ATIVO";
+            locationData = { city: "SINAL PROTEGIDO", lat: 38.7, lon: -9.1, country: "pt" };
         }
 
         myUserRef.set({...locationData, lastActive: Date.now()});
@@ -107,25 +128,46 @@
         document.getElementById('city-name').innerText = locationData.city.toUpperCase();
 
         presenceRef.on("value", (snapshot) => {
-            const users = Object.values(snapshot.val() || {});
+            const data = snapshot.val();
+            const users = data ? Object.values(data) : [];
             document.getElementById('count').innerText = users.length;
             updateMarkers(users);
         });
     }
 
+    // Material compartilhado para todos os pontos (Gasta menos GPU)
+    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x39ff14 });
+    const markerGeo = new THREE.SphereGeometry(0.018, 12, 12);
+
     function updateMarkers(users) {
-        for(let i = globeGroup.children.length - 1; i > 0; i--) globeGroup.remove(globeGroup.children[i]);
+        // Limpa o grupo de marcadores de forma eficiente
+        while(markersGroup.children.length > 0){ 
+            markersGroup.remove(markersGroup.children[0]); 
+        }
+
         users.forEach(u => {
             const phi = (90 - u.lat) * (Math.PI / 180);
             const theta = (u.lon + 180) * (Math.PI / 180);
-            const pos = new THREE.Vector3(-(Math.sin(phi)*Math.cos(theta))*1.02, Math.cos(phi)*1.02, (Math.sin(phi)*Math.sin(theta))*1.02);
-            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.022, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
-            dot.position.copy(pos);
-            globeGroup.add(dot);
+            
+            const dot = new THREE.Mesh(markerGeo, markerMaterial);
+            
+            // Cálculo de posição no globo
+            dot.position.set(
+                -(Math.sin(phi) * Math.cos(theta)) * 1.02,
+                Math.cos(phi) * 1.02,
+                (Math.sin(phi) * Math.sin(theta)) * 1.02
+            );
+            
+            markersGroup.add(dot);
         });
     }
 
-    function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update(); 
+        renderer.render(scene, camera);
+    }
+
     init();
 </script>
 </body>
