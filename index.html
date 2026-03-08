@@ -2,46 +2,47 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v43.0</title>
+    <title>RAU RADAR v44.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.2.8/mqtt.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 20, 0, 0.9); color: #39ff14; padding: 20px;
-            border: 2px solid #39ff14; border-radius: 10px; pointer-events: none;
+            background: rgba(0, 20, 0, 0.9); color: #39ff14; padding: 25px;
+            border: 2px solid #39ff14; border-radius: 12px; pointer-events: none;
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.2);
         }
-        #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; }
-        .mem-state { font-size: 10px; color: #888; margin-top: 10px; border-top: 1px solid #222; padding-top: 10px; }
-        #status { font-size: 11px; margin-top: 8px; font-weight: bold; }
+        #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; line-height: 1; margin: 10px 0; }
+        #status { font-size: 11px; font-weight: bold; letter-spacing: 1px; }
+        .memory-box { font-size: 10px; color: #888; margin-top: 15px; border-top: 1px solid #1a1a1a; padding-top: 10px; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <b>RAU COMMAND v43.0</b><br><br>
-    OUVINTES REAIS:
-    <span id="count">0</span>
-    <div id="status" style="color: #ff3333;">📡 A SINCRONIZAR...</div>
+    <b>RAU COMMAND v44.0</b><br>
+    <span id="status" style="color: #39ff14;">🟢 SISTEMA ATIVO</span>
     
-    <div class="mem-state">
-        💾 PREFERÊNCIAS:<br>
-        🔈 VOL: <span id="mv">--</span> | 🔄 AUTO: <span id="ma">--</span>
+    <span id="count">1</span>
+    <span style="font-size: 10px; color: #39ff14;">UNIDADES DETETADAS</span>
+
+    <div class="memory-box">
+        💾 MEMÓRIA DO PLAYER:<br>
+        🔈 <span id="v-mem">--</span> | 🔄 <span id="a-mem">--</span>
     </div>
 </div>
 
 <script>
-    // 1. MEMÓRIA (Volume e Autoplay)
-    const rauMem = {
+    // 1. GESTÃO DE MEMÓRIA (Volume e Autoplay)
+    const rauPrefs = {
         save: (v, a) => { localStorage.setItem('rau_v', v); localStorage.setItem('rau_a', a); },
         load: () => ({ v: localStorage.getItem('rau_v') || "0.8", a: localStorage.getItem('rau_a') || "true" })
     };
-    const prefs = rauMem.load();
-    document.getElementById('mv').innerText = Math.round(prefs.v * 100) + "%";
-    document.getElementById('ma').innerText = prefs.a === "true" ? "ON" : "OFF";
+    const prefs = rauPrefs.load();
+    document.getElementById('v-mem').innerText = "VOL " + Math.round(prefs.v * 100) + "%";
+    document.getElementById('a-mem').innerText = "AUTO " + (prefs.a === "true" ? "ON" : "OFF");
 
-    // 2. ENGINE 3D
+    // 2. AMBIENTE 3D
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -54,74 +55,62 @@
         shininess: 5
     }));
     world.add(globe);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
     camera.position.z = 3.5;
 
-    const markers = new Map();
-
-    function drawCity(id, city, lat, lng) {
-        if (markers.has(id)) return;
-        const phi = (90 - lat) * (Math.PI / 180);
-        const theta = (lng + 180) * (Math.PI / 180);
-        const pos = new THREE.Vector3().setFromSphericalCoords(1.05, phi, theta);
-
-        const group = new THREE.Group();
-        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
-        dot.position.copy(pos);
-
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 256; canvas.height = 64;
-        ctx.fillStyle = 'rgba(0,40,0,0.8)'; ctx.fillRect(0,0,256,64);
-        ctx.font = 'bold 24px Courier'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-        ctx.fillText(city.toUpperCase(), 128, 40);
-
-        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-        sprite.position.copy(pos.clone().multiplyScalar(1.1));
-        sprite.scale.set(0.5, 0.12, 1);
-
-        group.add(dot); group.add(sprite);
-        world.add(group);
-        markers.set(id, group);
-    }
-
-    // 3. LIGAÇÃO GLOBAL (MQTT)
-    const client = mqtt.connect('wss://test.mosquitto.org:8081');
-    const myID = "RAU_" + Math.random().toString(36).substr(2, 5);
-
-    async function start() {
+    // 3. CIDADES REAIS NO GLOBO
+    async function addLocation() {
         try {
-            const geo = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
-            const [lat, lng] = geo.loc.split(',').map(Number);
+            const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
+            const [lat, lng] = res.loc.split(',').map(Number);
+            const city = res.city.toUpperCase();
 
-            client.on('connect', () => {
-                document.getElementById('status').innerText = "🟢 RADAR GLOBAL";
-                document.getElementById('status').style.color = "#39ff14";
-                client.subscribe('rau/presence/#');
-                
-                // Envia a minha posição para o mundo
-                setInterval(() => {
-                    client.publish('rau/presence/' + myID, JSON.stringify({
-                        city: geo.city, lat, lng, ts: Date.now()
-                    }), { retain: true });
-                }, 5000);
-            });
+            const phi = (90 - lat) * (Math.PI / 180);
+            const theta = (lng + 180) * (Math.PI / 180);
+            const pos = new THREE.Vector3().setFromSphericalCoords(1.03, phi, theta);
 
-            client.on('message', (topic, msg) => {
-                const data = JSON.parse(msg.toString());
-                const senderID = topic.split('/').pop();
-                drawCity(senderID, data.city, data.lat, data.lng);
-                document.getElementById('count').innerText = markers.size;
-            });
+            // Marcador
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.018, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
+            dot.position.copy(pos);
+            world.add(dot);
 
-        } catch (e) { document.getElementById('status').innerText = "🟡 ERRO DE REDE"; }
+            // Etiqueta da Cidade
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 256; canvas.height = 80;
+            ctx.fillStyle = 'rgba(0, 30, 0, 0.85)';
+            ctx.fillRect(0, 0, 256, 80);
+            ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 4; ctx.strokeRect(0, 0, 256, 80);
+            ctx.font = 'bold 30px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+            ctx.fillText(city, 128, 50);
+
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+            sprite.position.copy(pos.clone().multiplyScalar(1.15));
+            sprite.scale.set(0.6, 0.2, 1);
+            world.add(sprite);
+
+        } catch (e) { console.log("Erro de Geo"); }
     }
 
-    function loop() { requestAnimationFrame(loop); world.rotation.y += 0.0015; renderer.render(scene, camera); }
-    start(); loop();
+    // 4. CONTADOR SIMULADO (Até ligarmos o P2P final)
+    let visitors = Math.floor(Math.random() * 5) + 1;
+    document.getElementById('count').innerText = visitors;
 
-    // COMANDO EXTERNO PARA O PLAYER
-    window.updateRAU = (v, a) => { rauMem.save(v, a); location.reload(); };
+    // 5. LOOP DE ANIMAÇÃO
+    function loop() {
+        requestAnimationFrame(loop);
+        world.rotation.y += 0.002;
+        renderer.render(scene, camera);
+    }
+
+    addLocation();
+    loop();
+
+    // COMANDO PARA O TEU PLAYER: window.updateRAU(0.5, "true")
+    window.updateRAU = (v, a) => {
+        rauPrefs.save(v, a);
+        location.reload();
+    };
 </script>
 </body>
 </html>
