@@ -2,65 +2,60 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - TITANIUM MEMORY v29.0</title>
+    <title>RAU RADAR v34.0 - MEMORY</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
-        #rau-dashboard {
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+        #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 15, 0, 0.9); color: #39ff14; padding: 25px;
-            border: 2px solid #39ff14; border-radius: 15px; pointer-events: none;
-            box-shadow: 0 0 30px rgba(57, 255, 20, 0.2);
+            background: rgba(0, 20, 0, 0.9); color: #39ff14; padding: 20px;
+            border: 2px solid #39ff14; border-radius: 10px; pointer-events: none;
         }
-        #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; margin: 5px 0; }
-        .pref-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-        #status-light { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #ff3333; margin-right: 5px; }
-        canvas { cursor: grab; }
+        #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; }
+        .pref-status { font-size: 10px; color: #888; margin-top: 10px; border-top: 1px solid #222; padding-top: 10px; }
+        #status-msg { font-size: 11px; margin-top: 10px; font-weight: bold; }
+        canvas { cursor: crosshair; }
     </style>
 </head>
 <body>
 
-<div id="rau-dashboard">
-    <b style="letter-spacing: 2px;">RAU COMMAND v29.0</b><br><br>
-    
-    <span class="pref-label">Unidades Online</span>
+<div id="rau-ui">
+    <b style="letter-spacing: 2px;">RAU COMMAND v34.0</b><br><br>
+    UNIDADES NO MAPA:
     <span id="count">0</span>
     
-    <div style="margin-top: 15px; border-top: 1px solid rgba(57,255,20,0.2); padding-top: 10px;">
-        <span class="pref-label">Configuração de Som</span><br>
-        <span style="color:#fff; font-size: 13px;">🔈 VOL: <span id="v-val">--</span> | 🔄 AUTO: <span id="a-val">--</span></span>
-    </div>
+    <div id="status-msg">🛰️ A SINCRONIZAR...</div>
 
-    <div style="margin-top: 15px; font-size: 11px;">
-        <div id="status-light"></div> <span id="status-text">DESCONECTADO</span>
+    <div class="pref-status">
+        💾 MEMÓRIA: <span id="mem-v">--</span> | <span id="mem-a">--</span>
     </div>
 </div>
 
 <script>
-    // 1. SISTEMA DE MEMÓRIA (Volume e Autoplay)
-    const rauPrefs = {
+    // 1. GESTÃO DE MEMÓRIA (Volume e Autoplay)
+    const rauMemory = {
         save: (v, a) => {
-            localStorage.setItem('rau_volume', v);
-            localStorage.setItem('rau_autoplay', a);
+            localStorage.setItem('rau_v', v);
+            localStorage.setItem('rau_a', a);
         },
         load: () => ({
-            v: localStorage.getItem('rau_volume') || "0.80",
-            a: localStorage.getItem('rau_autoplay') || "true"
+            v: localStorage.getItem('rau_v') || "0.8",
+            a: localStorage.getItem('rau_a') || "true"
         })
     };
 
-    const myPrefs = rauPrefs.load();
-    document.getElementById('v-val').innerText = Math.round(myPrefs.v * 100) + "%";
-    document.getElementById('a-val').innerText = myPrefs.a === "true" ? "ON" : "OFF";
+    const myPrefs = rauMemory.load();
+    document.getElementById('mem-v').innerText = "VOL " + Math.round(myPrefs.v * 100) + "%";
+    document.getElementById('mem-a').innerText = "AUTO " + (myPrefs.a === "true" ? "ON" : "OFF");
 
-    // 2. FIREBASE (RAU_V29)
+    // 2. FIREBASE (RAU_V34)
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
-    const nodeID = "OP_" + Math.random().toString(36).substr(2, 5);
+    const myID = "USER_" + Math.random().toString(36).substr(2, 5);
 
     // 3. ENGINE 3D
     const scene = new THREE.Scene();
@@ -79,21 +74,23 @@
     camera.position.z = 3.5;
 
     const markers = new Map();
-    function sync(data) {
-        const ids = new Set(data.map(d => d.id));
-        data.forEach(d => {
-            if (!markers.has(d.id)) {
-                const phi = (90-d.lat)*(Math.PI/180), theta = (d.lng+180)*(Math.PI/180);
+    function updateGlobe(nodes) {
+        const ids = new Set(nodes.map(n => n.id));
+        nodes.forEach(n => {
+            if (!markers.has(n.id)) {
+                const phi = (90-n.lat)*(Math.PI/180), theta = (n.lng+180)*(Math.PI/180);
                 const pos = new THREE.Vector3().setFromSphericalCoords(1.02, phi, theta);
                 const g = new THREE.Group();
                 g.add(new THREE.Mesh(new THREE.SphereGeometry(0.015,12,12), new THREE.MeshBasicMaterial({color: 0x39ff14})));
+                
                 const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-                canvas.width = 160; canvas.height = 50; ctx.fillStyle = 'rgba(0,30,0,0.95)'; ctx.fillRect(0,0,160,50);
+                canvas.width = 160; canvas.height = 50; ctx.fillStyle = 'rgba(0,30,0,0.9)'; ctx.fillRect(0,0,160,50);
                 ctx.font = 'bold 14px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-                ctx.fillText(d.city.toUpperCase(), 80, 30);
+                ctx.fillText(n.city.toUpperCase(), 80, 30);
+                
                 const s = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(canvas)}));
                 s.position.copy(pos.clone().multiplyScalar(1.15)); s.scale.set(0.4, 0.12, 1);
-                g.add(s); world.add(g); markers.set(d.id, g);
+                g.add(s); world.add(g); markers.set(n.id, g);
             }
         });
         markers.forEach((obj, id) => { if (!ids.has(id)) { world.remove(obj); markers.delete(id); } });
@@ -105,37 +102,38 @@
     window.addEventListener('mouseup', () => down = false);
     window.addEventListener('mousemove', (e) => { if (down) { world.rotation.y += (e.clientX-lx)*0.007; world.rotation.x += (e.clientY-ly)*0.007; lx=e.clientX; ly=e.clientY; } });
 
-    // 5. LIGAÇÃO
-    async function start() {
+    // 5. ATIVAÇÃO COM REGRAS PÚBLICAS
+    async function init() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
             const [lat, lng] = res.loc.split(',').map(Number);
             
-            const up = () => db.collection('RAU_V29').doc(nodeID).set({
+            const up = () => db.collection('RAU_V34').doc(myID).set({
                 lat, lng, city: res.city, ts: firebase.firestore.FieldValue.serverTimestamp(),
                 v: myPrefs.v, a: myPrefs.a
             }).then(() => {
-                document.getElementById('status-light').style.background = "#39ff14";
-                document.getElementById('status-text').innerText = "SATÉLITE ONLINE";
+                document.getElementById('status-msg').innerText = "🟢 ONLINE (REGRAS OK)";
+                document.getElementById('status-msg').style.color = "#39ff14";
             }).catch(e => {
-                document.getElementById('status-text').innerText = "ERRO NAS REGRAS";
+                document.getElementById('status-msg').innerText = "🔴 ERRO: VERIFICA O FIRESTORE";
             });
 
             up(); setInterval(up, 25000);
 
-            db.collection('RAU_V29').where('ts', '>', new Date(Date.now() - 75000)).onSnapshot(snap => {
+            db.collection('RAU_V34').where('ts', '>', new Date(Date.now() - 75000)).onSnapshot(snap => {
                 const list = []; snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
-                sync(list); document.getElementById('count').innerText = snap.size;
+                updateGlobe(list);
+                document.getElementById('count').innerText = snap.size;
             });
-        } catch (e) { document.getElementById('status-text').innerText = "ERRO DE REDE"; }
+        } catch (e) { document.getElementById('status-msg').innerText = "🟡 SEM REDE"; }
     }
 
     function loop() { requestAnimationFrame(loop); if(!down) world.rotation.y += 0.0015; renderer.render(scene, camera); }
-    start(); loop();
+    init(); loop();
 
-    // EXPOSTO: window.saveRau(0.5, "true")
-    window.saveRau = (v, a) => {
-        rauPrefs.save(v, a);
+    // COMANDO EXTERNO: window.updateRAU(0.5, "true")
+    window.updateRAU = (v, a) => {
+        rauMemory.save(v, a);
         location.reload();
     };
 </script>
