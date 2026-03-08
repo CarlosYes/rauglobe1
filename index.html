@@ -2,102 +2,112 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v175.0 - REAL-TIME VPN SENSOR</title>
+    <title>RAU MONITOR v175.0 - STEALTH ENGINE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; user-select: none; }
         #rau-ui {
-            position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 10, 0, 0.95); border-left: 3px solid #39ff14;
-            padding: 15px; width: 290px; box-shadow: 10px 10px 30px rgba(0,0,0,0.8);
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: rgba(0, 10, 0, 0.9); border-left: 3px solid #39ff14;
+            padding: 15px; width: 280px; pointer-events: none;
         }
-        .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-        #led { width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; }
-        .monitor-display { background: #050505; border: 1px solid #1a1a1a; padding: 12px; border-radius: 2px; }
-        #mon-city { font-size: 20px; color: #fff; font-weight: 900; display: block; letter-spacing: -1px; }
-        #mon-flag-ui { height: 18px; margin-right: 10px; border: 1px solid #333; vertical-align: middle; }
-        #mon-status { font-size: 10px; color: #39ff14; opacity: 0.6; margin-top: 10px; border-top: 1px solid #1a1a1a; padding-top: 8px; }
+        .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        #led { width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        .monitor-display { background: #050505; border: 1px solid #1a1a1a; padding: 12px; }
+        #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; }
+        #mon-flag-ui { height: 18px; margin-right: 8px; vertical-align: middle; display: none; }
+        #mon-status { font-size: 10px; color: #39ff14; opacity: 0.7; margin-top: 8px; border-top: 1px solid #1a1a1a; padding-top: 8px; }
+        canvas { display: block; width: 100vw; height: 100vh; }
     </style>
 </head>
-<body oncontextmenu="return false;">
+<body>
 
 <div id="rau-ui">
     <div class="status-row">
         <div id="led"></div>
-        <span style="font-size: 11px; font-weight: bold;">LIVE VPN TRACKER</span>
+        <span style="font-size: 11px;">RAU CORE ACTIVE</span>
     </div>
     <div class="monitor-display">
         <div style="display: flex; align-items: center;">
-            <img id="mon-flag-ui" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
-            <span id="mon-city">SCANNING...</span>
+            <img id="mon-flag-ui" src="">
+            <span id="mon-city">REBOOTING...</span>
         </div>
-        <div id="mon-status">Aguardando sinal...</div>
+        <div id="mon-status">Aguardando telemetria...</div>
     </div>
 </div>
 
 <script>
-    const RAU_VPN_CORE = {
-        scene: null, camera: null, renderer: null, controls: null, globe: null, markers: null,
-        currentIP: null,
+    const RAU_SYSTEM = {
+        scene: null, camera: null, renderer: null, controls: null, globe: null, markers: null, currentIP: '',
 
         init() {
+            // Setup Cenas
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
-            
+
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
             this.controls.autoRotate = true;
             this.camera.position.z = 3.5;
 
+            // Criar Globo IMEDIATAMENTE (Esfera base para não sumir)
             const geometry = new THREE.SphereGeometry(1, 64, 64);
-            const material = new THREE.MeshPhongMaterial({ color: 0x222222, shininess: 2 });
+            const material = new THREE.MeshPhongMaterial({ color: 0x0a0a0a, shininess: 5 });
             this.globe = new THREE.Mesh(geometry, material);
             this.scene.add(this.globe);
 
-            new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
-                this.globe.material.map = tex;
-                this.globe.material.needsUpdate = true;
-            });
+            // Carregar Textura com Fallback
+            const loader = new THREE.TextureLoader();
+            loader.crossOrigin = 'Anonymous';
+            loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', 
+                (tex) => { this.globe.material.map = tex; this.globe.material.color.set(0xffffff); this.globe.material.needsUpdate = true; },
+                undefined,
+                () => { this.globe.material.color.set(0x113355); } // Cor de erro caso falhe o link
+            );
 
-            this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+            this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+            sun.position.set(5, 3, 5);
+            this.scene.add(sun);
+
             this.markers = new THREE.Group();
             this.scene.add(this.markers);
 
-            this.security();
-            this.animate();
-            
-            // Ciclo de detecção rápida
-            this.pulse();
-            setInterval(() => this.pulse(), 3000);
+            this.loop();
+            this.checkVPN();
+            setInterval(() => this.checkVPN(), 4000); // Polling de 4s para estabilidade
         },
 
-        async pulse() {
-            const ts = Date.now();
+        async checkVPN() {
             try {
-                // Cache busting com timestamp para ignorar dados antigos do navegador
-                const res = await fetch(`https://ipapi.co/json/?nocache=${ts}`);
+                const res = await fetch(`https://ipapi.co/json/?v=${Date.now()}`);
                 const data = await res.json();
-                
-                // Só reconstrói se houver mudança de IP real
                 if (data.ip !== this.currentIP) {
                     this.currentIP = data.ip;
-                    this.deploy(data.latitude, data.longitude, data.city, data.country_code.toLowerCase());
+                    this.updateGlobe(data);
                 }
-            } catch (e) { console.log("Reconnecting..."); }
+            } catch (e) { console.error("Link down..."); }
         },
 
-        deploy(lat, lon, city, iso) {
-            const cityUpper = city.toUpperCase();
-            document.getElementById('mon-city').innerText = cityUpper;
-            document.getElementById('mon-flag-ui').src = `https://flagcdn.com/w80/${iso}.png`;
-            document.getElementById('mon-flag-ui').style.display = 'inline-block';
-            document.getElementById('mon-status').innerText = `IP: ${this.currentIP} | NODE: ${iso.toUpperCase()}`;
+        updateGlobe(data) {
+            const { latitude: lat, longitude: lon, city, country_code: iso } = data;
+            const cityUpper = (city || "Unknown").toUpperCase();
+            const isoLower = iso.toLowerCase();
 
+            // UI Update
+            document.getElementById('mon-city').innerText = cityUpper;
+            const flagUi = document.getElementById('mon-flag-ui');
+            flagUi.src = `https://flagcdn.com/w80/${isoLower}.png`;
+            flagUi.style.display = 'inline-block';
+            document.getElementById('mon-status').innerText = `IP: ${data.ip} | NODE: ${iso} | VPN SENSOR: OK`;
+
+            // Marker Update
             this.markers.clear();
             const phi = (90 - lat) * (Math.PI / 180);
             const theta = (lon + 180) * (Math.PI / 180);
@@ -107,52 +117,45 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            // Marcador Fixo
+            // Ponto LED
             const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // Bandeira no Globo
-            const flagTex = new THREE.TextureLoader().load(`https://flagcdn.com/w160/${iso}.png`);
+            // Bandeira Flutuante
+            const flagTex = new THREE.TextureLoader().load(`https://flagcdn.com/w160/${isoLower}.png`);
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: flagTex }));
             sprite.position.copy(pos.clone().multiplyScalar(1.15));
-            sprite.scale.set(0.28, 0.16, 1);
+            sprite.scale.set(0.25, 0.15, 1);
             this.markers.add(sprite);
 
-            // Nome Cidade
+            // Nome da Cidade
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = 512; canvas.height = 128;
-            ctx.fillStyle = '#39ff14'; ctx.font = '900 64px Courier New';
+            ctx.fillStyle = '#39ff14'; ctx.font = 'bold 50px Courier New';
             ctx.textAlign = 'center'; ctx.fillText(cityUpper, 256, 80);
             const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-            label.position.copy(pos.clone().multiplyScalar(1.32));
+            label.position.copy(pos.clone().multiplyScalar(1.3));
             label.scale.set(0.7, 0.18, 1);
             this.markers.add(label);
 
-            // Auto-Focus suave para a nova posição
-            const view = pos.clone().multiplyScalar(3.8);
-            this.camera.position.lerp(view, 0.1);
+            // Fly-to suave
+            this.camera.position.lerp(pos.clone().multiplyScalar(3.5), 0.05);
         },
 
-        security() {
-            window.onkeydown = (e) => {
-                if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) return false;
-            };
-        },
-
-        animate() {
-            requestAnimationFrame(() => this.animate());
-            this.controls.update();
-            this.renderer.render(this.scene, this.camera);
+        loop() {
+            requestAnimationFrame(() => this.loop());
+            if (this.controls) this.controls.update();
+            if (this.renderer) this.renderer.render(this.scene, this.camera);
         }
     };
 
-    window.onload = () => RAU_VPN_CORE.init();
+    window.onload = () => RAU_SYSTEM.init();
     window.onresize = () => {
-        RAU_VPN_CORE.camera.aspect = window.innerWidth / window.innerHeight;
-        RAU_VPN_CORE.camera.updateProjectionMatrix();
-        RAU_VPN_CORE.renderer.setSize(window.innerWidth, window.innerHeight);
+        RAU_SYSTEM.camera.aspect = window.innerWidth / window.innerHeight;
+        RAU_SYSTEM.camera.updateProjectionMatrix();
+        RAU_SYSTEM.renderer.setSize(window.innerWidth, window.innerHeight);
     };
 </script>
 </body>
