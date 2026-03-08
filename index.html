@@ -2,38 +2,35 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v214.0 - AUTÓNOMO</title>
+    <title>RAU MONITOR v215.0 - HARD OVERRIDE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 15, 0, 0.85); border-left: 3px solid #39ff14;
-            padding: 15px; width: 260px; pointer-events: none; backdrop-filter: blur(5px);
+            background: rgba(0, 15, 0, 0.9); border-left: 3px solid #39ff14;
+            padding: 15px; width: 260px; pointer-events: none;
         }
-        .monitor-display { background: rgba(0, 0, 0, 0.9); border: 1px solid #1a1a1a; padding: 10px; }
-        #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; letter-spacing: 1px; }
+        .monitor-display { background: #000; border: 1px solid #1a1a1a; padding: 10px; }
+        #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; }
         #visitor-tag {
-            position: absolute; display: none; align-items: center; gap: 10px;
-            background: rgba(0, 10, 0, 0.9); border: 1px solid #39ff14;
+            position: absolute; display: none; align-items: center; gap: 8px;
+            background: rgba(0, 0, 0, 0.9); border: 1px solid #39ff14;
             padding: 5px 12px; color: #fff; font-size: 13px; font-weight: bold;
-            z-index: 500; transform: translate(-50%, -150%); pointer-events: none;
+            z-index: 500; transform: translate(-50%, -150%);
         }
-        .flag-icon { width: 22px; height: 14px; border: 1px solid #39ff14; object-fit: cover; }
+        .flag-icon { width: 22px; height: 14px; border: 1px solid #333; }
         canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; outline: none; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-        <div id="led" style="width: 8px; height: 8px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 8px #39ff14;"></div>
-        <span style="font-size: 10px; letter-spacing: 2px;">RAU CORE v214</span>
-    </div>
+    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v215.0</div>
     <div class="monitor-display">
         <span id="mon-city">A LOCALIZAR...</span>
-        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">Sinal: Standby</div>
+        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">Uplink: Ativo</div>
     </div>
 </div>
 
@@ -54,16 +51,16 @@
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(this.renderer.domElement);
 
-            // Luzes estáveis
-            this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-            const light = new THREE.DirectionalLight(0xffffff, 0.5);
-            light.position.set(5, 3, 5);
-            this.scene.add(light);
+            // Luzes Forçadas
+            this.scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+            sun.position.set(5, 3, 5);
+            this.scene.add(sun);
 
-            // Estrelas (Para nunca ficar tudo preto)
-            this.createStars();
+            // Criar estrelas imediatamente
+            this.stars();
 
-            // Globo Base
+            // Criar Globo com Cor de Backup (Caso a textura falhe)
             const geo = new THREE.SphereGeometry(1, 64, 64);
             const mat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 5 });
             this.globe = new THREE.Mesh(geo, mat);
@@ -72,57 +69,51 @@
 
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.autoRotate = true;
-            this.controls.autoRotateSpeed = 0.5;
             this.camera.position.z = 3.2;
 
             this.loadTexture();
-            this.track(); // Tenta localizar
+            this.track(); // Começa a busca do IP
             
             setInterval(() => this.track(), 30000);
-            window.addEventListener('resize', () => this.onResize());
             this.animate();
         },
 
-        createStars() {
-            const starGeo = new THREE.BufferGeometry();
-            const starVertices = [];
-            for (let i = 0; i < 3000; i++) {
-                starVertices.push((Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500);
+        stars() {
+            const geo = new THREE.BufferGeometry();
+            const pos = [];
+            for (let i = 0; i < 2000; i++) {
+                pos.push((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000);
             }
-            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
-            const starMat = new THREE.PointsMaterial({ color: 0x444444, size: 0.7 });
-            this.scene.add(new THREE.Points(starGeo, starMat));
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            this.scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x444444, size: 0.8 })));
         },
 
         loadTexture() {
-            new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
+            const loader = new THREE.TextureLoader();
+            loader.setCrossOrigin('anonymous');
+            // Fonte ultra-estável
+            loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
                 this.globe.material.color.set(0xffffff);
                 this.globe.material.needsUpdate = true;
             });
         },
 
+        // Bypass de segurança v215
         async track() {
             try {
-                // Cloudflare Trace - O método mais rápido e que nunca falha no GitHub
-                const response = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
-                const data = await response.text();
-                const ip = data.match(/ip=(.*)\n/)[1];
-
-                if (ip !== this.currentIP) {
-                    this.currentIP = ip;
-                    // Agora pegamos a geo com o IP já na mão
-                    const geoRes = await fetch(`https://ipwho.is/${ip}`);
-                    const geoData = await geoRes.json();
-                    if(geoData.success) this.updateVisitor(geoData);
+                // Usando o endpoint HTTPS mais aceite pelo GitHub
+                const res = await fetch('https://ipapi.co/json/');
+                const data = await res.json();
+                if (data.ip && data.ip !== this.currentIP) {
+                    this.currentIP = data.ip;
+                    this.updateVisitor(data);
                 }
-            } catch (e) {
-                document.getElementById('mon-status').innerText = "Sinal fraco...";
-            }
+            } catch (e) { console.warn("Sync delay..."); }
         },
 
         updateVisitor(data) {
-            document.getElementById('mon-city').innerText = (data.city || "NODE").toUpperCase();
+            document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
             document.getElementById('mon-status').innerText = "IP: " + data.ip;
             
             this.markers.clear();
@@ -134,48 +125,36 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.01);
 
-            // BOLINHA 0.01
+            // BOLINHA VERDE 0.01 (PRECISÃO)
             const dot = new THREE.Mesh(
-                new THREE.SphereGeometry(0.01, 16, 16), 
+                new THREE.SphereGeometry(0.01, 12, 12), 
                 new THREE.MeshBasicMaterial({ color: 0x39ff14 })
             );
             dot.position.copy(pos);
             this.markers.add(dot);
 
             this.activeNode = { mesh: dot, city: data.city, country: data.country_code.toLowerCase() };
-            
             const tag = document.getElementById('visitor-tag');
             document.getElementById('tag-flag').src = `https://flagcdn.com/w40/${this.activeNode.country}.png`;
             document.getElementById('tag-city').innerText = this.activeNode.city;
             tag.style.display = 'flex';
         },
 
-        onResize() {
-            this.camera.aspect = window.innerWidth / window.innerHeight;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-        },
-
         animate() {
             requestAnimationFrame(() => this.animate());
             if (this.controls) this.controls.update();
-
             if (this.activeNode && this.activeNode.mesh) {
                 const vector = new THREE.Vector3();
                 this.activeNode.mesh.getWorldPosition(vector);
                 vector.project(this.camera);
                 const tag = document.getElementById('visitor-tag');
-                if (vector.z > 1) { tag.style.opacity = '0'; } 
-                else { 
-                    tag.style.opacity = '1';
-                    tag.style.left = `${(vector.x * 0.5 + 0.5) * window.innerWidth}px`;
-                    tag.style.top = `${(vector.y * -0.5 + 0.5) * window.innerHeight}px`;
-                }
+                tag.style.left = `${(vector.x * 0.5 + 0.5) * window.innerWidth}px`;
+                tag.style.top = `${(vector.y * -0.5 + 0.5) * window.innerHeight}px`;
+                tag.style.opacity = vector.z > 1 ? "0" : "1";
             }
             this.renderer.render(this.scene, this.camera);
         }
     };
-
     window.onload = () => RAU.init();
 </script>
 </body>
