@@ -2,22 +2,23 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v175.0 - PRO ENGINE</title>
+    <title>RAU MONITOR v175.0 - ENGINE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; user-select: none; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 10, 0, 0.9); border: 1px solid #39ff14;
-            padding: 15px; width: 280px; box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+            background: rgba(0, 8, 0, 0.95); border-left: 3px solid #39ff14;
+            padding: 15px; width: 280px; box-shadow: 10px 10px 20px rgba(0,0,0,0.5);
         }
-        .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        #led { width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; }
-        .monitor-display { background: #050505; border: 1px solid #1a1a1a; padding: 12px; }
-        #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; }
-        #mon-flag-ui { height: 18px; margin-right: 8px; display: none; border: 1px solid #333; }
-        #mon-status { font-size: 10px; color: #39ff14; opacity: 0.7; margin-top: 8px; border-top: 1px solid #1a1a1a; padding-top: 8px; }
+        .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        #led { width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .monitor-display { background: #050505; border: 1px solid #1a1a1a; padding: 12px; border-radius: 2px; }
+        #mon-city { font-size: 20px; color: #fff; font-weight: 900; display: block; letter-spacing: -1px; }
+        #mon-flag-ui { height: 18px; margin-right: 10px; display: none; border: 1px solid #333; }
+        #mon-status { font-size: 10px; color: #39ff14; opacity: 0.6; margin-top: 10px; border-top: 1px solid #1a1a1a; padding-top: 8px; }
         canvas { display: block; outline: none; }
     </style>
 </head>
@@ -26,89 +27,84 @@
 <div id="rau-ui">
     <div class="status-row">
         <div id="led"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">SYSTEM ACTIVE v175</span>
+        <span style="font-size: 11px; font-weight: bold;">RAU MONITOR ACTIVE</span>
     </div>
     <div class="monitor-display">
         <div style="display: flex; align-items: center;">
             <img id="mon-flag-ui" src="">
-            <span id="mon-city">LOADING...</span>
+            <span id="mon-city">UPLINKING...</span>
         </div>
-        <div id="mon-status">SYNCHRONIZING GLOBAL NODES...</div>
+        <div id="mon-status">RESOLVING GLOBAL COORDINATES...</div>
     </div>
 </div>
 
 <script>
-    let scene, camera, renderer, controls, globe, anchorGroup;
+    const RAU_CORE = {
+        scene: null, camera: null, renderer: null, controls: null, globe: null, markers: null,
 
-    const RAU_ENGINE = {
         init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            document.body.appendChild(renderer.domElement);
+            this.scene = new THREE.Scene();
+            this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.body.appendChild(this.renderer.domElement);
             
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.autoRotate = true;
-            controls.autoRotateSpeed = 0.7;
-            camera.position.z = 3.5;
+            this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
+            this.controls.autoRotate = true;
+            this.controls.autoRotateSpeed = 0.5;
+            this.camera.position.z = 3.5;
 
-            // Globo de Alta Performance
+            // Mesh Constructor
             const geometry = new THREE.SphereGeometry(1, 64, 64);
-            const material = new THREE.MeshPhongMaterial({ 
-                color: 0x111111, 
-                emissive: 0x050505,
-                shininess: 2 
-            });
-            globe = new THREE.Mesh(geometry, material);
-            scene.add(globe);
+            const material = new THREE.MeshPhongMaterial({ color: 0x222222, shininess: 2 });
+            this.globe = new THREE.Mesh(geometry, material);
+            this.scene.add(this.globe);
 
-            // Carregamento de Textura com CrossOrigin explícito
+            // Texture Pipeline
             const loader = new THREE.TextureLoader();
             loader.setCrossOrigin('anonymous');
             loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
-                globe.material.map = tex;
-                globe.material.color.set(0xffffff);
-                globe.material.needsUpdate = true;
+                this.globe.material.map = tex;
+                this.globe.material.color.set(0xffffff);
+                this.globe.material.needsUpdate = true;
             });
 
-            // Luzes
-            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+            this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
             sun.position.set(5, 3, 5);
-            scene.add(sun);
+            this.scene.add(sun);
 
-            anchorGroup = new THREE.Group();
-            scene.add(anchorGroup);
+            this.markers = new THREE.Group();
+            this.scene.add(this.markers);
 
-            this.sync();
-            this.loop();
-            this.lock();
+            this.fetchData();
+            this.animate();
+            this.security();
         },
 
-        async sync() {
+        async fetchData() {
             try {
                 const res = await fetch('https://ipapi.co/json/');
                 const data = await res.json();
                 if (data.latitude) {
-                    this.renderData(data.latitude, data.longitude, data.city, data.country_code.toLowerCase());
+                    this.deployMarker(data.latitude, data.longitude, data.city, data.country_code.toLowerCase());
                 }
             } catch (e) {
-                document.getElementById('mon-city').innerText = "NODE_ERROR";
+                document.getElementById('mon-city').innerText = "LINK_ERROR";
             }
         },
 
-        renderData(lat, lon, city, iso) {
+        deployMarker(lat, lon, city, iso) {
             const cityUpper = city.toUpperCase();
             document.getElementById('mon-city').innerText = cityUpper;
             const flag = document.getElementById('mon-flag-ui');
             flag.src = `https://flagcdn.com/w80/${iso}.png`;
             flag.style.display = 'inline-block';
-            document.getElementById('mon-status').innerText = `UPLINK: ${iso.toUpperCase()} | LAT: ${lat} LON: ${lon}`;
+            document.getElementById('mon-status').innerText = `LAT: ${lat} | LON: ${lon} | ORIGIN: ${iso.toUpperCase()}`;
 
-            anchorGroup.clear();
+            this.markers.clear();
             const phi = (90 - lat) * (Math.PI / 180);
             const theta = (lon + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3(
@@ -117,53 +113,53 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            // Marcador Fixo
+            // Locator Dot
             const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
-            anchorGroup.add(dot);
+            this.markers.add(dot);
 
-            // Sprite de Bandeira
-            const flagMap = new THREE.TextureLoader().load(`https://flagcdn.com/w160/${iso}.png`);
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: flagMap }));
+            // Flag Sprite
+            const flagTex = new THREE.TextureLoader().load(`https://flagcdn.com/w160/${iso}.png`);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: flagTex }));
             sprite.position.copy(pos.clone().multiplyScalar(1.12));
-            sprite.scale.set(0.22, 0.13, 1);
-            anchorGroup.add(sprite);
+            sprite.scale.set(0.24, 0.14, 1);
+            this.markers.add(sprite);
 
-            // Label de Cidade via Canvas de Alta Definição
+            // UI Text Sprite (High DPI)
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = 512; canvas.height = 128;
-            ctx.fillStyle = '#39ff14'; ctx.font = '900 60px Courier New';
+            ctx.fillStyle = '#39ff14'; ctx.font = '900 64px Courier New';
             ctx.textAlign = 'center'; ctx.fillText(cityUpper, 256, 80);
             const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-            label.position.copy(pos.clone().multiplyScalar(1.25));
-            label.scale.set(0.6, 0.15, 1);
-            anchorGroup.add(label);
+            label.position.copy(pos.clone().multiplyScalar(1.28));
+            label.scale.set(0.7, 0.17, 1);
+            this.markers.add(label);
 
-            // Câmera suavizada para o alvo
-            const targetPos = pos.clone().multiplyScalar(3.5);
-            camera.position.lerp(targetPos, 1);
-            controls.update();
+            // Camera Smoothing
+            const viewTarget = pos.clone().multiplyScalar(3.8);
+            this.camera.position.lerp(viewTarget, 1);
+            this.controls.update();
         },
 
-        lock() {
+        security() {
             window.addEventListener('keydown', (e) => {
                 if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) e.preventDefault();
             });
         },
 
-        loop() {
-            requestAnimationFrame(() => this.loop());
-            controls.update();
-            renderer.render(scene, camera);
+        animate() {
+            requestAnimationFrame(() => this.animate());
+            this.controls.update();
+            this.renderer.render(this.scene, this.camera);
         }
     };
 
-    window.onload = () => RAU_ENGINE.init();
+    window.onload = () => RAU_CORE.init();
     window.onresize = () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        RAU_CORE.camera.aspect = window.innerWidth / window.innerHeight;
+        RAU_CORE.camera.updateProjectionMatrix();
+        RAU_CORE.renderer.setSize(window.innerWidth, window.innerHeight);
     };
 </script>
 </body>
