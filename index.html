@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - RADAR SYSTEM 2026</title>
+    <title>RAU - RADAR REALTIME FINAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
@@ -12,38 +12,39 @@
         #canvas-container:active { cursor: grabbing; }
         .hud { 
             position: absolute; top: 20px; left: 20px; z-index: 100; 
-            color: #39ff14; background: rgba(0, 15, 0, 0.9); padding: 15px; 
+            color: #39ff14; background: rgba(0, 10, 0, 0.9); padding: 15px; 
             border: 1px solid #39ff14; pointer-events: none; border-radius: 4px;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.1);
         }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <b style="font-size: 1.1em;">RADAR RADIO AMIGOS UNIDOS</b><br>
-    <span id="my-loc" style="font-size: 0.9em; color: #fff;">A localizar satélite...</span><br>
+    <b style="font-size: 1.1em; letter-spacing: 1px;">RADAR AMIGOS UNIDOS</b><br>
+    <span id="my-loc" style="font-size: 0.85em; color: #fff;">A localizar...</span><br>
     <hr style="border:0; border-top:1px solid #39ff14; margin:8px 0; opacity: 0.3;">
-    OUVINTES ONLINE: <span id="count" style="font-size: 1.2em; font-weight: bold;">1</span>
+    OUVINTES: <span id="count" style="font-size: 1.2em; font-weight: bold;">1</span>
 </div>
 
 <div id="canvas-container"></div>
 
 <script>
-    // 1. FIREBASE (RAU_STABLE)
+    // 1. CONFIGURAÇÃO FIREBASE
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
     const myId = "RAU_" + Math.random().toString(36).substr(2, 5);
 
-    // 2. MOTOR THREE.JS
+    // 2. SETUP THREE.JS
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    const mainGroup = new THREE.Group();
+    const mainGroup = new THREE.Group(); // Contém tudo o que deve rodar
     scene.add(mainGroup);
 
     const loader = new THREE.TextureLoader();
@@ -63,20 +64,22 @@
     scene.add(sun);
     camera.position.z = 3;
 
-    // 3. SPRITES DE TEXTO
-    function createLabel(text) {
+    // 3. ETIQUETAS WEBGL (NOMES DAS CIDADES)
+    function createCityLabel(text) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 512; canvas.height = 128;
-        ctx.fillStyle = 'rgba(0, 30, 0, 0.85)';
+        
+        ctx.fillStyle = 'rgba(0, 20, 0, 0.85)';
         ctx.fillRect(0, 30, 512, 70);
         ctx.strokeStyle = '#39ff14';
         ctx.lineWidth = 4;
         ctx.strokeRect(0, 30, 512, 70);
-        ctx.font = 'Bold 42px Courier New';
+        
+        ctx.font = 'Bold 40px Courier New';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
-        ctx.fillText(text.toUpperCase(), 256, 80);
+        ctx.fillText(text.toUpperCase(), 256, 78);
 
         const texture = new THREE.CanvasTexture(canvas);
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: true }));
@@ -84,7 +87,7 @@
         return sprite;
     }
 
-    function addMarker(lat, lng, city) {
+    function addVisitor(lat, lng, city) {
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
         const pos = new THREE.Vector3(
@@ -93,21 +96,21 @@
             Math.sin(phi) * Math.sin(theta)
         );
 
-        const mGroup = new THREE.Group();
-        mGroup.name = "visitor";
-        
+        const markerGroup = new THREE.Group();
+        markerGroup.name = "visitor_marker";
+
         const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
         dot.position.copy(pos);
-        mGroup.add(dot);
+        markerGroup.add(dot);
 
-        const label = createLabel(city || "Ouvinte");
+        const label = createCityLabel(city || "Ouvinte");
         label.position.copy(pos.clone().multiplyScalar(1.08));
-        mGroup.add(label);
+        markerGroup.add(label);
 
-        mainGroup.add(mGroup);
+        mainGroup.add(markerGroup);
     }
 
-    // 4. INTERATIVIDADE (GIRO DO GLOBO)
+    // 4. CONTROLO DO RATO (GIRO DO GLOBO)
     let isDragging = false;
     let mouseX = 0, mouseY = 0;
 
@@ -124,7 +127,7 @@
         }
     });
 
-    // 5. SINCRONIZAÇÃO
+    // 5. SINCRONIZAÇÃO FIREBASE
     async function start() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
@@ -132,19 +135,23 @@
             document.getElementById('my-loc').innerText = "Tu em: " + data.city;
             const [lat, lng] = data.loc.split(',').map(Number);
 
-            const push = () => db.collection('rau_v100').doc(myId).set({
+            const push = () => db.collection('rau_v_final_sleep').doc(myId).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             push(); setInterval(push, 25000);
 
-            db.collection('rau_v100').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                const toDelete = [];
-                mainGroup.traverse(c => { if(c.name === "visitor") toDelete.push(c); });
-                toDelete.forEach(c => mainGroup.remove(c));
-                snap.forEach(doc => addMarker(doc.data().lat, doc.data().lng, doc.data().city));
+            db.collection('rau_v_final_sleep').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                const toRemove = [];
+                mainGroup.children.forEach(child => { if(child.name === "visitor_marker") toRemove.push(child); });
+                toRemove.forEach(child => mainGroup.remove(child));
+
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    if(d.lat) addVisitor(d.lat, d.lng, d.city);
+                });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("GPS Offline"); }
+        } catch(e) { console.error("Falha GPS"); }
     }
 
     function animate() {
@@ -153,7 +160,8 @@
         renderer.render(scene, camera);
     }
 
-    start(); animate();
+    start();
+    animate();
 
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
