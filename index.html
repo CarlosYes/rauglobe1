@@ -32,7 +32,7 @@
 <div id="canvas-container"></div>
 
 <script>
-    // 1. CONFIGURAÇÃO FIREBASE (Protegida)
+    // 1. CONFIGURAÇÃO FIREBASE (Blindada)
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
@@ -110,7 +110,7 @@
         mainGroup.add(node);
     }
 
-    // 4. CONTROLO DE ROTAÇÃO (Blindado)
+    // 4. CONTROLO DE ROTAÇÃO (Física de Grupo)
     let isDragging = false;
     let mouseX = 0, mouseY = 0;
 
@@ -141,6 +141,7 @@
             push(); setInterval(push, 25000);
 
             db.collection('rau_final_night').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                // Limpeza seletiva: remove apenas unidades, mantém o globo e luzes
                 const toDelete = [];
                 mainGroup.children.forEach(c => { if(c.name === "visitor_unit") toDelete.push(c); });
                 toDelete.forEach(c => mainGroup.remove(c));
