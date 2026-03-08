@@ -2,24 +2,23 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v175.0 - ENGINE</title>
+    <title>RAU MONITOR v175.0 - REAL-TIME VPN SENSOR</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; user-select: none; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 8, 0, 0.95); border-left: 3px solid #39ff14;
-            padding: 15px; width: 280px; box-shadow: 10px 10px 20px rgba(0,0,0,0.5);
+            background: rgba(0, 10, 0, 0.95); border-left: 3px solid #39ff14;
+            padding: 15px; width: 290px; box-shadow: 10px 10px 30px rgba(0,0,0,0.8);
         }
         .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-        #led { width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; animation: blink 1s infinite; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        #led { width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; }
         .monitor-display { background: #050505; border: 1px solid #1a1a1a; padding: 12px; border-radius: 2px; }
         #mon-city { font-size: 20px; color: #fff; font-weight: 900; display: block; letter-spacing: -1px; }
-        #mon-flag-ui { height: 18px; margin-right: 10px; display: none; border: 1px solid #333; }
+        #mon-flag-ui { height: 18px; margin-right: 10px; border: 1px solid #333; }
         #mon-status { font-size: 10px; color: #39ff14; opacity: 0.6; margin-top: 10px; border-top: 1px solid #1a1a1a; padding-top: 8px; }
-        canvas { display: block; outline: none; }
+        .vpn-active { color: #f00 !important; text-shadow: 0 0 5px #f00; }
     </style>
 </head>
 <body oncontextmenu="return false;">
@@ -27,20 +26,21 @@
 <div id="rau-ui">
     <div class="status-row">
         <div id="led"></div>
-        <span style="font-size: 11px; font-weight: bold;">RAU MONITOR ACTIVE</span>
+        <span style="font-size: 11px; font-weight: bold;">LIVE VPN TRACKER</span>
     </div>
     <div class="monitor-display">
         <div style="display: flex; align-items: center;">
-            <img id="mon-flag-ui" src="">
-            <span id="mon-city">UPLINKING...</span>
+            <img id="mon-flag-ui" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+            <span id="mon-city">SCANNING...</span>
         </div>
-        <div id="mon-status">RESOLVING GLOBAL COORDINATES...</div>
+        <div id="mon-status">Aguardando sinal...</div>
     </div>
 </div>
 
 <script>
-    const RAU_CORE = {
+    const RAU_VPN_CORE = {
         scene: null, camera: null, renderer: null, controls: null, globe: null, markers: null,
+        currentIP: null,
 
         init() {
             this.scene = new THREE.Scene();
@@ -53,56 +53,57 @@
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
             this.controls.autoRotate = true;
-            this.controls.autoRotateSpeed = 0.5;
             this.camera.position.z = 3.5;
 
-            // Mesh Constructor
             const geometry = new THREE.SphereGeometry(1, 64, 64);
             const material = new THREE.MeshPhongMaterial({ color: 0x222222, shininess: 2 });
             this.globe = new THREE.Mesh(geometry, material);
             this.scene.add(this.globe);
 
-            // Texture Pipeline
-            const loader = new THREE.TextureLoader();
-            loader.setCrossOrigin('anonymous');
-            loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
+            new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
-                this.globe.material.color.set(0xffffff);
                 this.globe.material.needsUpdate = true;
             });
 
             this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
-            sun.position.set(5, 3, 5);
-            this.scene.add(sun);
-
             this.markers = new THREE.Group();
             this.scene.add(this.markers);
 
-            this.fetchData();
-            this.animate();
             this.security();
+            this.animate();
+            
+            // Loop de detecção rápida (A cada 3 segundos)
+            this.pulse();
+            setInterval(() => this.pulse(), 3000);
         },
 
-        async fetchData() {
+        async pulse() {
+            const ts = Date.now();
+            // Fallback entre APIs para evitar bloqueios de IP
+            const apis = [
+                `https://ipapi.co/json/?nocache=${ts}`,
+                `https://get.geojs.io/v1/ip/geo.json?v=${ts}`
+            ];
+
             try {
-                const res = await fetch('https://ipapi.co/json/');
+                const res = await fetch(apis[0]);
                 const data = await res.json();
-                if (data.latitude) {
-                    this.deployMarker(data.latitude, data.longitude, data.city, data.country_code.toLowerCase());
+                
+                // Só atualiza se o IP mudou (VPN ligou/desligou)
+                if (data.ip !== this.currentIP) {
+                    this.currentIP = data.ip;
+                    this.deploy(data.latitude, data.longitude, data.city, data.country_code.toLowerCase());
                 }
             } catch (e) {
-                document.getElementById('mon-city').innerText = "LINK_ERROR";
+                console.log("Retry link...");
             }
         },
 
-        deployMarker(lat, lon, city, iso) {
+        deploy(lat, lon, city, iso) {
             const cityUpper = city.toUpperCase();
             document.getElementById('mon-city').innerText = cityUpper;
-            const flag = document.getElementById('mon-flag-ui');
-            flag.src = `https://flagcdn.com/w80/${iso}.png`;
-            flag.style.display = 'inline-block';
-            document.getElementById('mon-status').innerText = `LAT: ${lat} | LON: ${lon} | ORIGIN: ${iso.toUpperCase()}`;
+            document.getElementById('mon-flag-ui').src = `https://flagcdn.com/w80/${iso}.png`;
+            document.getElementById('mon-status').innerText = `IP: ${this.currentIP} | NODE: ${iso.toUpperCase()}`;
 
             this.markers.clear();
             const phi = (90 - lat) * (Math.PI / 180);
@@ -113,39 +114,38 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            // Locator Dot
+            // Marcador Fixo
             const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // Flag Sprite
+            // Bandeira no Globo
             const flagTex = new THREE.TextureLoader().load(`https://flagcdn.com/w160/${iso}.png`);
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: flagTex }));
-            sprite.position.copy(pos.clone().multiplyScalar(1.12));
-            sprite.scale.set(0.24, 0.14, 1);
+            sprite.position.copy(pos.clone().multiplyScalar(1.15));
+            sprite.scale.set(0.28, 0.16, 1);
             this.markers.add(sprite);
 
-            // UI Text Sprite (High DPI)
+            // Nome Cidade
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = 512; canvas.height = 128;
             ctx.fillStyle = '#39ff14'; ctx.font = '900 64px Courier New';
             ctx.textAlign = 'center'; ctx.fillText(cityUpper, 256, 80);
             const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-            label.position.copy(pos.clone().multiplyScalar(1.28));
-            label.scale.set(0.7, 0.17, 1);
+            label.position.copy(pos.clone().multiplyScalar(1.32));
+            label.scale.set(0.7, 0.18, 1);
             this.markers.add(label);
 
-            // Camera Smoothing
-            const viewTarget = pos.clone().multiplyScalar(3.8);
-            this.camera.position.lerp(viewTarget, 1);
-            this.controls.update();
+            // Auto-Focus suave
+            const view = pos.clone().multiplyScalar(3.8);
+            this.camera.position.lerp(view, 0.1);
         },
 
         security() {
-            window.addEventListener('keydown', (e) => {
-                if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) e.preventDefault();
-            });
+            window.onkeydown = (e) => {
+                if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) return false;
+            };
         },
 
         animate() {
@@ -155,11 +155,11 @@
         }
     };
 
-    window.onload = () => RAU_CORE.init();
+    window.onload = () => RAU_VPN_CORE.init();
     window.onresize = () => {
-        RAU_CORE.camera.aspect = window.innerWidth / window.innerHeight;
-        RAU_CORE.camera.updateProjectionMatrix();
-        RAU_CORE.renderer.setSize(window.innerWidth, window.innerHeight);
+        RAU_VPN_CORE.camera.aspect = window.innerWidth / window.innerHeight;
+        RAU_VPN_CORE.camera.updateProjectionMatrix();
+        RAU_VPN_CORE.renderer.setSize(window.innerWidth, window.innerHeight);
     };
 </script>
 </body>
