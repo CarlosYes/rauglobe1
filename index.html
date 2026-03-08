@@ -2,18 +2,18 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v191.0 - STABILITY FORCE</title>
+    <title>RAU MONITOR v192.0 - VISIBILIDADE TOTAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; user-select: none; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 10, 0, 0.9); border-left: 3px solid #39ff14;
+            background: rgba(0, 15, 0, 0.9); border-left: 3px solid #39ff14;
             padding: 15px; width: 280px; pointer-events: none;
             backdrop-filter: blur(10px);
         }
-        .monitor-display { background: rgba(0, 5, 0, 0.95); border: 1px solid #1a1a1a; padding: 12px; }
+        .monitor-display { background: rgba(0, 0, 0, 0.9); border: 1px solid #1a1a1a; padding: 12px; }
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; }
         #mon-status { font-size: 10px; color: #39ff14; opacity: 0.8; margin-top: 8px; border-top: 1px solid #39ff1444; padding-top: 8px; white-space: pre-line; line-height: 1.4; }
         canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; outline: none; }
@@ -24,11 +24,11 @@
 <div id="rau-ui">
     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
         <div id="led" style="width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14;"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">CORE v191.0 | FIXED RENDER</span>
+        <span style="font-size: 11px; letter-spacing: 1px;">CORE v192.0 | LINK ESTÁVEL</span>
     </div>
     <div class="monitor-display">
-        <span id="mon-city">SYNCHRONIZING...</span>
-        <div id="mon-status">A aguardar dados do satélite...</div>
+        <span id="mon-city">AQUIRING SIGNAL...</span>
+        <div id="mon-status">Aguardando telemetria...</div>
     </div>
 </div>
 
@@ -40,32 +40,31 @@
         controls: null, globe: null, markers: new THREE.Group(), currentIP: null,
 
         init() {
-            // 1. Configurar Renderer primeiro
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setClearColor(0x000000, 1);
+            this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
 
-            // 2. Iluminação potente (Garante que nada fique escuro)
-            this.scene.add(new THREE.AmbientLight(0xffffff, 1.3));
-            const light = new THREE.DirectionalLight(0xffffff, 0.7);
-            light.position.set(5, 3, 5);
-            this.scene.add(light);
+            // Iluminação - Essencial para o globo não ser um círculo preto
+            this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+            sun.position.set(5, 3, 5);
+            this.scene.add(sun);
 
-            // 3. Criar Globo visível instantaneamente (Cor Cinza)
+            // Criação do Globo (Material Visível Imediato)
             const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x222222, shininess: 15 });
+            const mat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, shininess: 15 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             
-            // Vincular marcadores ao globo
+            // Grupo de marcadores colado ao globo
             this.globe.add(this.markers);
 
-            // 4. Controles de giro suave
+            // Giro Suave (Damping)
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
             this.controls.dampingFactor = 0.05;
             this.controls.autoRotate = true;
-            this.controls.autoRotateSpeed = 0.5;
+            this.controls.autoRotateSpeed = 0.6;
             this.camera.position.z = 3.5;
 
             this.animate();
@@ -76,7 +75,7 @@
 
         loadTexture() {
             const loader = new THREE.TextureLoader();
-            // Usando uma URL alternativa estável
+            // URL de textura robusta
             loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg', (tex) => {
                 this.globe.material.map = tex;
                 this.globe.material.color.set(0xffffff);
@@ -86,20 +85,20 @@
 
         async track() {
             try {
-                const res = await fetch(`https://ipapi.co/json/?nocache=${Date.now()}`);
+                const res = await fetch(`https://ipapi.co/json/?v=${Date.now()}`);
                 const data = await res.json();
                 if (data.ip && data.ip !== this.currentIP) {
                     this.currentIP = data.ip;
                     this.updateUI(data);
                 }
             } catch (e) {
-                document.getElementById('mon-status').innerText = "Erro de conexão...";
+                document.getElementById('mon-status').innerText = "Link instável...";
             }
         },
 
         updateUI(data) {
             document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
-            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nPAÍS: ${data.country_code}\nISP: ${data.org}\nSTATUS: ONLINE`;
+            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nLOCAL: ${data.country_code}\nISP: ${data.org}\nSTATUS: TRACKING`;
 
             this.markers.clear();
             const phi = (90 - data.latitude) * (Math.PI / 180);
@@ -110,18 +109,24 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            // Marcador visível
+            // Ponto Verde de Visita
             const dot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // Focar suavemente
+            // Anel de Radar
+            const ring = new THREE.Mesh(new THREE.RingGeometry(0.04, 0.05, 32), new THREE.MeshBasicMaterial({ color: 0x39ff14, transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
+            ring.position.copy(pos.clone().multiplyScalar(1.001));
+            ring.lookAt(0,0,0);
+            this.markers.add(ring);
+
+            // Focar suavemente no ponto
             this.camera.position.lerp(pos.clone().multiplyScalar(3.5), 0.05);
         },
 
         animate() {
             requestAnimationFrame(() => this.animate());
-            if (this.controls) this.controls.update();
+            if (this.controls) this.controls.update(); // Isso garante o giro suave (damping)
             this.renderer.render(this.scene, this.camera);
         }
     };
