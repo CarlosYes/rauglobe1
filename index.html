@@ -2,155 +2,167 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - QUANTUM v12.0</title>
+    <title>RAU - VOID BREAKER v13.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-        #rau-v12 {
-            position: absolute; top: 40px; left: 40px; z-index: 1000;
-            background: linear-gradient(135deg, rgba(0,20,0,0.95) 0%, rgba(0,5,0,0.9) 100%);
-            color: #39ff14; padding: 25px; border-left: 5px solid #39ff14;
-            box-shadow: 0 0 40px rgba(0,0,0,1); pointer-events: none;
+        #rau-ui {
+            position: absolute; top: 30px; left: 30px; z-index: 1000;
+            background: rgba(0, 20, 0, 0.9); color: #39ff14; padding: 25px;
+            border: 2px solid #39ff14; box-shadow: 0 0 30px rgba(57, 255, 20, 0.3);
+            pointer-events: none;
         }
-        .header { font-weight: 900; letter-spacing: 5px; text-shadow: 0 0 10px #39ff14; }
-        .stats { margin-top: 15px; font-size: 0.9em; color: #fff; }
-        .ping { color: #ff0000; animation: flash 0.6s step-end infinite; }
-        @keyframes flash { 50% { opacity: 0; } }
-        canvas { cursor: grab; }
-        canvas:active { cursor: grabbing; }
+        #debug-log { 
+            position: absolute; bottom: 20px; left: 20px; 
+            color: #ff0000; font-size: 10px; opacity: 0.7; 
+        }
+        .glitch { animation: scan 2s linear infinite; }
+        @keyframes scan { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        canvas { cursor: move; }
     </style>
 </head>
 <body>
 
-<div id="rau-v12">
-    <div class="header">RAU QUANTUM v12.0</div>
-    <div class="stats">
-        <span class="ping">●</span> UPLINK: <span id="node-city">CONECTANDO...</span><br>
-        <hr style="border:0; border-top:1px solid rgba(57,255,20,0.2); margin:10px 0;">
-        OUVINTES: <span id="count" style="font-size: 1.8em; font-weight: 900; color: #39ff14;">0</span>
+<div id="rau-ui">
+    <div style="font-weight: 900; letter-spacing: 3px;" class="glitch">RAU COMMAND v13.0</div>
+    <div style="margin-top: 10px;">
+        STATUS: <span id="status" style="color:#fff">INICIALIZANDO...</span><br>
+        CIDADE: <span id="city" style="color:#fff">---</span><br>
+        <hr style="border:0; border-top:1px solid #39ff14; margin:10px 0; opacity:0.3;">
+        OUVINTES ONLINE: <span id="count" style="font-size: 1.8em; color:#fff; font-weight: 900;">0</span>
     </div>
 </div>
 
+<div id="debug-log">SYSTEM READY...</div>
+
 <script>
-    // 1. FIREBASE CORE (Encriptação Nível 3)
-    const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
+    const log = (msg) => { document.getElementById('debug-log').innerText = "LOG: " + msg; console.log(msg); };
+
+    // 1. FIREBASE CORE (Coleção Nova para evitar lixo)
+    const _c = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+    const cfg = { apiKey: atob(_c[0]), authDomain: atob(_c[1]), projectId: atob(_c[2]), appId: atob(_c[3]) };
+    
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
-    const nodeID = "RAU_" + Math.random().toString(36).substr(2, 6);
+    const mySession = "NODE_" + Date.now().toString(36);
 
-    // 2. ENGINE 3D (Hierarquia Inercial)
+    // 2. ENGINE 3D
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
     const world = new THREE.Group(); 
     scene.add(world);
 
-    const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin('anonymous');
     const globe = new THREE.Mesh(
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({
-            map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            shininess: 15
+            map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
+            shininess: 10
         })
     );
     world.add(globe);
     scene.add(new THREE.AmbientLight(0xffffff, 1.0));
     camera.position.z = 3.5;
 
-    // 3. CACHE DE ALTA VELOCIDADE (Proxy de Memória)
-    const activeMarkers = new Map();
+    // 3. GESTÃO DE MARCADORES (Cache Ativa)
+    const pool = new Map();
 
-    function syncNodes(data) {
-        const liveIds = new Set(data.map(d => d.id));
+    function updateMarkers(data) {
+        const currentIds = new Set(data.map(d => d.id));
 
-        data.forEach(unit => {
-            if (!activeMarkers.has(unit.id)) {
-                const phi = (90 - unit.lat) * (Math.PI / 180);
-                const theta = (unit.lng + 180) * (Math.PI / 180);
+        data.forEach(d => {
+            if (!pool.has(d.id)) {
+                const phi = (90 - d.lat) * (Math.PI / 180);
+                const theta = (d.lng + 180) * (Math.PI / 180);
                 const pos = new THREE.Vector3().setFromSphericalCoords(1.02, phi, theta);
 
-                const group = new THREE.Group();
+                const g = new THREE.Group();
                 const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
                 dot.position.copy(pos);
-                group.add(dot);
+                g.add(dot);
 
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                canvas.width = 300; canvas.height = 100;
-                ctx.fillStyle = 'rgba(0,30,0,0.95)'; ctx.fillRect(0,0,300,100);
-                ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 4; ctx.strokeRect(0,0,300,100);
-                ctx.font = 'bold 32px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-                ctx.fillText(unit.city.toUpperCase(), 150, 62);
+                canvas.width = 200; canvas.height = 60;
+                ctx.fillStyle = 'rgba(0,40,0,0.9)'; ctx.fillRect(0,0,200,60);
+                ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 4; ctx.strokeRect(0,0,200,60);
+                ctx.font = 'bold 20px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+                ctx.fillText(d.city.toUpperCase(), 100, 38);
 
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: true }));
                 sprite.position.copy(pos.clone().multiplyScalar(1.15));
-                sprite.scale.set(0.5, 0.15, 1);
-                group.add(sprite);
+                sprite.scale.set(0.4, 0.12, 1);
+                g.add(sprite);
 
-                world.add(group);
-                activeMarkers.set(unit.id, group);
+                world.add(g);
+                pool.set(d.id, g);
             }
         });
 
-        activeMarkers.forEach((obj, id) => {
-            if (!liveIds.has(id)) {
-                world.remove(obj);
-                activeMarkers.delete(id);
-            }
+        pool.forEach((obj, id) => {
+            if (!currentIds.has(id)) { world.remove(obj); pool.delete(id); }
         });
     }
 
-    // 4. CONTROLO DE ROTAÇÃO (Prioridade GPU)
-    let isDrag = false, lastX, lastY;
-    document.addEventListener('mousedown', (e) => { isDrag = true; lastX = e.clientX; lastY = e.clientY; });
-    window.addEventListener('mouseup', () => isDrag = false);
+    // 4. CONTROLOS
+    let isDown = false, lastX, lastY;
+    document.addEventListener('mousedown', (e) => { isDown = true; lastX = e.clientX; lastY = e.clientY; });
+    window.addEventListener('mouseup', () => isDown = false);
     window.addEventListener('mousemove', (e) => {
-        if (isDrag) {
-            world.rotation.y += (e.clientX - lastX) * 0.006;
-            world.rotation.x += (e.clientY - lastY) * 0.006;
+        if (isDown) {
+            world.rotation.y += (e.clientX - lastX) * 0.007;
+            world.rotation.x += (e.clientY - lastY) * 0.007;
             lastX = e.clientX; lastY = e.clientY;
-            world.updateMatrixWorld(); // Sincronia instantânea
         }
     });
 
-    // 5. UPLINK CRÍTICO
-    async function startUplink() {
-        const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
-        document.getElementById('node-city').innerText = res.city.toUpperCase();
-        const [lat, lng] = res.loc.split(',').map(Number);
+    // 5. O SEGREDO DO v13.0: SYNC REAL
+    async function startSystem() {
+        try {
+            log("Fetching IP data...");
+            const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
+            document.getElementById('city').innerText = res.city.toUpperCase();
+            const [lat, lng] = res.loc.split(',').map(Number);
 
-        const up = () => db.collection('RAU_V12').doc(nodeID).set({ lat, lng, city: res.city, ts: firebase.firestore.FieldValue.serverTimestamp() });
-        up(); setInterval(up, 25000);
+            log("Uplinking to Firebase...");
+            const update = () => db.collection('RAU_FINAL').doc(mySession).set({
+                lat, lng, city: res.city, ts: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                document.getElementById('status').innerText = "SINCRO OK";
+                document.getElementById('status').style.color = "#39ff14";
+            });
 
-        db.collection('RAU_V12').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-            const list = [];
-            snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
-            syncNodes(list);
-            document.getElementById('count').innerText = snap.size;
-        });
+            update(); setInterval(update, 20000);
+
+            // Escuta ativa (O que faz os pontos aparecerem)
+            db.collection('RAU_FINAL').where('ts', '>', new Date(Date.now() - 60000))
+              .onSnapshot(snap => {
+                  log("Data received: " + snap.size + " nodes");
+                  const list = [];
+                  snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+                  updateMarkers(list);
+                  document.getElementById('count').innerText = snap.size;
+              }, err => log("FIREBASE ERR: " + err.message));
+
+        } catch (e) {
+            log("CRITICAL ERROR: " + e.message);
+            document.getElementById('status').innerText = "ERRO DE LINK";
+            document.getElementById('status').style.color = "#ff0000";
+        }
     }
 
     function animate() {
         requestAnimationFrame(animate);
-        if (!isDrag) world.rotation.y += 0.0015;
+        if (!isDown) world.rotation.y += 0.002;
         renderer.render(scene, camera);
     }
 
-    startUplink(); animate();
-
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+    startSystem(); animate();
 </script>
 </body>
 </html>
