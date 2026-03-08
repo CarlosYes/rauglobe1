@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v62.0</title>
+    <title>RAU RADAR v62.0 - MULTIPLAYER</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -17,7 +17,7 @@
         .label { font-size: 10px; font-weight: bold; text-transform: uppercase; opacity: 0.8; }
         #city-display { margin-top: 15px; padding: 10px; background: #002200; border: 1px solid #333; }
         #city-name { font-size: 18px; color: #fff; font-weight: bold; display: block; }
-        #status { font-size: 9px; color: #39ff14; margin-top: 5px; display: block; }
+        #status-msg { font-size: 9px; color: #39ff14; margin-top: 5px; opacity: 0.6; }
     </style>
 </head>
 <body>
@@ -25,55 +25,60 @@
 <div id="rau-ui">
     <div class="label">RAU COMMAND v62.0</div>
     <span id="count">0</span>
-    <div class="label">UTILIZADORES ONLINE</div>
+    <div class="label">SINAIS NO GLOBO</div>
     
     <div id="city-display">
-        <span class="label" style="font-size: 8px;">A TUA LOCALIZAÇÃO:</span>
         <span id="city-name">A CONECTAR...</span>
-        <span id="status">SINAL: PROCURANDO SERVIDOR...</span>
+        <span id="status-msg">À PROCURA DE SERVIDOR...</span>
     </div>
 </div>
 
 <script>
-    // 🔗 SUBSTITUI PELO TEU LINK DO RENDER AQUI!
-    const SERVER_URL = "https://TEU-PROJETO.onrender.com"; 
-    const socket = io(SERVER_URL, { transports: ['websocket', 'polling'] });
+    // 🔗 INSERE AQUI O TEU LINK DO RENDER
+    // Exemplo: "https://meu-servidor-rau.onrender.com"
+    const SERVER_URL = "https://TEU-SERVIDOR.onrender.com"; 
 
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+    const socket = io(SERVER_URL, { transports: ['websocket'] });
+    let scene, camera, renderer, controls, globeGroup;
 
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.autoRotate = true; camera.position.z = 3.5;
+    function init() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.autoRotate = true; camera.position.z = 3.5;
 
-    const globeGroup = new THREE.Group();
-    scene.add(globeGroup);
+        globeGroup = new THREE.Group();
+        scene.add(globeGroup);
 
-    const globe = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 64, 64),
-        new THREE.MeshPhongMaterial({
-            map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            shininess: 5
-        })
-    );
-    globeGroup.add(globe);
-    scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+        const globe = new THREE.Mesh(
+            new THREE.SphereGeometry(1, 64, 64),
+            new THREE.MeshPhongMaterial({
+                map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
+                shininess: 5
+            })
+        );
+        globeGroup.add(globe);
+        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
 
-    // SINCRONIA DE REDE
+        animate();
+    }
+
     socket.on('connect', async () => {
-        document.getElementById('status').innerText = "SINAL: CONECTADO AO SERVIDOR";
+        document.getElementById('status-msg').innerText = "SERVIDOR LIGADO";
         try {
             const res = await fetch("https://ipapi.co/json/").then(r => r.json());
             socket.emit('report-location', {
-                city: res.city || "DESCONHECIDO",
+                city: res.city || "RAU-NODE",
                 lat: res.latitude || 0,
                 lon: res.longitude || 0,
                 country: (res.country_code || "un").toLowerCase()
             });
         } catch(e) {
-            socket.emit('report-location', { city: "RAU-NODE", lat: 0, lon: 0, country: "un" });
+            socket.emit('report-location', { city: "SINAL OCULTO", lat: 0, lon: 0, country: "un" });
         }
     });
 
@@ -81,7 +86,6 @@
         const peerList = Object.values(peers);
         document.getElementById('count').innerText = peerList.length;
 
-        // Limpa e redesenha
         for(let i = globeGroup.children.length - 1; i > 0; i--) globeGroup.remove(globeGroup.children[i]);
 
         peerList.forEach(p => {
@@ -92,25 +96,18 @@
             const theta = (p.lon + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3(-(Math.sin(phi)*Math.cos(theta))*1.02, Math.cos(phi)*1.02, (Math.sin(phi)*Math.sin(theta))*1.02);
 
-            const dotColor = isLocal ? 0x39ff14 : 0xff3939;
-            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 16, 16), new THREE.MeshBasicMaterial({ color: dotColor }));
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 16, 16), new THREE.MeshBasicMaterial({ color: isLocal ? 0x39ff14 : 0xff3939 }));
             dot.position.copy(pos);
             globeGroup.add(dot);
         });
     });
 
     socket.on('disconnect', () => {
-        document.getElementById('status').innerText = "SINAL: PERDIDO (RECONECTANDO)";
+        document.getElementById('status-msg').innerText = "SINAL PERDIDO - RECONECTANDO";
     });
 
     function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
-    animate();
-
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+    init();
 </script>
 </body>
 </html>
