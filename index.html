@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v182.0 - SMOOTH RECOVERY</title>
+    <title>RAU MONITOR v183.0 - ULTIMATE STABILITY</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -27,11 +27,11 @@
 <div id="rau-ui">
     <div class="status-row">
         <div id="led"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">CORE v182.0 | HYPER-SMOOTH</span>
+        <span style="font-size: 11px; letter-spacing: 1px;">CORE v183.0 | STABLE-FLOW</span>
     </div>
     <div class="monitor-display">
         <span id="mon-city">SINCRO...</span>
-        <div id="mon-status">Buscando sinal de rede...</div>
+        <div id="mon-status">Localizando nó de rede...</div>
     </div>
 </div>
 
@@ -44,63 +44,62 @@
 
         init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.body.appendChild(this.renderer.domElement);
 
-            // CONTROLES DE GIRO SUAVE
+            // 1. CONFIGURAÇÃO DE GIRO SUAVE (ESTILO MANTEIGA)
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true; 
-            this.controls.dampingFactor = 0.05; // Suavidade extrema
+            this.controls.dampingFactor = 0.05; 
             this.controls.autoRotate = true;
-            this.controls.autoRotateSpeed = 0.7; 
+            this.controls.autoRotateSpeed = 0.6; // Rotação constante elegante
             this.camera.position.z = 3.5;
 
-            // Iluminação
-            this.scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+            // 2. LUZES (Essencial para o globo aparecer sempre)
+            this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.5);
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
 
-            // Globo
+            // 3. GLOBO (Material sólido primeiro, textura depois)
             const geo = new THREE.SphereGeometry(1, 64, 64);
             const mat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 10 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.scene.add(this.markers);
 
-            // Textura
-            new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
-                this.globe.material.map = tex;
-                this.globe.material.needsUpdate = true;
-            });
+            // 4. CARREGAR TEXTURA E ESTRELAS
+            this.loadAssets();
 
-            this.updateEnvironment();
             this.animate();
             this.checkNetwork();
             setInterval(() => this.checkNetwork(), 8000);
         },
 
-        updateEnvironment() {
-            const hour = new Date().getHours();
-            const isNight = (hour < 6 || hour > 18);
-            this.scene.background = isNight ? new THREE.Color(0x000003) : new THREE.Color(0x050a15);
-            if (isNight) this.createStars();
-        },
+        loadAssets() {
+            // Textura da Terra
+            new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
+                this.globe.material.map = tex;
+                this.globe.material.needsUpdate = true;
+            });
 
-        createStars() {
-            const starGeo = new THREE.BufferGeometry();
-            const coords = [];
-            for (let i = 0; i < 6000; i++) {
-                coords.push((Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500);
+            // Estrelas se for Noite
+            const hour = new Date().getHours();
+            if (hour < 6 || hour > 18) {
+                const starGeo = new THREE.BufferGeometry();
+                const coords = [];
+                for (let i = 0; i < 5000; i++) {
+                    coords.push((Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500);
+                }
+                starGeo.setAttribute('position', new THREE.Float32BufferAttribute(coords, 3));
+                this.scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 })));
             }
-            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(coords, 3));
-            this.scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 })));
         },
 
         async checkNetwork() {
             try {
-                // Força a detecção real do IP ignorando cache
-                const res = await fetch(`https://ipapi.co/json/?v=${Date.now()}`);
+                // Detecção de VPN sem cache
+                const res = await fetch(`https://ipapi.co/json/?nocache=${Date.now()}`);
                 const data = await res.json();
 
                 if (data.ip !== this.currentIP) {
@@ -108,13 +107,13 @@
                     this.updateUI(data);
                 }
             } catch (e) {
-                document.getElementById('mon-status').innerText = "NETWORK SCANNING...";
+                document.getElementById('mon-status').innerText = "LINK LAGGING...";
             }
         },
 
         updateUI(data) {
             document.getElementById('mon-city').innerText = (data.city || "RAU-NODE").toUpperCase();
-            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nLOC: ${data.country_code}\nISP: ${data.org}\nSTATUS: LIVE TRACKING`;
+            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nNODE: ${data.country_code}\nISP: ${data.org}\nSTATUS: TRACKING ACTIVE`;
 
             this.markers.clear();
             const phi = (90 - data.latitude) * (Math.PI / 180);
@@ -125,17 +124,19 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
+            // LED de Localização
             const dot = new THREE.Mesh(new THREE.SphereGeometry(0.025, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // Giro suave até o local
-            this.camera.position.lerp(pos.clone().multiplyScalar(3.5), 0.1);
+            // Suavizar foco da câmera
+            const targetPos = pos.clone().multiplyScalar(3.5);
+            this.camera.position.lerp(targetPos, 0.05);
         },
 
         animate() {
             requestAnimationFrame(() => this.animate());
-            if (this.controls) this.controls.update(); // Aqui garante a suavidade do giro
+            if (this.controls) this.controls.update(); // GARANTE O GIRO SUAVE
             this.renderer.render(this.scene, this.camera);
         }
     };
