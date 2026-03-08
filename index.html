@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v207.0 - RADICAL BYPASS</title>
+    <title>RAU MONITOR v208.0 - DIRECT UPLINK</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -30,11 +30,11 @@
 <div id="rau-ui">
     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
         <div id="status-led" style="width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14;"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">CORE v207 | PROTOCOLO GERAL</span>
+        <span style="font-size: 11px; letter-spacing: 1px;">CORE v208 | CLOUDFLARE NODE</span>
     </div>
     <div class="monitor-display">
-        <span id="mon-city">SCANNING...</span>
-        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">A aguardar sinal de satélite...</div>
+        <span id="mon-city">A SINCRONIZAR...</span>
+        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Link direto estabelecido...</div>
     </div>
 </div>
 
@@ -44,13 +44,6 @@
 </div>
 
 <script>
-    // ESTA É A FUNÇÃO QUE O SCRIPT EXTERNO VAI CHAMAR AUTOMATICAMENTE
-    function getGeo(data) {
-        if (data && data.ip) {
-            RAU.updateVisitor(data);
-        }
-    }
-
     const RAU = {
         scene: new THREE.Scene(),
         camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000),
@@ -60,6 +53,7 @@
 
         init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
 
             this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
@@ -79,7 +73,7 @@
             this.camera.position.z = 3.5;
 
             this.loadTexture();
-            this.track(); // Inicia rastreio por injeção de script
+            this.track(); 
             
             setInterval(() => this.track(), 30000);
             this.animate();
@@ -92,25 +86,32 @@
             });
         },
 
-        track() {
-            // REMOVE SCRIPT ANTIGO SE EXISTIR
-            const old = document.getElementById('geo-script');
-            if (old) old.remove();
+        async track() {
+            try {
+                // Passo 1: Pegar o IP via Cloudflare (Extremamente estável)
+                const trace = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
+                const text = await trace.text();
+                const ip = text.match(/ip=(.*)\n/)[1];
 
-            // INJETA O SCRIPT QUE TRAZ OS DADOS (BYPASS CORS)
-            const script = document.createElement('script');
-            script.id = 'geo-script';
-            // Usando ipapi.co via JSONP (o parâmetro callback é o segredo)
-            script.src = `https://ipapi.co/jsonp/?callback=getGeo&t=${Date.now()}`;
-            document.body.appendChild(script);
+                if (ip === this.currentIP) return;
+                this.currentIP = ip;
+
+                // Passo 2: Geolocation via IPWHOIS (HTTPS e sem bloqueio de referer)
+                const res = await fetch(`https://ipwho.is/${ip}`);
+                const data = await res.json();
+                
+                if (data.success) {
+                    this.updateVisitor(data);
+                }
+            } catch (e) {
+                console.error("Erro no uplink v208.");
+                document.getElementById('mon-city').innerText = "OFFLINE";
+            }
         },
 
         updateVisitor(data) {
-            if (data.ip === this.currentIP) return;
-            this.currentIP = data.ip;
-
             document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
-            document.getElementById('mon-status').innerText = "LINK ESTABELECIDO: " + data.ip;
+            document.getElementById('mon-status').innerText = "IP: " + data.ip;
             
             this.markers.clear();
             const phi = (90 - data.latitude) * (Math.PI / 180);
@@ -121,7 +122,7 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            // BOLINHA VERDE 0.01
+            // BOLINHA VERDE 0.01 (MUITO PEQUENA)
             const dot = new THREE.Mesh(new THREE.SphereGeometry(0.01, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
