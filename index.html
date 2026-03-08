@@ -68,17 +68,16 @@
             this.scene.add(this.globe);
             this.scene.add(this.markers);
 
-            // Loader com Bypass de Cache
+            // Loader com Bypass de Cache para o GitHub Pages
             const loader = new THREE.TextureLoader();
             loader.setCrossOrigin('anonymous');
-            loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg?nocache=' + Date.now(), (tex) => {
+            loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg?v=' + Date.now(), (tex) => {
                 this.globe.material.map = tex;
                 this.globe.material.color.set(0xffffff);
                 this.globe.material.needsUpdate = true;
             });
 
-            // Iluminação Profissional
-            this.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
             const sun = new THREE.DirectionalLight(0xffffff, 0.6);
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
@@ -86,7 +85,7 @@
             this.animate();
             this.syncNetwork();
             
-            // Verificação Inteligente (5s para não sobrecarregar mas detectar troca de VPN)
+            // Verificação a cada 5 segundos (Ideal para detectar VPN sem travar)
             setInterval(() => this.syncNetwork(), 5000);
         },
 
@@ -95,16 +94,16 @@
             this.isProcessing = true;
 
             try {
-                const res = await fetch(`https://ipapi.co/json/?v=${Date.now()}`);
+                // Força a API a ignorar o cache para detecção real de VPN
+                const res = await fetch(`https://ipapi.co/json/?nocache=${Date.now()}`);
                 const data = await res.json();
 
-                // SÓ ATUALIZA SE O IP MUDAR OU SE NÃO HOUVER MARCADORES
                 if (data.ip !== this.lastIP || this.markers.children.length === 0) {
                     this.lastIP = data.ip;
                     this.renderVisitor(data);
                 }
             } catch (e) { 
-                console.warn("Uplink unstable. Retrying..."); 
+                console.warn("Sinal instável. Tentando reconectar..."); 
             } finally {
                 this.isProcessing = false;
             }
@@ -115,14 +114,14 @@
             const cityDisplay = (city || "TARGET DETECTED").toUpperCase();
             const isoCode = iso.toLowerCase();
 
-            // Atualização da UI Lateral
+            // Painel Lateral
             document.getElementById('mon-city').innerText = cityDisplay;
             const flag = document.getElementById('mon-flag-ui');
             flag.src = `https://flagcdn.com/w80/${isoCode}.png`;
             flag.style.display = 'inline-block';
-            document.getElementById('mon-status').innerText = `NODE: ${iso} | IP: ${data.ip} | SINAL: EXCELENTE`;
+            document.getElementById('mon-status').innerText = `NODE: ${iso} | IP: ${data.ip} | STATUS: ACTIVE`;
 
-            // Limpeza e Reconstrução Focada
+            // Reconstrução de Marcadores
             this.markers.clear();
             
             const phi = (90 - lat) * (Math.PI / 180);
@@ -133,7 +132,7 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            // 1. LED DE POSIÇÃO
+            // 1. PONTO LED
             const dot = new THREE.Mesh(
                 new THREE.SphereGeometry(0.025, 16, 16), 
                 new THREE.MeshBasicMaterial({ color: 0x39ff14 })
@@ -141,30 +140,27 @@
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // 2. BANDEIRA (SPRITE)
+            // 2. BANDEIRA
             const fTex = new THREE.TextureLoader().load(`https://flagcdn.com/w160/${isoCode}.png`);
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex }));
             sprite.position.copy(pos.clone().multiplyScalar(1.18));
             sprite.scale.set(0.28, 0.16, 1);
             this.markers.add(sprite);
 
-            // 3. NOME DA CIDADE (TEXTO 3D)
+            // 3. NOME CIDADE
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = 512; canvas.height = 128;
-            ctx.fillStyle = '#39ff14'; ctx.font = '900 60px Courier New';
+            ctx.fillStyle = '#39ff14'; ctx.font = '900 64px Courier New';
             ctx.textAlign = 'center'; ctx.fillText(cityDisplay, 256, 80);
             
-            const label = new THREE.Sprite(new THREE.SpriteMaterial({ 
-                map: new THREE.CanvasTexture(canvas) 
-            }));
+            const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
             label.position.copy(pos.clone().multiplyScalar(1.35));
             label.scale.set(0.8, 0.2, 1);
             this.markers.add(label);
 
-            // Focar Câmera suavemente
-            const targetCam = pos.clone().multiplyScalar(3.8);
-            this.camera.position.lerp(targetCam, 0.1);
+            // Fly-to automático para a nova localização
+            this.camera.position.lerp(pos.clone().multiplyScalar(3.8), 0.1);
         },
 
         animate() {
