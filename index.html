@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v62.0 - MULTIPLAYER</title>
+    <title>RAU RADAR v64.0 - EFFICACY</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -10,35 +10,35 @@
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 10, 0, 0.95); border: 2px solid #39ff14;
-            padding: 20px; width: 280px; box-shadow: 0 0 40px rgba(0, 255, 0, 0.3);
+            background: rgba(0, 10, 0, 0.98); border: 2px solid #39ff14;
+            padding: 20px; width: 280px; box-shadow: 0 0 40px rgba(0, 255, 0, 0.5);
         }
-        #count { font-size: 4em; font-weight: 900; color: #fff; display: block; line-height: 0.8; }
-        .label { font-size: 10px; font-weight: bold; text-transform: uppercase; opacity: 0.8; }
-        #city-display { margin-top: 15px; padding: 10px; background: #002200; border: 1px solid #333; }
-        #city-name { font-size: 18px; color: #fff; font-weight: bold; display: block; }
-        #status-msg { font-size: 9px; color: #39ff14; margin-top: 5px; opacity: 0.6; }
+        #count { font-size: 4.5em; font-weight: 900; color: #fff; display: block; line-height: 0.8; margin-bottom: 5px; }
+        .label { font-size: 10px; font-weight: bold; text-transform: uppercase; opacity: 0.7; }
+        #monitor { margin-top: 15px; padding: 12px; background: #001a00; border: 1px solid #1a331a; border-radius: 4px; }
+        #city-name { font-size: 20px; color: #fff; font-weight: bold; display: block; text-shadow: 0 0 10px #39ff14; }
+        #net-status { font-size: 9px; color: #39ff14; margin-top: 10px; display: block; border-top: 1px solid #1a331a; padding-top: 8px; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div class="label">RAU COMMAND v62.0</div>
+    <div class="label">RAU COMMAND v64.0</div>
     <span id="count">0</span>
-    <div class="label">SINAIS NO GLOBO</div>
+    <div class="label">SINAIS ACTIVOS</div>
     
-    <div id="city-display">
-        <span id="city-name">A CONECTAR...</span>
-        <span id="status-msg">À PROCURA DE SERVIDOR...</span>
+    <div id="monitor">
+        <span id="city-name">INICIALIZANDO...</span>
+        <span id="net-status">ESTABELECENDO LIGAÇÃO...</span>
     </div>
 </div>
 
 <script>
-    // 🔗 INSERE AQUI O TEU LINK DO RENDER
-    // Exemplo: "https://meu-servidor-rau.onrender.com"
+    // 🔗 CONFIGURAÇÃO OBRIGATÓRIA:
+    // Se não tens o servidor no Render, este radar continuará em 0.
     const SERVER_URL = "https://TEU-SERVIDOR.onrender.com"; 
+    const socket = io(SERVER_URL, { transports: ['websocket'], upgrade: false });
 
-    const socket = io(SERVER_URL, { transports: ['websocket'] });
     let scene, camera, renderer, controls, globeGroup;
 
     function init() {
@@ -67,18 +67,24 @@
         animate();
     }
 
+    // LÓGICA DE REDE EFICAZ
     socket.on('connect', async () => {
-        document.getElementById('status-msg').innerText = "SERVIDOR LIGADO";
+        document.getElementById('net-status').innerText = "CONECTADO AO SERVIDOR ✓";
+        
         try {
-            const res = await fetch("https://ipapi.co/json/").then(r => r.json());
+            // Usando GeoJS (Mais estável que ipapi)
+            const res = await fetch(`https://get.geojs.io/v1/ip/geo.json?t=${Date.now()}`);
+            const data = await res.json();
+            
             socket.emit('report-location', {
-                city: res.city || "RAU-NODE",
-                lat: res.latitude || 0,
-                lon: res.longitude || 0,
-                country: (res.country_code || "un").toLowerCase()
+                city: data.city || "SINAL RAU",
+                lat: parseFloat(data.latitude) || 0,
+                lon: parseFloat(data.longitude) || 0,
+                country: (data.country_code || "un").toLowerCase()
             });
         } catch(e) {
-            socket.emit('report-location', { city: "SINAL OCULTO", lat: 0, lon: 0, country: "un" });
+            // Fallback imediato: Se a localização falhar, entra como sinal anónimo (não trava em 0)
+            socket.emit('report-location', { city: "ANÓNIMO", lat: 0, lon: 0, country: "un" });
         }
     });
 
@@ -86,6 +92,7 @@
         const peerList = Object.values(peers);
         document.getElementById('count').innerText = peerList.length;
 
+        // Limpar apenas os pontos (manter o globo)
         for(let i = globeGroup.children.length - 1; i > 0; i--) globeGroup.remove(globeGroup.children[i]);
 
         peerList.forEach(p => {
@@ -102,8 +109,9 @@
         });
     });
 
-    socket.on('disconnect', () => {
-        document.getElementById('status-msg').innerText = "SINAL PERDIDO - RECONECTANDO";
+    socket.on('connect_error', () => {
+        document.getElementById('net-status').innerText = "ERRO: SERVIDOR OFFLINE";
+        document.getElementById('city-name').innerText = "SEM SINAL";
     });
 
     function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
