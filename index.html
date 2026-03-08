@@ -22,7 +22,7 @@
 
 <div class="hud">
     <b style="font-size: 1.1em;">RADAR RADIO AMIGOS UNIDOS</b><br>
-    <span id="my-loc" style="font-size: 0.9em;">A localizar sinal...</span><br>
+    <span id="my-loc" style="font-size: 0.9em;">Sincronizando satélite...</span><br>
     <hr style="border:0; border-top:1px solid #39ff14; margin:8px 0; opacity: 0.3;">
     OUVINTES ONLINE: <span id="count" style="font-size: 1.2em; font-weight: bold;">1</span>
 </div>
@@ -95,7 +95,7 @@
         );
 
         const mGroup = new THREE.Group();
-        mGroup.name = "visitor_node"; // Nome específico para limpeza
+        mGroup.name = "visitor_node"; 
         
         const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
         dot.position.copy(pos);
@@ -139,7 +139,6 @@
             push(); setInterval(push, 25000);
 
             db.collection('rau_v_final').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                // Limpeza segura apenas dos marcadores
                 const toDelete = [];
                 mainGroup.children.forEach(c => { if(c.name === "visitor_node") toDelete.push(c); });
                 toDelete.forEach(c => mainGroup.remove(c));
