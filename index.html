@@ -2,9 +2,10 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v175.0 - RECOVERY</title>
+    <title>RAU RADAR v60.0 - OMNI-RECOVERY</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
@@ -12,39 +13,33 @@
             background: rgba(0, 15, 0, 0.98); border: 2px solid #39ff14;
             padding: 20px; width: 320px; box-shadow: 0 0 50px rgba(0, 255, 0, 0.6);
         }
-        .status-row { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
-        #led { width: 14px; height: 14px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 15px #39ff14; }
-        .monitor-display { background: #000; border: 1px solid #333; padding: 15px; margin-bottom: 15px; border-radius: 4px; }
+        #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; line-height: 0.8; margin: 10px 0; }
+        .label { font-size: 10px; letter-spacing: 1px; font-weight: bold; text-transform: uppercase; }
+        .monitor-display { background: #000; border: 1px solid #333; padding: 15px; margin-top: 15px; border-radius: 4px; }
         #mon-city { font-size: 22px; color: #fff; font-weight: bold; display: block; text-shadow: 0 0 10px #39ff14; }
-        #mon-flag-ui { height: 26px; vertical-align: middle; border: 1px solid #555; display: none; margin-right: 12px; border-radius: 2px; }
         #mon-status { font-size: 11px; color: #39ff14; opacity: 0.8; margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px; }
-        #btn-recover {
-            width: 100%; background: #200; border: 1px solid #f00; color: #f00;
-            padding: 12px; cursor: pointer; font-family: 'Courier New'; font-size: 12px; font-weight: bold;
-            transition: 0.3s; text-transform: uppercase;
-        }
-        #btn-recover:hover { background: #f00; color: #fff; box-shadow: 0 0 20px #f00; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div class="status-row">
-        <div id="led"></div>
-        <span style="font-weight: bold; font-size: 12px;">RESET DE BLOQUEIO v175</span>
-    </div>
+    <div class="label">RAU COMMAND v60.0</div>
+    <span id="count">0</span>
+    <div class="label">SINAIS ACTIVOS</div>
+
     <div class="monitor-display">
         <div style="display: flex; align-items: center;">
-            <img id="mon-flag-ui" src="">
-            <span id="mon-city">A PURGAR...</span>
+            <span id="mon-city">A SINCRONIZAR...</span>
         </div>
-        <div id="mon-status">A RECONSTRUIR ROTAS DE SINAL...</div>
+        <div id="mon-status">A AGUARDAR DADOS DO SERVIDOR...</div>
     </div>
-    <button id="btn-recover" onclick="masterSync()">Reset Total de Sinal</button>
 </div>
 
 <script>
-    let scene, camera, renderer, controls, globe, anchorGroup;
+    // 1. CONFIGURAÇÃO DE REDE (Coloque o link do seu Render aqui)
+    const socket = io("https://URL-DO-TEU-SERVIDOR.onrender.com");
+
+    let scene, camera, renderer, controls, globe, globeGroup;
 
     function init() {
         scene = new THREE.Scene();
@@ -56,84 +51,79 @@
         controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.autoRotate = true; camera.position.z = 3.5;
 
+        globeGroup = new THREE.Group();
+        scene.add(globeGroup);
+
         globe = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), new THREE.MeshPhongMaterial({ shininess: 8 }));
-        scene.add(globe);
+        globeGroup.add(globe);
 
         new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
             globe.material.map = tex; globe.material.needsUpdate = true;
         });
 
         scene.add(new THREE.AmbientLight(0xffffff, 3.0));
-        anchorGroup = new THREE.Group(); scene.add(anchorGroup);
         
         animate();
-        masterSync();
     }
 
-    async function masterSync() {
-        document.getElementById('mon-city').innerText = "A LER...";
+    // 2. SINCRONIA MULTIPLAYER
+    socket.on('update-peers', (peers) => {
+        const peerList = Object.values(peers);
+        document.getElementById('count').innerText = peerList.length;
+
+        // Limpar marcadores antigos (preservar o globo)
+        for(let i = globeGroup.children.length - 1; i > 0; i--) globeGroup.remove(globeGroup.children[i]);
+
+        peerList.forEach(p => {
+            const isLocal = p.id === socket.id;
+            if(isLocal) {
+                document.getElementById('mon-city').innerText = p.city.toUpperCase();
+                document.getElementById('mon-status').innerText = `SINAL LOCAL FIXADO | PORTA: ${socket.id.substring(0,6)}`;
+            }
+            renderPeer(p, isLocal);
+        });
+    });
+
+    function renderPeer(data, isLocal) {
+        const phi = (90 - data.lat) * (Math.PI / 180);
+        const theta = (data.lon + 180) * (Math.PI / 180);
+        const pos = new THREE.Vector3(-(Math.sin(phi)*Math.cos(theta))*1.01, Math.cos(phi)*1.01, (Math.sin(phi)*Math.sin(theta))*1.01);
+
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: isLocal ? 0x39ff14 : 0xff3939 }));
+        dot.position.copy(pos); globeGroup.add(dot);
+
+        // Bandeira
+        new THREE.TextureLoader().load(`https://flagcdn.com/w80/${data.country}.png`, (fTex) => {
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex }));
+            sprite.position.copy(pos.clone().multiplyScalar(1.2));
+            sprite.scale.set(0.25, 0.15, 1);
+            globeGroup.add(sprite);
+        });
+    }
+
+    // 3. RECUPERAÇÃO DE LOCALIZAÇÃO (O "MASTER SYNC" DA v175)
+    socket.on('connect', async () => {
         const ts = Date.now();
-        
-        // Estratégia de Salto entre Provedores (Ignora Bloqueios de Rede)
-        const sources = [
-            `https://ipapi.co/json/?rau=${ts}`,
-            `https://get.geojs.io/v1/ip/geo.json?v=${ts}`,
-            `https://api.db-ip.com/v2/free/self?t=${ts}`,
-            `https://ipinfo.io/json?token=f57d609c1223e8` // Token público fallback
-        ];
+        const sources = [`https://ipapi.co/json/?rau=${ts}`, `https://get.geojs.io/v1/ip/geo.json?v=${ts}`];
 
         for (let url of sources) {
             try {
-                const res = await fetch(url, { cache: 'no-store' });
+                const res = await fetch(url);
                 const data = await res.json();
-                const lat = data.latitude || data.lat || (data.loc ? data.loc.split(',')[0] : null);
-                const lon = data.longitude || data.lon || (data.loc ? data.loc.split(',')[1] : null);
-                const city = data.city || data.city_name;
-                const country = (data.country_code || data.country || "").toLowerCase();
-
-                if (lat && lon) {
-                    return renderFull(parseFloat(lat), parseFloat(lon), city, country);
+                const lat = data.latitude || data.lat;
+                const lon = data.longitude || data.lon;
+                if (lat) {
+                    socket.emit('report-location', {
+                        city: data.city || "DESCONHECIDO",
+                        lat: parseFloat(lat),
+                        lon: parseFloat(lon),
+                        country: (data.country_code || data.country || "un").toLowerCase()
+                    });
+                    break;
                 }
             } catch(e) { continue; }
         }
-        document.getElementById('mon-city').innerText = "ERRO CRÍTICO";
-    }
-
-    function renderFull(lat, lon, city, country) {
-        document.getElementById('mon-city').innerText = city.toUpperCase();
-        const flagImg = document.getElementById('mon-flag-ui');
-        flagImg.src = `https://flagcdn.com/w80/${country}.png`;
-        flagImg.style.display = 'block';
-        document.getElementById('mon-status').innerText = `LOCAL: ${country.toUpperCase()} | SINAL 100%`;
-
-        anchorGroup.clear();
-        const phi = (90 - lat) * (Math.PI / 180);
-        const theta = (lon + 180) * (Math.PI / 180);
-        const pos = new THREE.Vector3(-(Math.sin(phi)*Math.cos(theta))*1.01, Math.cos(phi)*1.01, (Math.sin(phi)*Math.sin(theta))*1.01);
-
-        // Ponto de Sinal
-        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
-        dot.position.copy(pos); anchorGroup.add(dot);
-
-        // Bandeira Flutuante
-        new THREE.TextureLoader().load(`https://flagcdn.com/w160/${country}.png`, (fTex) => {
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex }));
-            sprite.position.copy(pos.clone().multiplyScalar(1.2));
-            sprite.scale.set(0.3, 0.18, 1);
-            anchorGroup.add(sprite);
-        });
-
-        // Etiqueta de Cidade
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 512; canvas.height = 128;
-        ctx.fillStyle = '#39ff14'; ctx.font = 'Bold 48px Courier New';
-        ctx.textAlign = 'center'; ctx.fillText(city.toUpperCase(), 256, 80);
-        const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-        label.position.copy(pos.clone().multiplyScalar(1.4));
-        label.scale.set(0.9, 0.22, 1);
-        anchorGroup.add(label);
-    }
+    });
 
     function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
     window.onload = init;
