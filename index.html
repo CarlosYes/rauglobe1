@@ -16,9 +16,8 @@
         #led { width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; }
         .monitor-display { background: #050505; border: 1px solid #1a1a1a; padding: 12px; border-radius: 2px; }
         #mon-city { font-size: 20px; color: #fff; font-weight: 900; display: block; letter-spacing: -1px; }
-        #mon-flag-ui { height: 18px; margin-right: 10px; border: 1px solid #333; }
+        #mon-flag-ui { height: 18px; margin-right: 10px; border: 1px solid #333; vertical-align: middle; }
         #mon-status { font-size: 10px; color: #39ff14; opacity: 0.6; margin-top: 10px; border-top: 1px solid #1a1a1a; padding-top: 8px; }
-        .vpn-active { color: #f00 !important; text-shadow: 0 0 5px #f00; }
     </style>
 </head>
 <body oncontextmenu="return false;">
@@ -72,37 +71,31 @@
             this.security();
             this.animate();
             
-            // Loop de detecção rápida (A cada 3 segundos)
+            // Ciclo de detecção rápida
             this.pulse();
             setInterval(() => this.pulse(), 3000);
         },
 
         async pulse() {
             const ts = Date.now();
-            // Fallback entre APIs para evitar bloqueios de IP
-            const apis = [
-                `https://ipapi.co/json/?nocache=${ts}`,
-                `https://get.geojs.io/v1/ip/geo.json?v=${ts}`
-            ];
-
             try {
-                const res = await fetch(apis[0]);
+                // Cache busting com timestamp para ignorar dados antigos do navegador
+                const res = await fetch(`https://ipapi.co/json/?nocache=${ts}`);
                 const data = await res.json();
                 
-                // Só atualiza se o IP mudou (VPN ligou/desligou)
+                // Só reconstrói se houver mudança de IP real
                 if (data.ip !== this.currentIP) {
                     this.currentIP = data.ip;
                     this.deploy(data.latitude, data.longitude, data.city, data.country_code.toLowerCase());
                 }
-            } catch (e) {
-                console.log("Retry link...");
-            }
+            } catch (e) { console.log("Reconnecting..."); }
         },
 
         deploy(lat, lon, city, iso) {
             const cityUpper = city.toUpperCase();
             document.getElementById('mon-city').innerText = cityUpper;
             document.getElementById('mon-flag-ui').src = `https://flagcdn.com/w80/${iso}.png`;
+            document.getElementById('mon-flag-ui').style.display = 'inline-block';
             document.getElementById('mon-status').innerText = `IP: ${this.currentIP} | NODE: ${iso.toUpperCase()}`;
 
             this.markers.clear();
@@ -137,7 +130,7 @@
             label.scale.set(0.7, 0.18, 1);
             this.markers.add(label);
 
-            // Auto-Focus suave
+            // Auto-Focus suave para a nova posição
             const view = pos.clone().multiplyScalar(3.8);
             this.camera.position.lerp(view, 0.1);
         },
