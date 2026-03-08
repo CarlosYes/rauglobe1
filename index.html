@@ -32,14 +32,14 @@
 <div id="canvas-container"></div>
 
 <script>
-    // 1. FIREBASE CORE
+    // 1. FIREBASE CORE - CHAVE BLINDADA
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
     const myId = "OP_" + Math.random().toString(36).substr(2, 5);
 
-    // 2. SCENE & WORLD
+    // 2. SCENE & WORLD SETUP
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -66,7 +66,7 @@
     scene.add(sun);
     camera.position.z = 3;
 
-    // 3. GESTÃO DINÂMICA (Sem destruição de objetos)
+    // 3. GESTÃO DE MARCADORES (Persistente)
     const markerMap = new Map();
 
     function createUnitSprite(city) {
@@ -90,7 +90,7 @@
     }
 
     function addOrUpdateUnit(id, lat, lng, city) {
-        if (markerMap.has(id)) return; // Se já existe, não mexe para não quebrar a rotação
+        if (markerMap.has(id)) return;
 
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
@@ -113,7 +113,7 @@
         markerMap.set(id, group);
     }
 
-    // 4. INTERATIVIDADE BLINDADA
+    // 4. INTERATIVIDADE REFORÇADA
     let isDragging = false;
     let mouseX = 0, mouseY = 0;
 
@@ -130,7 +130,7 @@
         }
     });
 
-    // 5. FIREBASE ENGINE
+    // 5. FIREBASE ENGINE (Sincronização Delta)
     async function init() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
@@ -146,12 +146,12 @@
             db.collection('rau_v5').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
                 const currentIds = new Set();
                 snap.forEach(doc => {
-                    currentIds.add(doc.id);
                     const d = doc.data();
+                    currentIds.add(doc.id);
                     if(d.lat) addOrUpdateUnit(doc.id, d.lat, d.lng, d.city);
                 });
 
-                // Limpeza cirúrgica: remove apenas quem ficou offline
+                // Remove apenas quem realmente ficou offline
                 markerMap.forEach((obj, id) => {
                     if (!currentIds.has(id)) {
                         mainGroup.remove(obj);
@@ -160,7 +160,7 @@
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("OFFLINE"); }
+        } catch(e) { console.error("RADAR OFFLINE"); }
     }
 
     function animate() {
