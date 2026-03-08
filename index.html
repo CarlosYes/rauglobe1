@@ -40,7 +40,7 @@
     renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    const world = new THREE.Group(); 
+    const world = new THREE.Group(); // Grupo mestre para rotação
     scene.add(world);
 
     // Luz e Terra
@@ -61,8 +61,8 @@
     );
     world.add(earth);
 
-    // 2. SISTEMA DE GESTÃO DE MARCADORES (Persistent Tracking)
-    const activeMarkers = new Map(); // Guarda as referências para não apagar o que já existe
+    // 2. SISTEMA DE GESTÃO DE MARCADORES
+    const activeMarkers = new Map(); 
 
     function createLabel(text) {
         const canvas = document.createElement('canvas');
@@ -85,7 +85,7 @@
     }
 
     function updateRadar(lat, lng, city, id) {
-        if (activeMarkers.has(id)) return; // Se já existe, ignora para não causar flicker
+        if (activeMarkers.has(id)) return; 
 
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
@@ -108,7 +108,7 @@
         activeMarkers.set(id, group);
     }
 
-    // 3. CONTROLO DE RATO (Interatividade Forçada)
+    // 3. INTERATIVIDADE (Rato comanda o Grupo World)
     let isDragging = false;
     let mouseX = 0, mouseY = 0;
 
@@ -118,14 +118,14 @@
         if (isDragging) {
             const dx = e.clientX - mouseX;
             const dy = e.clientY - mouseY;
-            world.rotation.y += dx * 0.01;
-            world.rotation.x += dy * 0.01;
+            world.rotation.y += dx * 0.007;
+            world.rotation.x += dy * 0.007;
             mouseX = e.clientX;
             mouseY = e.clientY;
         }
     });
 
-    // 4. FIREBASE ENGINE (Sincronização Tática)
+    // 4. FIREBASE ENGINE
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
@@ -145,7 +145,6 @@
             report(); setInterval(report, 20000);
 
             db.collection('rau_v5').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                // Remove quem saiu
                 const currentIds = new Set();
                 snap.forEach(doc => currentIds.add(doc.id));
                 
@@ -156,7 +155,6 @@
                     }
                 });
 
-                // Adiciona quem entrou
                 snap.forEach(doc => {
                     const d = doc.data();
                     if(d.lat) updateRadar(d.lat, d.lng, d.city, doc.id);
