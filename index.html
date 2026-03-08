@@ -12,76 +12,71 @@
         #canvas-container:active { cursor: grabbing; }
         .hud { 
             position: absolute; top: 20px; left: 20px; z-index: 100; 
-            color: #39ff14; background: rgba(0, 15, 0, 0.9); padding: 20px; 
+            color: #39ff14; background: rgba(0, 20, 0, 0.9); padding: 20px; 
             border: 2px solid #39ff14; pointer-events: none; border-radius: 4px;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
+            box-shadow: 0 0 25px rgba(57, 255, 20, 0.3);
+            text-shadow: 0 0 5px #39ff14;
         }
-        .status-blink { animation: blink 1s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        .blink { animation: blinker 1.5s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <b style="font-size: 1.2em; text-transform: uppercase;">Radar Radio Amigos Unidos</b><br>
-    <span class="status-blink" id="my-loc">Sincronizando Satélite...</span><br>
+    <b style="font-size: 1.2em; text-transform: uppercase; letter-spacing: 2px;">Radar Amigos Unidos</b><br>
+    <span class="blink" style="color: #ff0000;">●</span> STATUS: <span id="my-loc">TRACKING...</span><br>
     <hr style="border:0; border-top:1px solid #39ff14; margin:10px 0; opacity: 0.5;">
-    OPERACIONAIS ONLINE: <span id="count" style="font-size: 1.3em; font-weight: bold;">1</span>
+    OPERACIONAIS ONLINE: <span id="count" style="font-size: 1.4em; font-weight: bold;">1</span>
 </div>
 
 <div id="canvas-container"></div>
 
 <script>
-    // 1. FIREBASE CORE (Segurança de Acesso)
-    const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
-    if (!firebase.apps.length) firebase.initializeApp(cfg);
-    const db = firebase.firestore();
-    const myId = "RAU_OP_" + Math.random().toString(36).substr(2, 5);
-
-    // 2. MOTOR GRÁFICO (Arquitetura de Grupo)
+    // 1. ENGINE & SCENE SETUP
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    const mainGroup = new THREE.Group(); 
+    const mainGroup = new THREE.Group(); // O "Mundo"
     scene.add(mainGroup);
 
+    // Luzes (Set-up de Estúdio)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+    sun.position.set(5, 3, 5);
+    scene.add(sun);
+    camera.position.z = 3;
+
+    // 2. TERRA (Textura de Alta Definição)
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
-    
     const earth = new THREE.Mesh(
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({
             map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
             bumpScale: 0.05,
-            shininess: 10
+            shininess: 15
         })
     );
     mainGroup.add(earth);
 
-    // Iluminação Global
-    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.5);
-    sun.position.set(5, 3, 5);
-    scene.add(sun);
-    camera.position.z = 3;
-
-    // 3. SISTEMA DE ETIQUETAGEM TÁCTICA
+    // 3. ETIQUETAS E MARCADORES (Sistema de Sprites)
     function createTacticalLabel(text) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 512; canvas.height = 128;
         
-        ctx.fillStyle = 'rgba(0, 40, 0, 0.9)';
-        ctx.fillRect(0, 20, 512, 88);
+        ctx.fillStyle = 'rgba(0, 40, 0, 0.95)';
+        ctx.fillRect(10, 20, 492, 88);
         ctx.strokeStyle = '#39ff14';
         ctx.lineWidth = 6;
-        ctx.strokeRect(3, 23, 506, 82);
+        ctx.strokeRect(10, 20, 492, 88);
         
-        ctx.font = 'Bold 44px Courier New';
+        ctx.font = 'Bold 42px Courier New';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.fillText(text.toUpperCase(), 256, 78);
@@ -92,7 +87,7 @@
         return sprite;
     }
 
-    function deployMarker(lat, lng, city) {
+    function addUnit(lat, lng, city) {
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
         const pos = new THREE.Vector3(
@@ -101,26 +96,25 @@
             Math.sin(phi) * Math.sin(theta)
         );
 
-        const node = new THREE.Group();
-        node.name = "active_unit"; 
+        const unitGroup = new THREE.Group();
+        unitGroup.name = "unit"; 
         
         const dot = new THREE.Mesh(new THREE.SphereGeometry(0.018, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
         dot.position.copy(pos);
-        node.add(dot);
+        unitGroup.add(dot);
 
-        const label = createTacticalLabel(city || "Desconhecido");
+        const label = createTacticalLabel(city || "Unknown");
         label.position.copy(pos.clone().multiplyScalar(1.1));
-        node.add(label);
+        unitGroup.add(label);
 
-        mainGroup.add(node);
+        mainGroup.add(unitGroup);
     }
 
-    // 4. INTERATIVIDADE TOTAL (COMANDO POR MOUSE)
+    // 4. INTERATIVIDADE (CONTROLO ABSOLUTO)
     let isDragging = false;
     let mouseX = 0, mouseY = 0;
 
-    const container = document.getElementById('canvas-container');
-    container.addEventListener('mousedown', (e) => { isDragging = true; mouseX = e.clientX; mouseY = e.clientY; });
+    document.addEventListener('mousedown', (e) => { isDragging = true; mouseX = e.clientX; mouseY = e.clientY; });
     window.addEventListener('mouseup', () => isDragging = false);
     window.addEventListener('mousemove', (e) => {
         if (isDragging) {
@@ -133,42 +127,48 @@
         }
     });
 
-    // 5. CICLO DE VIDA FIREBASE (SINCRONIA TOTAL)
-    async function initRadar() {
+    // 5. FIREBASE (Real-time Sync)
+    const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    const db = firebase.firestore();
+    const myId = "OP_" + Math.random().toString(36).substr(2, 5);
+
+    async function startRadar() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
-            document.getElementById('my-loc').innerText = "ORIGEM: " + data.city.toUpperCase();
+            document.getElementById('my-loc').innerText = "HQ: " + data.city.toUpperCase();
             const [lat, lng] = data.loc.split(',').map(Number);
 
-            const updatePos = () => db.collection('rau_v_final').doc(myId).set({
+            const reportIn = () => db.collection('rau_v_final').doc(myId).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
-            updatePos(); setInterval(updatePos, 20000);
+            reportIn(); setInterval(reportIn, 25000);
 
             db.collection('rau_v_final').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                // Limpeza seletiva: remove apenas as unidades, mantém o mundo intacto
-                const units = [];
-                mainGroup.children.forEach(c => { if(c.name === "active_unit") units.push(c); });
-                units.forEach(u => mainGroup.remove(u));
+                // Limpeza cirúrgica: remove apenas as unidades, não a Terra
+                const toRemove = [];
+                mainGroup.children.forEach(c => { if(c.name === "unit") toRemove.push(c); });
+                toRemove.forEach(c => mainGroup.remove(c));
                 
                 snap.forEach(doc => {
                     const d = doc.data();
-                    if(d.lat) deployMarker(d.lat, d.lng, d.city);
+                    if(d.lat) addUnit(d.lat, d.lng, d.city);
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Falha na Rede"); }
+        } catch(e) { console.error("OFFLINE"); }
     }
 
-    function renderLoop() {
-        requestAnimationFrame(renderLoop);
+    function animate() {
+        requestAnimationFrame(animate);
         if (!isDragging) mainGroup.rotation.y += 0.002;
         renderer.render(scene, camera);
     }
 
-    initRadar();
-    renderLoop();
+    startRadar();
+    animate();
 
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
