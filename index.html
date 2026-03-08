@@ -133,19 +133,19 @@
             document.getElementById('my-loc').innerText = "Tu em: " + data.city;
             const [lat, lng] = data.loc.split(',').map(Number);
 
-            const push = () => db.collection('rau_v9').doc(myId).set({
+            const push = () => db.collection('rau_v10').doc(myId).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             push(); setInterval(push, 25000);
 
-            db.collection('rau_v9').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+            db.collection('rau_v10').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
                 const toDelete = [];
                 mainGroup.traverse(c => { if(c.name === "visitor") toDelete.push(c); });
                 toDelete.forEach(c => mainGroup.remove(c));
                 snap.forEach(doc => addMarker(doc.data().lat, doc.data().lng, doc.data().city));
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Falha GPS"); }
+        } catch(e) { console.error("Erro GPS"); }
     }
 
     function animate() {
