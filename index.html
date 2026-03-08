@@ -2,175 +2,182 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - RADAR DE ELITE v5.0</title>
+    <title>RAU - COMANDO CENTRAL v6.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-        #canvas-container { width: 100vw; height: 100vh; cursor: grab; }
-        #canvas-container:active { cursor: grabbing; }
-        .hud { 
-            position: absolute; top: 20px; left: 20px; z-index: 100; 
-            color: #39ff14; background: rgba(0, 15, 0, 0.9); padding: 20px; 
-            border: 2px solid #39ff14; pointer-events: none; border-radius: 4px;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #radar-ui {
+            position: absolute; top: 30px; left: 30px; z-index: 1000;
+            background: linear-gradient(135deg, rgba(0,20,0,0.95) 0%, rgba(0,5,0,0.8) 100%);
+            color: #39ff14; padding: 25px; border-left: 5px solid #39ff14;
+            box-shadow: 10px 10px 30px rgba(0,0,0,0.8), inset 0 0 15px rgba(57,255,20,0.2);
+            pointer-events: none; border-radius: 0 8px 8px 0;
         }
-        .scan { color: #ff0000; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0.3; } }
+        .glitch { font-weight: bold; text-transform: uppercase; letter-spacing: 3px; font-size: 1.1em; }
+        .live-tag { background: #ff0000; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 0.7em; vertical-align: middle; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        canvas { display: block; cursor: move; }
     </style>
 </head>
 <body>
 
-<div class="hud">
-    <b style="font-size: 1.2em; letter-spacing: 2px;">RADAR RADIO AMIGOS UNIDOS</b><br>
-    <span class="scan">●</span> SCANNER ATIVO: <span id="my-loc" style="color:#fff">SINCRO...</span><br>
-    <hr style="border:0; border-top:1px solid #39ff14; margin:10px 0; opacity: 0.3;">
-    UNIDADES ONLINE: <span id="count" style="font-size: 1.4em; font-weight: bold;">1</span>
+<div id="radar-ui">
+    <div class="glitch"><span class="live-tag">LIVE</span> RAU GLOBAL RADAR</div>
+    <div style="margin-top:10px; opacity:0.8; font-size: 0.9em;">
+        COORDENADAS: <span id="coords" style="color:#fff">---</span><br>
+        ESTAÇÃO: <span id="city-tag" style="color:#fff">A SINCRO...</span><br>
+        OUVINTES: <span id="count" style="font-size: 1.5em; color:#fff; font-weight: 900;">0</span>
+    </div>
 </div>
 
-<div id="canvas-container"></div>
-
 <script>
-    // 1. FIREBASE CORE - CHAVE BLINDADA
-    const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
-    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    // 1. NÚCLEO DE DADOS (Criptografia de Sessão)
+    const _c = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+    const firebaseConfig = { apiKey: atob(_c[0]), authDomain: atob(_c[1]), projectId: atob(_c[2]), appId: atob(_c[3]) };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-    const myId = "OP_" + Math.random().toString(36).substr(2, 5);
+    const sessionID = "NODE_" + Math.random().toString(36).substr(2, 6);
 
-    // 2. SCENE & WORLD SETUP
+    // 2. MOTOR GRÁFICO (Engine 6.0)
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    document.getElementById('canvas-container').appendChild(renderer.domElement);
+    document.body.appendChild(renderer.domElement);
 
-    const mainGroup = new THREE.Group(); 
-    scene.add(mainGroup);
+    const orbitalGroup = new THREE.Group();
+    scene.add(orbitalGroup);
 
-    const loader = new THREE.TextureLoader();
-    loader.setCrossOrigin('anonymous');
-    const earth = new THREE.Mesh(
+    // Atmosfera e Brilho
+    const light = new THREE.AmbientLight(0xffffff, 0.7); scene.add(light);
+    const sun = new THREE.DirectionalLight(0xffffff, 0.5); sun.position.set(5, 3, 5); scene.add(sun);
+
+    const earthLoader = new THREE.TextureLoader();
+    earthLoader.setCrossOrigin('anonymous');
+    const globe = new THREE.Mesh(
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({
-            map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            shininess: 10
+            map: earthLoader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
+            bumpMap: earthLoader.load('https://unpkg.com/three-globe/example/img/earth-topology.png'),
+            bumpScale: 0.02,
+            shininess: 8
         })
     );
-    mainGroup.add(earth);
+    orbitalGroup.add(globe);
+    camera.position.z = 3.5;
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.4);
-    sun.position.set(5, 3, 5);
-    scene.add(sun);
-    camera.position.z = 3;
+    // 3. GESTÃO DE ASSETS (Otimização de Memória)
+    const unitCache = new Map();
 
-    // 3. GESTÃO DE MARCADORES (Persistente)
-    const markerMap = new Map();
-
-    function createUnitSprite(city) {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 512; canvas.height = 128;
-        ctx.fillStyle = 'rgba(0, 40, 0, 0.9)';
-        ctx.fillRect(0, 30, 512, 70);
-        ctx.strokeStyle = '#39ff14';
-        ctx.lineWidth = 4;
-        ctx.strokeRect(0, 30, 512, 70);
-        ctx.font = 'Bold 42px Courier New';
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.fillText(city.toUpperCase(), 256, 80);
-
-        const tex = new THREE.CanvasTexture(canvas);
-        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true }));
-        sprite.scale.set(0.6, 0.15, 1);
-        return sprite;
-    }
-
-    function addOrUpdateUnit(id, lat, lng, city) {
-        if (markerMap.has(id)) return;
+    function createUnit(id, lat, lng, cityName) {
+        if (unitCache.has(id)) return;
 
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
-        const pos = new THREE.Vector3(
-            -Math.sin(phi) * Math.cos(theta),
-            Math.cos(phi),
-            Math.sin(phi) * Math.sin(theta)
+        const pos = new THREE.Vector3().setFromSphericalCoords(1.02, phi, theta);
+
+        const container = new THREE.Group();
+        
+        // Ponto de Impacto
+        const dot = new THREE.Mesh(
+            new THREE.CircleGeometry(0.015, 16),
+            new THREE.MeshBasicMaterial({ color: 0x39ff14, side: THREE.DoubleSide })
         );
-
-        const group = new THREE.Group();
-        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
         dot.position.copy(pos);
-        group.add(dot);
+        dot.lookAt(0,0,0);
+        container.add(dot);
 
-        const label = createUnitSprite(city || "Ouvinte");
-        label.position.copy(pos.clone().multiplyScalar(1.1));
-        group.add(label);
+        // Label Holo-Digital
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 300; canvas.height = 80;
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(0, 0, 300, 80);
+        ctx.strokeStyle = '#39ff14';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(0, 0, 300, 80);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 30px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(cityName.toUpperCase(), 150, 50);
 
-        mainGroup.add(group);
-        markerMap.set(id, group);
+        const tex = new THREE.CanvasTexture(canvas);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true }));
+        sprite.position.copy(pos.clone().multiplyScalar(1.12));
+        sprite.scale.set(0.4, 0.1, 1);
+        container.add(sprite);
+
+        orbitalGroup.add(container);
+        unitCache.set(id, container);
     }
 
-    // 4. INTERATIVIDADE REFORÇADA
-    let isDragging = false;
-    let mouseX = 0, mouseY = 0;
+    // 4. CONTROLO INERCIAL (Rato)
+    let isClick = false;
+    let rotationV = { x: 0, y: 0.002 };
+    let lastM = { x: 0, y: 0 };
 
-    document.addEventListener('mousedown', (e) => { isDragging = true; mouseX = e.clientX; mouseY = e.clientY; });
-    window.addEventListener('mouseup', () => isDragging = false);
+    document.addEventListener('mousedown', (e) => { isClick = true; lastM = { x: e.clientX, y: e.clientY }; });
+    window.addEventListener('mouseup', () => isClick = false);
     window.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            const dx = e.clientX - mouseX;
-            const dy = e.clientY - mouseY;
-            mainGroup.rotation.y += dx * 0.008;
-            mainGroup.rotation.x += dy * 0.008;
-            mouseX = e.clientX;
-            mouseY = e.clientY;
+        if (isClick) {
+            const dx = e.clientX - lastM.x;
+            const dy = e.clientY - lastM.y;
+            orbitalGroup.rotation.y += dx * 0.005;
+            orbitalGroup.rotation.x += dy * 0.005;
+            lastM = { x: e.clientX, y: e.clientY };
+            document.getElementById('coords').innerText = `X:${orbitalGroup.rotation.x.toFixed(2)} Y:${orbitalGroup.rotation.y.toFixed(2)}`;
         }
     });
 
-    // 5. FIREBASE ENGINE (Sincronização Delta)
-    async function init() {
+    // 5. TRANSMISSÃO DE DADOS (Uplink)
+    async function uplink() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
-            document.getElementById('my-loc').innerText = data.city.toUpperCase();
+            document.getElementById('city-tag').innerText = data.city.toUpperCase();
             const [lat, lng] = data.loc.split(',').map(Number);
 
-            const report = () => db.collection('rau_v5').doc(myId).set({
+            const send = () => db.collection('RAU_V6').doc(sessionID).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
-            report(); setInterval(report, 25000);
+            send(); setInterval(send, 20000);
 
-            db.collection('rau_v5').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                const currentIds = new Set();
+            db.collection('RAU_V6').where('ts', '>', new Date(Date.now() - 45000)).onSnapshot(snap => {
+                const active = new Set();
                 snap.forEach(doc => {
+                    active.add(doc.id);
                     const d = doc.data();
-                    currentIds.add(doc.id);
-                    if(d.lat) addOrUpdateUnit(doc.id, d.lat, d.lng, d.city);
+                    if(d.lat) createUnit(doc.id, d.lat, d.lng, d.city);
                 });
-
-                // Remove apenas quem realmente ficou offline
-                markerMap.forEach((obj, id) => {
-                    if (!currentIds.has(id)) {
-                        mainGroup.remove(obj);
-                        markerMap.delete(id);
+                
+                unitCache.forEach((obj, id) => {
+                    if (!active.has(id)) {
+                        orbitalGroup.remove(obj);
+                        unitCache.delete(id);
                     }
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("RADAR OFFLINE"); }
+        } catch(e) { console.error("SAT-LINK DOWN"); }
     }
 
-    function animate() {
-        requestAnimationFrame(animate);
-        if (!isDragging) mainGroup.rotation.y += 0.002;
+    function render() {
+        requestAnimationFrame(render);
+        if (!isClick) orbitalGroup.rotation.y += 0.0015;
         renderer.render(scene, camera);
     }
 
-    init();
-    animate();
+    uplink();
+    render();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
 </script>
 </body>
 </html>
