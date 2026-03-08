@@ -2,52 +2,52 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v45.0</title>
+    <title>RAU RADAR v46.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 20, 0, 0.95); color: #39ff14; padding: 25px;
-            border: 2px solid #39ff14; border-radius: 5px; pointer-events: none;
-            box-shadow: 0 0 40px rgba(0, 255, 0, 0.2);
+            border: 2px solid #39ff14; border-radius: 4px; pointer-events: none;
+            box-shadow: 0 0 40px rgba(0, 255, 0, 0.15);
         }
-        #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; line-height: 0.8; margin: 15px 0; }
-        .tag { font-size: 10px; letter-spacing: 2px; color: #39ff14; font-weight: bold; }
-        .mem-status { margin-top: 15px; padding-top: 10px; border-top: 1px solid #1a1a1a; font-size: 11px; color: #888; }
-        #city-display { color: #fff; font-weight: bold; text-transform: uppercase; }
+        #count { font-size: 3.2em; font-weight: 900; color: #fff; display: block; line-height: 1; margin: 10px 0; }
+        .label { font-size: 10px; letter-spacing: 2px; color: #39ff14; font-weight: bold; text-transform: uppercase; }
+        .mem-box { margin-top: 15px; padding-top: 10px; border-top: 1px solid #1a331a; font-size: 11px; }
+        #loc { color: #fff; font-weight: bold; background: #003300; padding: 2px 5px; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div class="tag">SISTEMA RAU v45.0</div>
+    <div class="label">RAU RADAR v46.0</div>
     <span id="count">1</span>
-    <div class="tag">UNIDADE DETETADA EM:</div>
-    <div id="city-display">A LOCALIZAR...</div>
+    <div class="label">LOCALIZAÇÃO DETETADA:</div>
+    <div id="loc">A RASTREAR...</div>
 
-    <div class="mem-status">
-        💾 MEMÓRIA DO PLAYER:<br>
-        <span style="color:#39ff14">🔈 VOL: <span id="v-mem">--</span> | 🔄 AUTO: <span id="a-mem">--</span></span>
+    <div class="mem-box">
+        <span class="label" style="font-size: 9px;">Memória do Player</span><br>
+        <span style="color:#39ff14">🔈 VOL: <span id="mv">--</span> | 🔄 AUTO: <span id="ma">--</span></span>
     </div>
 </div>
 
 <script>
-    // 1. MOTOR DE MEMÓRIA (Volume e Autoplay)
-    const rauStorage = {
+    // 1. GESTÃO DE MEMÓRIA (O teu pedido principal)
+    const rauMemory = {
         save: (v, a) => {
             localStorage.setItem('rau_v', v);
             localStorage.setItem('rau_a', a);
         },
         load: () => ({
-            v: localStorage.getItem('rau_v') || "0.8",
+            v: localStorage.getItem('rau_v') || "0.80",
             a: localStorage.getItem('rau_a') || "true"
         })
     };
 
-    const current = rauStorage.load();
-    document.getElementById('v-mem').innerText = Math.round(current.v * 100) + "%";
-    document.getElementById('a-mem').innerText = current.a === "true" ? "ON" : "OFF";
+    const current = rauMemory.load();
+    document.getElementById('mv').innerText = Math.round(current.v * 100) + "%";
+    document.getElementById('ma').innerText = current.a === "true" ? "ON" : "OFF";
 
     // 2. AMBIENTE 3D
     const scene = new THREE.Scene();
@@ -65,63 +65,60 @@
         })
     );
     world.add(globe);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
     camera.position.z = 3.5;
 
-    // 3. FUNÇÃO PARA DESENHAR A CIDADE REAL
-    async function drawMyCity() {
+    // 3. DETEÇÃO E MARCAÇÃO DE CIDADE
+    async function initRadar() {
         try {
-            // Usando ipapi para maior compatibilidade
+            // Alternativa robusta para pegar a cidade
             const res = await fetch("https://ipapi.co/json/").then(r => r.json());
-            const lat = res.latitude;
-            const lng = res.longitude;
-            const city = res.city ? res.city.toUpperCase() : "DESCONHECIDO";
+            const city = (res.city || "DESCONHECIDO").toUpperCase();
+            document.getElementById('loc').innerText = city;
 
-            document.getElementById('city-display').innerText = city;
-
+            const lat = res.latitude, lng = res.longitude;
             const phi = (90 - lat) * (Math.PI / 180);
             const theta = (lng + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3().setFromSphericalCoords(1.05, phi, theta);
 
-            // Marcador no Globo
+            // Marcador Físico
             const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             world.add(dot);
 
-            // Etiqueta Visual
+            // Etiqueta Flutuante
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            canvas.width = 256; canvas.height = 80;
-            ctx.fillStyle = 'rgba(0, 30, 0, 0.9)';
-            ctx.fillRect(0, 0, 256, 80);
-            ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 6; ctx.strokeRect(0, 0, 256, 80);
-            ctx.font = 'bold 32px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-            ctx.fillText(city, 128, 50);
+            canvas.width = 256; canvas.height = 100;
+            ctx.fillStyle = 'rgba(0, 40, 0, 0.9)';
+            ctx.fillRect(0, 0, 256, 100);
+            ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 8; ctx.strokeRect(0, 0, 256, 100);
+            ctx.font = 'bold 36px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+            ctx.fillText(city, 128, 60);
 
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
             sprite.position.copy(pos.clone().multiplyScalar(1.2));
-            sprite.scale.set(0.7, 0.22, 1);
+            sprite.scale.set(0.7, 0.28, 1);
             world.add(sprite);
 
-        } catch (e) { 
-            document.getElementById('city-display').innerText = "ERRO GPS"; 
+        } catch (e) {
+            document.getElementById('loc').innerText = "COORDENADAS OFF";
         }
     }
 
-    // 4. CONTROLO E ANIMAÇÃO
     function animate() {
         requestAnimationFrame(animate);
         world.rotation.y += 0.002;
         renderer.render(scene, camera);
     }
 
-    // EXPOSTO PARA O TEU PLAYER: window.rauMemory(0.5, "true")
-    window.rauMemory = (v, a) => {
-        rauStorage.save(v, a);
+    // COMANDO PARA GUARDAR: window.setRAU(0.5, "true")
+    window.setRAU = (v, a) => {
+        rauMemory.save(v, a);
         location.reload();
     };
 
-    drawMyCity();
+    initRadar();
     animate();
 
     window.addEventListener('resize', () => {
