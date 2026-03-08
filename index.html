@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v175.0 - GEOLOCATION FOCUS</title>
+    <title>RAU MONITOR v175.0 - REAL-TIME TRACKER</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -38,9 +38,9 @@
     <div class="monitor-display">
         <div style="display: flex; align-items: center;">
             <img id="mon-flag-ui" src="">
-            <span id="mon-city">LOCALIZANDO...</span>
+            <span id="mon-city">SCANNING...</span>
         </div>
-        <div id="mon-status">Aguardando dados de rede...</div>
+        <div id="mon-status">Aguardando conexão de rede...</div>
     </div>
 </div>
 
@@ -48,7 +48,6 @@
     let scene, camera, renderer, controls, globe, anchorGroup;
 
     function init() {
-        // --- CONFIGURAÇÃO DA CENA ---
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -60,9 +59,9 @@
         controls.autoRotate = true;
         controls.autoRotateSpeed = 0.6;
         controls.enableDamping = true;
-        camera.position.z = 3.8;
+        camera.position.z = 4;
 
-        // --- GLOBO TERRESTRE ---
+        // Globo
         globe = new THREE.Mesh(
             new THREE.SphereGeometry(1, 64, 64), 
             new THREE.MeshPhongMaterial({ shininess: 5 })
@@ -76,7 +75,6 @@
             globe.material.needsUpdate = true;
         });
 
-        // Iluminação
         scene.add(new THREE.AmbientLight(0xffffff, 1.0));
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
         dirLight.position.set(5, 3, 5);
@@ -86,13 +84,13 @@
         scene.add(anchorGroup);
         
         animate();
-        fetchUserLocation();
-        applySecurity();
+        fetchLocation();
+        security();
     }
 
-    // --- RASTREAMENTO REAL ---
-    async function fetchUserLocation() {
+    async function fetchLocation() {
         try {
+            // Rastreamento real via IP
             const res = await fetch('https://ipapi.co/json/');
             const data = await res.json();
 
@@ -102,27 +100,25 @@
                 const city = data.city || "Sinal Ativo";
                 const country = (data.country_code || "us").toLowerCase();
 
-                updateUI(city, country);
-                markGlobe(lat, lon, city, country);
+                updateInterface(city, country);
+                addMarker(lat, lon, city, country);
             }
         } catch (e) {
-            document.getElementById('mon-city').innerText = "ERRO SINAL";
-            document.getElementById('mon-status').innerText = "Falha na detecção de IP";
+            document.getElementById('mon-city').innerText = "OFFLINE";
         }
     }
 
-    function updateUI(city, country) {
+    function updateInterface(city, country) {
         document.getElementById('mon-city').innerText = city.toUpperCase();
         const flag = document.getElementById('mon-flag-ui');
         flag.src = `https://flagcdn.com/w80/${country}.png`;
         flag.style.display = 'block';
-        document.getElementById('mon-status').innerText = `CONEXÃO ESTABELECIDA: ${country.toUpperCase()}`;
+        document.getElementById('mon-status').innerText = `SINAL DETECTADO EM: ${country.toUpperCase()}`;
     }
 
-    function markGlobe(lat, lon, city, country) {
+    function addMarker(lat, lon, city, country) {
         anchorGroup.clear();
 
-        // Conversão Coordenadas
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lon + 180) * (Math.PI / 180);
         const pos = new THREE.Vector3(
@@ -131,50 +127,38 @@
             (Math.sin(phi) * Math.sin(theta))
         ).multiplyScalar(1.02);
 
-        // Ponto de Localização
-        const point = new THREE.Mesh(
-            new THREE.SphereGeometry(0.02, 16, 16),
-            new THREE.MeshBasicMaterial({ color: 0x39ff14 })
-        );
-        point.position.copy(pos);
-        anchorGroup.add(point);
+        // LED de Localização
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
+        dot.position.copy(pos);
+        anchorGroup.add(dot);
 
-        // Bandeira no Globo
-        const flagLoader = new THREE.TextureLoader();
-        flagLoader.crossOrigin = 'Anonymous';
-        flagLoader.load(`https://flagcdn.com/w160/${country}.png`, (fTex) => {
+        // Bandeira flutuante no Globo
+        new THREE.TextureLoader().load(`https://flagcdn.com/w160/${country}.png`, (fTex) => {
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex }));
             sprite.position.copy(pos.clone().multiplyScalar(1.15));
             sprite.scale.set(0.25, 0.15, 1);
             anchorGroup.add(sprite);
         });
 
-        // Nome da Cidade no Globo
+        // Nome da Cidade flutuante
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 512; canvas.height = 128;
-        ctx.fillStyle = '#39ff14'; 
-        ctx.font = 'bold 46px Courier New';
-        ctx.textAlign = 'center';
-        ctx.fillText(city.toUpperCase(), 256, 80);
-        
-        const labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({ 
-            map: new THREE.CanvasTexture(canvas) 
-        }));
-        labelSprite.position.copy(pos.clone().multiplyScalar(1.3));
-        labelSprite.scale.set(0.7, 0.18, 1);
-        anchorGroup.add(labelSprite);
+        ctx.fillStyle = '#39ff14'; ctx.font = 'bold 46px Courier New';
+        ctx.textAlign = 'center'; ctx.fillText(city.toUpperCase(), 256, 80);
+        const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+        label.position.copy(pos.clone().multiplyScalar(1.3));
+        label.scale.set(0.7, 0.18, 1);
+        anchorGroup.add(label);
 
-        // Suavizar rotação para o ponto
+        // Foca a câmera no ponto do visitante
         camera.position.set(pos.x * 3, pos.y * 3, pos.z * 3);
         controls.update();
     }
 
-    function applySecurity() {
+    function security() {
         document.onkeydown = (e) => {
-            if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) {
-                return false;
-            }
+            if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) return false;
         };
     }
 
