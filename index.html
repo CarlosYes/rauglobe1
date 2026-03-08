@@ -125,7 +125,7 @@
         }
     });
 
-    // 5. SINCRONIZAÇÃO FIREBASE
+    // 5. SINCRONIZAÇÃO EM TEMPO REAL
     async function start() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
@@ -139,6 +139,7 @@
             push(); setInterval(push, 25000);
 
             db.collection('rau_v_final').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+                // Limpeza segura apenas dos marcadores, sem tocar na Terra ou luzes
                 const toDelete = [];
                 mainGroup.children.forEach(c => { if(c.name === "visitor_node") toDelete.push(c); });
                 toDelete.forEach(c => mainGroup.remove(c));
