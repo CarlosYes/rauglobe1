@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v181.0 - HYPER-SMOOTH ENGINE</title>
+    <title>RAU MONITOR v182.0 - SMOOTH RECOVERY</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -27,11 +27,11 @@
 <div id="rau-ui">
     <div class="status-row">
         <div id="led"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">CORE v181.0 | SMOOTH-SYNC ACTIVE</span>
+        <span style="font-size: 11px; letter-spacing: 1px;">CORE v182.0 | HYPER-SMOOTH</span>
     </div>
     <div class="monitor-display">
-        <span id="mon-city">ESTABELECENDO LINK...</span>
-        <div id="mon-status">Sincronizando órbita...</div>
+        <span id="mon-city">SINCRO...</span>
+        <div id="mon-status">Buscando sinal de rede...</div>
     </div>
 </div>
 
@@ -47,13 +47,12 @@
             this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
 
-            // CONFIGURAÇÃO DE GIRO SUAVE (Damping)
+            // CONTROLES DE GIRO SUAVE
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true; 
-            this.controls.dampingFactor = 0.05; // Suavidade ao soltar o mouse
-            this.controls.rotateSpeed = 0.8;
+            this.controls.dampingFactor = 0.05; // Suavidade extrema
             this.controls.autoRotate = true;
-            this.controls.autoRotateSpeed = 0.8; // Velocidade constante e suave
+            this.controls.autoRotateSpeed = 0.7; 
             this.camera.position.z = 3.5;
 
             // Iluminação
@@ -77,8 +76,6 @@
 
             this.updateEnvironment();
             this.animate();
-            
-            // Iniciar Rastreamento
             this.checkNetwork();
             setInterval(() => this.checkNetwork(), 8000);
         },
@@ -86,7 +83,7 @@
         updateEnvironment() {
             const hour = new Date().getHours();
             const isNight = (hour < 6 || hour > 18);
-            this.scene.background = isNight ? new THREE.Color(0x000005) : new THREE.Color(0x050a15);
+            this.scene.background = isNight ? new THREE.Color(0x000003) : new THREE.Color(0x050a15);
             if (isNight) this.createStars();
         },
 
@@ -102,26 +99,22 @@
 
         async checkNetwork() {
             try {
-                // Fetch com timeout para não travar no "Connecting"
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-                const res = await fetch(`https://ipapi.co/json/?v=${Date.now()}`, { signal: controller.signal });
+                // Força a detecção real do IP ignorando cache
+                const res = await fetch(`https://ipapi.co/json/?v=${Date.now()}`);
                 const data = await res.json();
-                clearTimeout(timeoutId);
 
                 if (data.ip !== this.currentIP) {
                     this.currentIP = data.ip;
                     this.updateUI(data);
                 }
             } catch (e) {
-                document.getElementById('mon-status').innerText = "LINK LAGGING...\nRE-SCANNING NODES";
+                document.getElementById('mon-status').innerText = "NETWORK SCANNING...";
             }
         },
 
         updateUI(data) {
             document.getElementById('mon-city').innerText = (data.city || "RAU-NODE").toUpperCase();
-            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nLOC: ${data.country_code}\nORG: ${data.org || 'VPN-ACTIVE'}\nSTATUS: TRACKING LIVE`;
+            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nLOC: ${data.country_code}\nISP: ${data.org}\nSTATUS: LIVE TRACKING`;
 
             this.markers.clear();
             const phi = (90 - data.latitude) * (Math.PI / 180);
@@ -136,29 +129,13 @@
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // Movimento de câmera suave até o ponto
-            const targetPos = pos.clone().multiplyScalar(3.5);
-            this.smoothCameraMove(targetPos);
-        },
-
-        smoothCameraMove(target) {
-            // Interpolação simples para foco
-            const duration = 2000;
-            const startPos = this.camera.position.clone();
-            const startTime = Date.now();
-
-            const step = () => {
-                const elapsed = Date.now() - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                this.camera.position.lerpVectors(startPos, target, progress * 0.05);
-                if (progress < 1) requestAnimationFrame(step);
-            };
-            step();
+            // Giro suave até o local
+            this.camera.position.lerp(pos.clone().multiplyScalar(3.5), 0.1);
         },
 
         animate() {
             requestAnimationFrame(() => this.animate());
-            if (this.controls) this.controls.update(); // Essencial para o Damping e AutoRotate suave
+            if (this.controls) this.controls.update(); // Aqui garante a suavidade do giro
             this.renderer.render(this.scene, this.camera);
         }
     };
