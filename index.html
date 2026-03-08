@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v202.0 - FIXO & ESTÁVEL</title>
+    <title>RAU MONITOR v202.0 - FIXO ESTÁVEL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -15,6 +15,7 @@
         }
         .monitor-display { background: rgba(0, 0, 0, 0.9); border: 1px solid #1a1a1a; padding: 12px; }
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; }
+        
         #visitor-tag {
             position: absolute; display: none; align-items: center; gap: 10px;
             background: rgba(0, 20, 0, 0.95); border: 1px solid #39ff14;
@@ -22,7 +23,6 @@
             font-size: 14px; font-weight: bold; z-index: 500;
             transform: translate(-50%, -150%);
             box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
-            pointer-events: none; white-space: nowrap;
         }
         .flag-icon { width: 24px; height: 16px; border: 1px solid #39ff14; object-fit: cover; }
         canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; outline: none; }
@@ -37,7 +37,7 @@
     </div>
     <div class="monitor-display">
         <span id="mon-city">A SINCRONIZAR...</span>
-        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Telemetria Global v202...</div>
+        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Telemetria em tempo real...</div>
     </div>
 </div>
 
@@ -49,52 +49,51 @@
 <script>
     const RAU = {
         scene: new THREE.Scene(),
-        camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000),
+        camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000),
         renderer: new THREE.WebGLRenderer({ antialias: true }),
         controls: null, globe: null, markers: new THREE.Group(),
         currentIP: null, activeNode: null, stars: null,
 
         init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.setClearColor(0x000000, 1);
             document.body.appendChild(this.renderer.domElement);
 
-            this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-            const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+            this.scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
 
-            // GLOBO
             const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ shininess: 15 });
+            const mat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, shininess: 20 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.globe.add(this.markers);
 
             this.createStars();
+
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.05;
             this.controls.autoRotate = true;
             this.controls.autoRotateSpeed = 0.5;
             this.camera.position.z = 3.5;
 
             this.updateAtmosphere();
-            this.loadTexture();
-            this.track(); // Chama rastreio imediato
-            
-            setInterval(() => this.track(), 20000);
-            setInterval(() => this.updateAtmosphere(), 60000);
-
-            window.addEventListener('resize', () => this.onResize());
             this.animate();
+            this.loadTexture();
+            this.track();
+            
+            setInterval(() => this.track(), 8000);
+            setInterval(() => this.updateAtmosphere(), 60000); // Verifica dia/noite a cada minuto
         },
 
         createStars() {
             const starGeo = new THREE.BufferGeometry();
             const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 });
             const starVertices = [];
-            for (let i = 0; i < 6000; i++) {
-                starVertices.push((Math.random() - 0.5) * 1600, (Math.random() - 0.5) * 1600, (Math.random() - 0.5) * 1800);
+            for (let i = 0; i < 5000; i++) {
+                starVertices.push((Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500);
             }
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
             this.stars = new THREE.Points(starGeo, starMat);
@@ -104,81 +103,63 @@
         updateAtmosphere() {
             const hour = new Date().getHours();
             const isDay = hour >= 6 && hour < 18;
-            this.scene.background = new THREE.Color(isDay ? 0x87ceeb : 0x010103);
-            if(this.stars) this.stars.visible = !isDay;
-            document.getElementById('core-status').innerText = isDay ? "CORE v202 | DIA" : "CORE v202 | NOITE";
-            document.getElementById('status-led').style.background = isDay ? "#ffcc00" : "#39ff14";
-            document.getElementById('status-led').style.boxShadow = isDay ? "0 0 10px #ffcc00" : "0 0 10px #39ff14";
+            
+            if (isDay) {
+                this.scene.background = new THREE.Color(0x87ceeb); // Céu claro
+                if(this.stars) this.stars.visible = false;
+                document.getElementById('core-status').innerText = "CORE v202 | DIA";
+                document.getElementById('status-led').style.background = "#ffcc00";
+            } else {
+                this.scene.background = new THREE.Color(0x000000); // Espaço
+                if(this.stars) this.stars.visible = true;
+                document.getElementById('core-status').innerText = "CORE v202 | NOITE";
+                document.getElementById('status-led').style.background = "#39ff14";
+            }
         },
 
         loadTexture() {
-            new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
+            const loader = new THREE.TextureLoader();
+            loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
+                this.globe.material.color.set(0xffffff);
                 this.globe.material.needsUpdate = true;
             });
         },
 
         async track() {
-            // REMOVIDO PROXY HEROKU PARA EVITAR BLOQUEIOS
             try {
-                // Tenta API 1 (Mais completa)
-                const res = await fetch('https://ipapi.co/json/');
-                if(!res.ok) throw new Error();
+                const res = await fetch(`https://ipapi.co/json/?nocache=${Date.now()}`);
                 const data = await res.json();
-                this.applyData(data);
-            } catch (e) {
-                // Tenta API 2 (Fallback sem limite rigoroso)
-                try {
-                    const res2 = await fetch('https://ipwho.is/');
-                    const data2 = await res2.json();
-                    if(data2.success) {
-                        this.applyData({
-                            city: data2.city,
-                            latitude: data2.latitude,
-                            longitude: data2.longitude,
-                            country_code: data2.country_code,
-                            ip: data2.ip
-                        });
-                    }
-                } catch (e2) { console.warn("Erro de conexão total."); }
-            }
+                if (data.ip && data.ip !== this.currentIP) {
+                    this.currentIP = data.ip;
+                    this.updateVisitor(data);
+                }
+            } catch (e) { console.log("Erro de rede."); }
         },
 
-        applyData(data) {
-            if (data.ip === this.currentIP) return;
-            this.currentIP = data.ip;
-            
+        updateVisitor(data) {
             document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
-            document.getElementById('mon-status').innerText = "Sinal Estável: " + data.ip;
-            
             this.markers.clear();
+            
             const phi = (90 - data.latitude) * (Math.PI / 180);
             const theta = (data.longitude + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3(
                 -(Math.sin(phi) * Math.cos(theta)),
                 Math.cos(phi),
                 (Math.sin(phi) * Math.sin(theta))
-            ).multiplyScalar(1.01);
+            ).multiplyScalar(1.02);
 
-            // BOLINHA MINIMALISTA (0.01)
-            const dot = new THREE.Mesh(
-                new THREE.SphereGeometry(0.01, 12, 12),
-                new THREE.MeshBasicMaterial({ color: 0x39ff14 })
-            );
+            // BOLINHA MAIS PEQUENA (Ajustada para 0.01 como solicitado anteriormente)
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.01, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
 
             this.activeNode = { mesh: dot, city: data.city, country: data.country_code.toLowerCase() };
+            
             const tag = document.getElementById('visitor-tag');
             document.getElementById('tag-flag').src = `https://flagcdn.com/w40/${this.activeNode.country}.png`;
             document.getElementById('tag-city').innerText = this.activeNode.city;
             tag.style.display = 'flex';
-        },
-
-        onResize() {
-            this.camera.aspect = window.innerWidth / window.innerHeight;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
         },
 
         animate() {
@@ -186,19 +167,14 @@
             if (this.controls) this.controls.update();
 
             if (this.activeNode && this.activeNode.mesh) {
-                const vector = new THREE.Vector3();
-                this.activeNode.mesh.getWorldPosition(vector);
-                const eye = this.camera.position.clone().normalize();
-                const pos = vector.clone().normalize();
+                const vector = this.activeNode.mesh.getWorldPosition(new THREE.Vector3());
                 vector.project(this.camera);
-                
                 const tag = document.getElementById('visitor-tag');
-                if (eye.dot(pos) < 0.2 || vector.z > 1) { 
-                    tag.style.opacity = '0'; 
-                } else { 
+                if (vector.z > 1) { tag.style.opacity = '0'; } 
+                else { 
                     tag.style.opacity = '1';
-                    tag.style.left = `${(vector.x * 0.5 + 0.5) * window.innerWidth}px`;
-                    tag.style.top = `${(vector.y * -0.5 + 0.5) * window.innerHeight}px`;
+                    tag.style.left = `${(vector.x * .5 + .5) * window.innerWidth}px`;
+                    tag.style.top = `${(vector.y * -.5 + .5) * window.innerHeight}px`;
                 }
             }
             this.renderer.render(this.scene, this.camera);
