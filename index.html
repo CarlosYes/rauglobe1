@@ -2,61 +2,54 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v37.0 - REALTIME</title>
+    <title>RAU RADAR v41.0 - CIDADES REAIS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://cdn.pubnub.com/sdk/javascript/pubnub.4.29.9.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 10, 0, 0.95); color: #39ff14; padding: 25px;
-            border: 2px solid #39ff14; border-radius: 12px; pointer-events: none;
+            background: rgba(0, 20, 0, 0.95); color: #39ff14; padding: 20px;
+            border: 2px solid #39ff14; border-radius: 10px; pointer-events: none;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
         }
         #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; }
-        #diag { font-size: 11px; margin-top: 10px; font-weight: bold; }
-        .mem-box { font-size: 10px; color: #888; margin-top: 10px; border-top: 1px solid #222; padding-top: 10px; }
+        .pref-box { margin-top: 15px; border-top: 1px solid #1a331a; padding-top: 10px; font-size: 10px; color: #888; }
+        #status-msg { font-size: 11px; margin-top: 8px; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <b>RAU COMMAND v37.0</b><br><br>
-    OUVINTES ONLINE:
+    <b>RAU COMMAND v41.0</b><br><br>
+    UNIDADES ONLINE:
     <span id="count">0</span>
-    <div id="diag" style="color: #ff3333;">📡 A LIGAR AO REALTIME...</div>
+    <div id="status-msg" style="color: #ff3333;">📡 A SINCRONIZAR...</div>
     
-    <div class="mem-box">
-        💾 MEMÓRIA ATIVA:<br>
-        🔈 <span id="v-mem">--</span> | 🔄 <span id="a-mem">--</span>
+    <div class="pref-box">
+        💾 PREFERÊNCIAS DO PLAYER:<br>
+        🔈 <span id="mem-v">--</span> | 🔄 <span id="mem-a">--</span>
     </div>
 </div>
 
 <script>
-    // 1. MEMÓRIA
-    const rauPrefs = {
-        save: (v, a) => { localStorage.setItem('rau_v', v); localStorage.setItem('rau_a', a); },
-        load: () => ({ v: localStorage.getItem('rau_v') || "0.7", a: localStorage.getItem('rau_a') || "true" })
+    // 1. MEMÓRIA (Volume e Autoplay)
+    const storage = {
+        save: (v, a) => { localStorage.setItem('rau_vol', v); localStorage.setItem('rau_auto', a); },
+        load: () => ({ v: localStorage.getItem('rau_vol') || "0.8", a: localStorage.getItem('rau_auto') || "true" })
     };
-    const current = rauPrefs.load();
-    document.getElementById('v-mem').innerText = "VOL " + Math.round(current.v * 100) + "%";
-    document.getElementById('a-mem').innerText = "AUTO " + (current.a === "true" ? "ON" : "OFF");
+    const currentPrefs = storage.load();
+    document.getElementById('mem-v').innerText = "VOL " + Math.round(currentPrefs.v * 100) + "%";
+    document.getElementById('mem-a').innerText = "AUTO " + (currentPrefs.a === "true" ? "ON" : "OFF");
 
-    // 2. CONFIGURAÇÃO (Realtime Database)
-    const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const cfg = { 
-        apiKey: atob(_k[0]), 
-        authDomain: atob(_k[1]), 
-        projectId: atob(_k[2]), 
-        appId: atob(_k[3]),
-        databaseURL: "https://radiodosamigosunidos-aadda-default-rtdb.europe-west1.firebasedatabase.app/" 
-    };
-    
-    if (!firebase.apps.length) firebase.initializeApp(cfg);
-    const rdb = firebase.database();
-    const myID = "NODE_" + Math.random().toString(36).substr(2, 5);
+    // 2. CONFIGURAÇÃO DE SINAL (PubNub - Alternativa Blindada ao Firebase)
+    const pubnub = new PubNub({
+        publishKey: 'pub-c-490333d0-379e-436b-95a2-38686d0611e9',
+        subscribeKey: 'sub-c-5769749c-f9c3-11eb-9481-628f80098698',
+        uuid: "RAU_" + Math.random().toString(36).substr(2, 5)
+    });
 
-    // 3. ENGINE 3D
+    // 3. ENGINE GLOBO 3D
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -69,40 +62,85 @@
         shininess: 5
     }));
     world.add(globe);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
     camera.position.z = 3.5;
 
-    // 4. ATIVAÇÃO REALTIME
+    const markers = new Map();
+
+    // Criar o nome da cidade flutuante no globo
+    function createCityLabel(city, lat, lng) {
+        const phi = (90 - lat) * (Math.PI / 180);
+        const theta = (lng + 180) * (Math.PI / 180);
+        const pos = new THREE.Vector3().setFromSphericalCoords(1.05, phi, theta);
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 256; canvas.height = 64;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(0, 0, 256, 64);
+        ctx.font = 'bold 24px Courier New';
+        ctx.fillStyle = '#39ff14';
+        ctx.textAlign = 'center';
+        ctx.fillText(city.toUpperCase(), 128, 40);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+        sprite.position.copy(pos);
+        sprite.scale.set(0.5, 0.125, 1);
+        
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
+        dot.position.copy(pos.clone().multiplyScalar(0.97));
+
+        const group = new THREE.Group();
+        group.add(sprite); group.add(dot);
+        return group;
+    }
+
+    // 4. LÓGICA DE PRESENÇA REAL
     async function start() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
             const [lat, lng] = res.loc.split(',').map(Number);
-            
-            const nodeRef = rdb.ref('presence/' + myID);
-            
-            nodeRef.set({
-                lat, lng, city: res.city, ts: Date.now(),
-                v: current.v, a: current.a
-            }).then(() => {
-                document.getElementById('diag').innerText = "🟢 REALTIME ONLINE";
-                document.getElementById('diag').style.color = "#39ff14";
-                nodeRef.onDisconnect().remove();
-            }).catch(() => {
-                document.getElementById('diag').innerText = "🔴 ERRO: REGRAS DATABASE";
+            const city = res.city;
+
+            pubnub.subscribe({ channels: ['rau_radar'], withPresence: true });
+
+            pubnub.addListener({
+                message: (m) => {
+                    if (!markers.has(m.publisher)) {
+                        const label = createCityLabel(m.message.city, m.message.lat, m.message.lng);
+                        world.add(label);
+                        markers.set(m.publisher, label);
+                    }
+                },
+                presence: (p) => {
+                    document.getElementById('count').innerText = p.occupancy;
+                    if (p.action === 'leave' || p.action === 'timeout') {
+                        const obj = markers.get(p.uuid);
+                        if (obj) { world.remove(obj); markers.delete(p.uuid); }
+                    }
+                }
             });
 
-            rdb.ref('presence').on('value', snap => {
-                document.getElementById('count').innerText = snap.numChildren();
-            });
+            // Transmitir a minha localização para todos
+            setInterval(() => {
+                pubnub.publish({ 
+                    channel: 'rau_radar', 
+                    message: { lat, lng, city, v: currentPrefs.v, a: currentPrefs.a } 
+                });
+            }, 5000);
 
-        } catch (e) { document.getElementById('diag').innerText = "🟡 ERRO DE REDE"; }
+            document.getElementById('status-msg').innerText = "🟢 RADAR ATIVO";
+            document.getElementById('status-msg').style.color = "#39ff14";
+
+        } catch (e) { document.getElementById('status-msg').innerText = "🟡 ERRO DE REDE"; }
     }
 
     function loop() { requestAnimationFrame(loop); world.rotation.y += 0.0015; renderer.render(scene, camera); }
     start(); loop();
 
-    //window.saveRau(0.5, "true")
-    window.saveRau = (v, a) => { rauPrefs.save(v, a); location.reload(); };
+    //window.updateRau(0.5, "true")
+    window.updateRau = (v, a) => { storage.save(v, a); location.reload(); };
 </script>
 </body>
 </html>
