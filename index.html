@@ -22,7 +22,7 @@
 
 <div class="hud">
     <b style="font-size: 1.1em;">RADAR RADIO AMIGOS UNIDOS</b><br>
-    <span id="my-loc" style="font-size: 0.9em;">Sincronizando satélite...</span><br>
+    <span id="my-loc" style="font-size: 0.9em;">A sincronizar satélite...</span><br>
     <hr style="border:0; border-top:1px solid #39ff14; margin:8px 0; opacity: 0.3;">
     OUVINTES ONLINE: <span id="count" style="font-size: 1.2em; font-weight: bold;">1</span>
 </div>
@@ -30,21 +30,21 @@
 <div id="canvas-container"></div>
 
 <script>
-    // 1. FIREBASE CONFIG
+    // 1. CONFIGURAÇÃO FIREBASE
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
     const myId = "RAU_" + Math.random().toString(36).substr(2, 5);
 
-    // 2. THREE.JS ENGINE
+    // 2. SETUP THREE.JS
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    const mainGroup = new THREE.Group();
+    const mainGroup = new THREE.Group(); // Grupo que roda TUDO junto
     scene.add(mainGroup);
 
     const loader = new THREE.TextureLoader();
@@ -108,7 +108,7 @@
         mainGroup.add(mGroup);
     }
 
-    // 4. INTERATIVIDADE (O GIRO DO RATO)
+    // 4. INTERATIVIDADE (GIRO DO GLOBO)
     let isDragging = false;
     let mouseX = 0, mouseY = 0;
 
@@ -125,8 +125,8 @@
         }
     });
 
-    // 5. SINCRONIZAÇÃO EM TEMPO REAL
-    async function startRadar() {
+    // 5. SINCRONIZAÇÃO FIREBASE
+    async function start() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
@@ -149,7 +149,7 @@
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("GPS Error"); }
+        } catch(e) { console.error("Erro GPS"); }
     }
 
     function animate() {
@@ -158,7 +158,7 @@
         renderer.render(scene, camera);
     }
 
-    startRadar();
+    start();
     animate();
 
     window.addEventListener('resize', () => {
