@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v208.0 - DIRECT UPLINK</title>
+    <title>RAU MONITOR v209.0 - OVERRIDE TOTAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -16,7 +16,7 @@
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; }
         #visitor-tag {
             position: absolute; display: none; align-items: center; gap: 10px;
-            background: rgba(0, 0, 0, 0.95); border: 1px solid #39ff14;
+            background: rgba(0, 20, 0, 0.95); border: 1px solid #39ff14;
             padding: 6px 12px; border-radius: 4px; color: #fff;
             font-size: 14px; font-weight: bold; z-index: 500;
             transform: translate(-50%, -150%); pointer-events: none;
@@ -30,11 +30,11 @@
 <div id="rau-ui">
     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
         <div id="status-led" style="width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14;"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">CORE v208 | CLOUDFLARE NODE</span>
+        <span style="font-size: 11px; letter-spacing: 1px;">CORE v209 | MASTER LINK</span>
     </div>
     <div class="monitor-display">
         <span id="mon-city">A SINCRONIZAR...</span>
-        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Link direto estabelecido...</div>
+        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Recuperando sinal visual...</div>
     </div>
 </div>
 
@@ -56,13 +56,15 @@
             this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
 
-            this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+            // ILUMINAÇÃO REFORÇADA (Para o globo não ficar escuro)
+            this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.0);
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
 
             const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 10 });
+            // Cor de base cinza escuro para o caso da textura falhar
+            const mat = new THREE.MeshPhongMaterial({ color: 0x222222, shininess: 15 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.globe.add(this.markers);
@@ -70,48 +72,45 @@
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
             this.controls.autoRotate = true;
+            this.controls.autoRotateSpeed = 0.5;
             this.camera.position.z = 3.5;
 
             this.loadTexture();
             this.track(); 
             
-            setInterval(() => this.track(), 30000);
+            setInterval(() => this.track(), 20000);
             this.animate();
         },
 
         loadTexture() {
-            new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
+            const loader = new THREE.TextureLoader();
+            loader.setCrossOrigin('anonymous'); // IMPORTANTE para evitar bloqueio CORS
+            // Fonte alternativa ultra-estável via Unpkg
+            loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
+                this.globe.material.color.set(0xffffff); // Remove o cinza base
                 this.globe.material.needsUpdate = true;
             });
         },
 
         async track() {
             try {
-                // Passo 1: Pegar o IP via Cloudflare (Extremamente estável)
-                const trace = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
-                const text = await trace.text();
-                const ip = text.match(/ip=(.*)\n/)[1];
-
-                if (ip === this.currentIP) return;
-                this.currentIP = ip;
-
-                // Passo 2: Geolocation via IPWHOIS (HTTPS e sem bloqueio de referer)
-                const res = await fetch(`https://ipwho.is/${ip}`);
+                // Bypass via IPWHOIS (HTTPS direto)
+                const res = await fetch('https://ipwho.is/');
                 const data = await res.json();
                 
-                if (data.success) {
+                if (data.success && data.ip !== this.currentIP) {
+                    this.currentIP = data.ip;
                     this.updateVisitor(data);
                 }
             } catch (e) {
-                console.error("Erro no uplink v208.");
-                document.getElementById('mon-city').innerText = "OFFLINE";
+                console.error("Erro na telemetria.");
             }
         },
 
         updateVisitor(data) {
             document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
-            document.getElementById('mon-status').innerText = "IP: " + data.ip;
+            document.getElementById('mon-status').innerText = "IP RASTREADO: " + data.ip;
             
             this.markers.clear();
             const phi = (90 - data.latitude) * (Math.PI / 180);
