@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v58.0 - GLOBAL SYNC</title>
+    <title>RAU RADAR v59.0 - ZERO FREEZE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -11,33 +11,29 @@
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 15, 0, 0.95); color: #39ff14; padding: 20px;
-            border: 2px solid #39ff14; box-shadow: 0 0 20px rgba(0,255,0,0.3);
+            border: 2px solid #39ff14; box-shadow: 0 0 30px rgba(0,255,0,0.2);
         }
         #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; line-height: 0.8; margin: 10px 0; }
         .label { font-size: 10px; letter-spacing: 1px; font-weight: bold; text-transform: uppercase; }
-        #status-box { border-top: 1px solid #1a331a; margin-top: 15px; padding-top: 10px; font-size: 11px; }
-        .city-tag { color: #fff; background: #004400; padding: 2px 8px; border: 1px solid #39ff14; font-size: 14px; }
+        #city-tag { color: #fff; background: #004400; padding: 3px 10px; border: 1px solid #39ff14; font-size: 14px; display: inline-block; margin-top: 5px; }
+        #net-status { font-size: 9px; color: #39ff14; opacity: 0.6; margin-top: 10px; display: block; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div class="label">RAU COMMAND v58.0</div>
+    <div class="label">RAU COMMAND v59.0</div>
     <span id="count">0</span>
-    <div class="label">SINAIS ACTIVOS NO GLOBO</div>
-    
-    <div id="status-box">
-        <span class="label" style="color: #888;">A TUA LOCALIZAÇÃO:</span><br>
-        <span id="my-location" class="city-tag">A RASTREAR...</span>
-    </div>
+    <div class="label">SINAIS ACTIVOS</div>
+    <div id="city-tag">INICIALIZANDO...</div>
+    <span id="net-status">AGUARDANDO HANDSHAKE...</span>
 </div>
 
 <script>
-    // 1. CONEXÃO COM O SERVIDOR
-    // IMPORTANTE: Substitui pela URL que o Render/Railway te der
-    const socket = io("https://TEU-SERVIDOR.onrender.com"); 
+    // URL DO TEU SERVIDOR RENDER (Muda isto!)
+    const SERVER_URL = "https://teu-projeto.onrender.com"; 
+    const socket = io(SERVER_URL, { reconnection: true });
 
-    // 2. SETUP 3D
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -45,37 +41,47 @@
     document.body.appendChild(renderer.domElement);
 
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.autoRotate = true;
-    camera.position.z = 3.5;
+    controls.autoRotate = true; camera.position.z = 3.5;
 
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
 
-    const globeMesh = new THREE.Mesh(
+    const globe = new THREE.Mesh(
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({
             map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
             shininess: 5
         })
     );
-    globeGroup.add(globeMesh);
+    globeGroup.add(globe);
     scene.add(new THREE.AmbientLight(0xffffff, 2.0));
 
-    // 3. FUNÇÃO PARA CRIAR MARCADORES (PONTO + BANDEIRA + CIDADE)
-    function createGlobalMarker(data, isLocal) {
+    // LÓGICA DE ATUALIZAÇÃO SÍNCRONA
+    socket.on('update-peers', (peers) => {
+        const peerList = Object.values(peers);
+        document.getElementById('count').innerText = peerList.length;
+        document.getElementById('net-status').innerText = "LINK ESTÁVEL: " + SERVER_URL;
+
+        // Limpa marcadores e reconstrói
+        for(let i = globeGroup.children.length - 1; i > 0; i--) globeGroup.remove(globeGroup.children[i]);
+        
+        peerList.forEach(p => {
+            const isLocal = p.id === socket.id;
+            if(isLocal) document.getElementById('city-tag').innerText = p.city;
+            renderSignal(p, isLocal);
+        });
+    });
+
+    function renderSignal(data, isLocal) {
         const phi = (90 - data.lat) * (Math.PI / 180);
         const theta = (data.lon + 180) * (Math.PI / 180);
         const pos = new THREE.Vector3(-(Math.sin(phi)*Math.cos(theta)), Math.cos(phi), (Math.sin(phi)*Math.sin(theta)));
 
-        // Ponto no Globo
-        const dot = new THREE.Mesh(
-            new THREE.SphereGeometry(0.02, 16, 16),
-            new THREE.MeshBasicMaterial({ color: isLocal ? 0x39ff14 : 0xff3939 })
-        );
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.022, 16, 16), new THREE.MeshBasicMaterial({ color: isLocal ? 0x39ff14 : 0xff3939 }));
         dot.position.copy(pos);
         globeGroup.add(dot);
 
-        // Bandeira
+        // Bandeira e Texto
         new THREE.TextureLoader().load(`https://flagcdn.com/w80/${data.country}.png`, (fTex) => {
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex }));
             sprite.position.copy(pos.clone().multiplyScalar(1.15));
@@ -83,57 +89,43 @@
             globeGroup.add(sprite);
         });
 
-        // Nome da Cidade
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 512; canvas.height = 128;
         ctx.fillStyle = isLocal ? '#39ff14' : '#ff3939';
-        ctx.font = 'bold 44px Courier New';
-        ctx.textAlign = 'center';
+        ctx.font = 'bold 44px Courier New'; ctx.textAlign = 'center';
         ctx.fillText(data.city.toUpperCase(), 256, 80);
-        
         const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
         label.position.copy(pos.clone().multiplyScalar(1.3));
         label.scale.set(0.7, 0.18, 1);
         globeGroup.add(label);
     }
 
-    // 4. SINCRONIZAÇÃO EM TEMPO REAL
-    socket.on('update-peers', (peers) => {
-        // Limpa tudo menos a terra
-        for(let i = globeGroup.children.length - 1; i > 0; i--) {
-            globeGroup.remove(globeGroup.children[i]);
-        }
+    // DISPARO DE SINAL COM TIMEOUT (IMPEDE O TRAVAMENTO "A RASTREAR")
+    socket.on('connect', () => {
+        document.getElementById('city-tag').innerText = "LOCALIZANDO...";
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000); // Se demorar +4s, cancela e usa default
 
-        const peerArray = Object.values(peers);
-        document.getElementById('count').innerText = peerArray.length;
-
-        peerArray.forEach(p => {
-            const isLocal = p.id === socket.id;
-            if(isLocal) document.getElementById('my-location').innerText = p.city;
-            createGlobalMarker(p, isLocal);
-        });
-    });
-
-    // 5. ENVIO DE SINAL (COM BYPASS DE BLOQUEIO)
-    socket.on('connect', async () => {
-        try {
-            const res = await fetch(`https://ipapi.co/json/?bypass=${Date.now()}`);
-            const data = await res.json();
-            socket.emit('report-location', {
-                city: data.city,
-                lat: data.latitude,
-                lon: data.longitude,
-                country: data.country_code.toLowerCase()
+        fetch(`https://ipapi.co/json/?rau=${Date.now()}`, { signal: controller.signal })
+            .then(res => res.json())
+            .then(data => {
+                clearTimeout(timeoutId);
+                socket.emit('report-location', {
+                    city: data.city || "DESCONHECIDO",
+                    lat: data.latitude || 0,
+                    lon: data.longitude || 0,
+                    country: (data.country_code || "un").toLowerCase()
+                });
+            })
+            .catch(() => {
+                // FALLBACK: Se o IPAPI falhar, envia sinal genérico para não ficar em 0
+                socket.emit('report-location', { city: "SINAL OCULTO", lat: 0, lon: 0, country: "un" });
             });
-        } catch(e) { console.log("Erro de rastreio, tentando rota 2..."); }
     });
 
-    function animate() {
-        requestAnimationFrame(animate);
-        controls.update();
-        renderer.render(scene, camera);
-    }
+    function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
     animate();
 </script>
 </body>
