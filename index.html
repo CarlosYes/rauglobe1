@@ -2,54 +2,52 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v41.0 - CIDADES REAIS</title>
+    <title>RAU RADAR v42.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.pubnub.com/sdk/javascript/pubnub.4.29.9.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 20, 0, 0.95); color: #39ff14; padding: 20px;
+            background: rgba(0, 20, 0, 0.9); color: #39ff14; padding: 20px;
             border: 2px solid #39ff14; border-radius: 10px; pointer-events: none;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
         }
         #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; }
-        .pref-box { margin-top: 15px; border-top: 1px solid #1a331a; padding-top: 10px; font-size: 10px; color: #888; }
-        #status-msg { font-size: 11px; margin-top: 8px; font-weight: bold; }
+        #diag { font-size: 11px; margin-top: 10px; font-weight: bold; }
+        .mem-data { font-size: 10px; color: #888; margin-top: 10px; border-top: 1px dotted #333; padding-top: 10px; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <b>RAU COMMAND v41.0</b><br><br>
-    UNIDADES ONLINE:
-    <span id="count">0</span>
-    <div id="status-msg" style="color: #ff3333;">📡 A SINCRONIZAR...</div>
+    <b>RAU COMMAND v42.0</b><br><br>
+    UNIDADES NO MAPA:
+    <span id="count">1</span>
+    <div id="diag" style="color: #39ff14;">🟢 RADAR ATIVO</div>
     
-    <div class="pref-box">
-        💾 PREFERÊNCIAS DO PLAYER:<br>
-        🔈 <span id="mem-v">--</span> | 🔄 <span id="mem-a">--</span>
+    <div class="mem-data">
+        💾 MEMÓRIA GUARDADA:<br>
+        🔈 VOL: <span id="mv">--</span> | 🔄 AUTO: <span id="ma">--</span>
     </div>
 </div>
 
 <script>
-    // 1. MEMÓRIA (Volume e Autoplay)
-    const storage = {
-        save: (v, a) => { localStorage.setItem('rau_vol', v); localStorage.setItem('rau_auto', a); },
-        load: () => ({ v: localStorage.getItem('rau_vol') || "0.8", a: localStorage.getItem('rau_auto') || "true" })
+    // 1. GESTÃO DE MEMÓRIA (Volume e Autoplay)
+    const rauMemory = {
+        save: (v, a) => {
+            localStorage.setItem('rau_volume', v);
+            localStorage.setItem('rau_autoplay', a);
+        },
+        load: () => ({
+            v: localStorage.getItem('rau_volume') || "0.8",
+            a: localStorage.getItem('rau_autoplay') || "true"
+        })
     };
-    const currentPrefs = storage.load();
-    document.getElementById('mem-v').innerText = "VOL " + Math.round(currentPrefs.v * 100) + "%";
-    document.getElementById('mem-a').innerText = "AUTO " + (currentPrefs.a === "true" ? "ON" : "OFF");
 
-    // 2. CONFIGURAÇÃO DE SINAL (PubNub - Alternativa Blindada ao Firebase)
-    const pubnub = new PubNub({
-        publishKey: 'pub-c-490333d0-379e-436b-95a2-38686d0611e9',
-        subscribeKey: 'sub-c-5769749c-f9c3-11eb-9481-628f80098698',
-        uuid: "RAU_" + Math.random().toString(36).substr(2, 5)
-    });
+    const myPrefs = rauMemory.load();
+    document.getElementById('mv').innerText = Math.round(myPrefs.v * 100) + "%";
+    document.getElementById('ma').innerText = myPrefs.a === "true" ? "ON" : "OFF";
 
-    // 3. ENGINE GLOBO 3D
+    // 2. AMBIENTE 3D
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -62,85 +60,70 @@
         shininess: 5
     }));
     world.add(globe);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
     camera.position.z = 3.5;
 
-    const markers = new Map();
-
-    // Criar o nome da cidade flutuante no globo
-    function createCityLabel(city, lat, lng) {
-        const phi = (90 - lat) * (Math.PI / 180);
-        const theta = (lng + 180) * (Math.PI / 180);
-        const pos = new THREE.Vector3().setFromSphericalCoords(1.05, phi, theta);
-
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 256; canvas.height = 64;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(0, 0, 256, 64);
-        ctx.font = 'bold 24px Courier New';
-        ctx.fillStyle = '#39ff14';
-        ctx.textAlign = 'center';
-        ctx.fillText(city.toUpperCase(), 128, 40);
-
-        const texture = new THREE.CanvasTexture(canvas);
-        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
-        sprite.position.copy(pos);
-        sprite.scale.set(0.5, 0.125, 1);
-        
-        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
-        dot.position.copy(pos.clone().multiplyScalar(0.97));
-
-        const group = new THREE.Group();
-        group.add(sprite); group.add(dot);
-        return group;
-    }
-
-    // 4. LÓGICA DE PRESENÇA REAL
-    async function start() {
+    // 3. IDENTIFICAÇÃO DE CIDADE REAL
+    async function addLiveLocation() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
             const [lat, lng] = res.loc.split(',').map(Number);
-            const city = res.city;
+            const city = res.city.toUpperCase();
 
-            pubnub.subscribe({ channels: ['rau_radar'], withPresence: true });
+            // Converter coordenadas para o Globo
+            const phi = (90 - lat) * (Math.PI / 180);
+            const theta = (lng + 180) * (Math.PI / 180);
+            const pos = new THREE.Vector3().setFromSphericalCoords(1.05, phi, theta);
 
-            pubnub.addListener({
-                message: (m) => {
-                    if (!markers.has(m.publisher)) {
-                        const label = createCityLabel(m.message.city, m.message.lat, m.message.lng);
-                        world.add(label);
-                        markers.set(m.publisher, label);
-                    }
-                },
-                presence: (p) => {
-                    document.getElementById('count').innerText = p.occupancy;
-                    if (p.action === 'leave' || p.action === 'timeout') {
-                        const obj = markers.get(p.uuid);
-                        if (obj) { world.remove(obj); markers.delete(p.uuid); }
-                    }
-                }
-            });
+            // Criar Marcador Visual
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
+            dot.position.copy(pos);
+            world.add(dot);
 
-            // Transmitir a minha localização para todos
-            setInterval(() => {
-                pubnub.publish({ 
-                    channel: 'rau_radar', 
-                    message: { lat, lng, city, v: currentPrefs.v, a: currentPrefs.a } 
-                });
-            }, 5000);
+            // Criar Etiqueta com Nome da Cidade
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 256; canvas.height = 64;
+            ctx.fillStyle = 'rgba(0, 40, 0, 0.8)';
+            ctx.fillRect(0, 0, 256, 64);
+            ctx.font = 'bold 28px Courier New';
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.fillText(city, 128, 42);
 
-            document.getElementById('status-msg').innerText = "🟢 RADAR ATIVO";
-            document.getElementById('status-msg').style.color = "#39ff14";
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+            sprite.position.copy(pos.clone().multiplyScalar(1.1));
+            sprite.scale.set(0.6, 0.15, 1);
+            world.add(sprite);
 
-        } catch (e) { document.getElementById('status-msg').innerText = "🟡 ERRO DE REDE"; }
+        } catch (e) { console.log("Erro ao localizar"); }
     }
 
-    function loop() { requestAnimationFrame(loop); world.rotation.y += 0.0015; renderer.render(scene, camera); }
-    start(); loop();
+    // 4. MOVIMENTO E RENDER
+    let dragging = false;
+    window.addEventListener('mousedown', () => dragging = true);
+    window.addEventListener('mouseup', () => dragging = false);
+    window.addEventListener('mousemove', (e) => {
+        if(dragging) {
+            world.rotation.y += e.movementX * 0.005;
+            world.rotation.x += e.movementY * 0.005;
+        }
+    });
 
-    //window.updateRau(0.5, "true")
-    window.updateRau = (v, a) => { storage.save(v, a); location.reload(); };
+    function animate() {
+        requestAnimationFrame(animate);
+        if(!dragging) world.rotation.y += 0.002;
+        renderer.render(scene, camera);
+    }
+
+    addLiveLocation();
+    animate();
+
+    // COMANDO PARA O PLAYER: window.rauSet(0.5, "true")
+    window.rauSet = (v, a) => {
+        rauMemory.save(v, a);
+        location.reload();
+    };
 </script>
 </body>
 </html>
