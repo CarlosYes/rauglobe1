@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v60.0 - OMNI-RECOVERY</title>
+    <title>RAU RADAR v61.0 - ANTI-FREEZE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -11,33 +11,34 @@
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 10000;
             background: rgba(0, 15, 0, 0.98); border: 2px solid #39ff14;
-            padding: 20px; width: 320px; box-shadow: 0 0 50px rgba(0, 255, 0, 0.6);
+            padding: 20px; width: 300px; box-shadow: 0 0 30px rgba(0, 255, 0, 0.4);
         }
         #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; line-height: 0.8; margin: 10px 0; }
         .label { font-size: 10px; letter-spacing: 1px; font-weight: bold; text-transform: uppercase; }
-        .monitor-display { background: #000; border: 1px solid #333; padding: 15px; margin-top: 15px; border-radius: 4px; }
-        #mon-city { font-size: 22px; color: #fff; font-weight: bold; display: block; text-shadow: 0 0 10px #39ff14; }
-        #mon-status { font-size: 11px; color: #39ff14; opacity: 0.8; margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px; }
+        .monitor-display { background: #000; border: 1px solid #222; padding: 12px; margin-top: 15px; }
+        #mon-city { font-size: 20px; color: #fff; font-weight: bold; display: block; }
+        #net-info { font-size: 9px; color: #39ff14; opacity: 0.5; margin-top: 8px; display: block; border-top: 1px solid #1a1a1a; padding-top: 5px; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div class="label">RAU COMMAND v60.0</div>
-    <span id="count">0</span>
-    <div class="label">SINAIS ACTIVOS</div>
+    <div class="label">RAU COMMAND v61.0</div>
+    <span id="count">--</span>
+    <div class="label">SINAIS NO GLOBO</div>
 
     <div class="monitor-display">
-        <div style="display: flex; align-items: center;">
-            <span id="mon-city">A SINCRONIZAR...</span>
-        </div>
-        <div id="mon-status">A AGUARDAR DADOS DO SERVIDOR...</div>
+        <span id="mon-city">A LIGAR...</span>
+        <span id="net-info">A ESTABELECER TÚNEL...</span>
     </div>
 </div>
 
 <script>
-    // 1. CONFIGURAÇÃO DE REDE (Coloque o link do seu Render aqui)
-    const socket = io("https://URL-DO-TEU-SERVIDOR.onrender.com");
+    // 1. LINK DO SERVIDOR (Garante que este link está correto no Render)
+    const socket = io("https://URL-DO-TEU-SERVIDOR.onrender.com", { 
+        transports: ['websocket'], 
+        upgrade: false 
+    });
 
     let scene, camera, renderer, controls, globe, globeGroup;
 
@@ -61,24 +62,23 @@
             globe.material.map = tex; globe.material.needsUpdate = true;
         });
 
-        scene.add(new THREE.AmbientLight(0xffffff, 3.0));
-        
+        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
         animate();
     }
 
-    // 2. SINCRONIA MULTIPLAYER
+    // 2. GESTÃO DE SINAIS (MULTIPLAYER)
     socket.on('update-peers', (peers) => {
         const peerList = Object.values(peers);
         document.getElementById('count').innerText = peerList.length;
 
-        // Limpar marcadores antigos (preservar o globo)
+        // Limpa apenas marcadores
         for(let i = globeGroup.children.length - 1; i > 0; i--) globeGroup.remove(globeGroup.children[i]);
 
         peerList.forEach(p => {
             const isLocal = p.id === socket.id;
             if(isLocal) {
                 document.getElementById('mon-city').innerText = p.city.toUpperCase();
-                document.getElementById('mon-status').innerText = `SINAL LOCAL FIXADO | PORTA: ${socket.id.substring(0,6)}`;
+                document.getElementById('net-info').innerText = "SINAL ATIVO | ID: " + p.id.substring(0,8);
             }
             renderPeer(p, isLocal);
         });
@@ -92,37 +92,45 @@
         const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: isLocal ? 0x39ff14 : 0xff3939 }));
         dot.position.copy(pos); globeGroup.add(dot);
 
-        // Bandeira
-        new THREE.TextureLoader().load(`https://flagcdn.com/w80/${data.country}.png`, (fTex) => {
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex }));
-            sprite.position.copy(pos.clone().multiplyScalar(1.2));
-            sprite.scale.set(0.25, 0.15, 1);
-            globeGroup.add(sprite);
-        });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 256; canvas.height = 64;
+        ctx.fillStyle = isLocal ? '#39ff14' : '#ff3939';
+        ctx.font = 'bold 30px Courier New'; ctx.textAlign = 'center';
+        ctx.fillText(data.city.toUpperCase(), 128, 45);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+        sprite.position.copy(pos.clone().multiplyScalar(1.25));
+        sprite.scale.set(0.6, 0.15, 1);
+        globeGroup.add(sprite);
     }
 
-    // 3. RECUPERAÇÃO DE LOCALIZAÇÃO (O "MASTER SYNC" DA v175)
+    // 3. BYPASS DE SINCRONIA (RESOLVE O TRAVAMENTO)
     socket.on('connect', async () => {
-        const ts = Date.now();
-        const sources = [`https://ipapi.co/json/?rau=${ts}`, `https://get.geojs.io/v1/ip/geo.json?v=${ts}`];
+        document.getElementById('mon-city').innerText = "A RASTREAR...";
+        
+        // Tenta localizar, mas não trava o Socket se falhar
+        try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 3000); // 3 segundos de limite
 
-        for (let url of sources) {
-            try {
-                const res = await fetch(url);
-                const data = await res.json();
-                const lat = data.latitude || data.lat;
-                const lon = data.longitude || data.lon;
-                if (lat) {
-                    socket.emit('report-location', {
-                        city: data.city || "DESCONHECIDO",
-                        lat: parseFloat(lat),
-                        lon: parseFloat(lon),
-                        country: (data.country_code || data.country || "un").toLowerCase()
-                    });
-                    break;
-                }
-            } catch(e) { continue; }
+            const res = await fetch(`https://ipapi.co/json/?nocache=${Date.now()}`, { signal: controller.signal });
+            const data = await res.json();
+            
+            socket.emit('report-location', {
+                city: data.city || "RAU-NODE",
+                lat: data.latitude || 0,
+                lon: data.longitude || 0,
+                country: (data.country_code || "un").toLowerCase()
+            });
+            clearTimeout(id);
+        } catch(e) {
+            // Se o GPS falhar, o Socket ainda envia um sinal de "User Online" genérico
+            socket.emit('report-location', { city: "SINAL OCULTO", lat: 0, lon: 0, country: "un" });
         }
+    });
+
+    socket.on('disconnect', () => {
+        document.getElementById('mon-city').innerText = "RECONECTANDO...";
     });
 
     function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
