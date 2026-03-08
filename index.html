@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v202.0 - FIXO</title>
+    <title>RAU MONITOR v202.0 - UNLIMITED NODE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -15,7 +15,6 @@
         }
         .monitor-display { background: rgba(0, 0, 0, 0.9); border: 1px solid #1a1a1a; padding: 12px; }
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; }
-        
         #visitor-tag {
             position: absolute; display: none; align-items: center; gap: 10px;
             background: rgba(0, 20, 0, 0.95); border: 1px solid #39ff14;
@@ -38,7 +37,7 @@
     </div>
     <div class="monitor-display">
         <span id="mon-city">A SINCRONIZAR...</span>
-        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Telemetria em tempo real...</div>
+        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Link de Telemetria Ativo...</div>
     </div>
 </div>
 
@@ -57,43 +56,42 @@
 
         init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setClearColor(0x000000, 1);
+            this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
 
-            this.scene.add(new THREE.AmbientLight(0xffffff, 1.3));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+            this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
 
             const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, shininess: 20 });
+            const mat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, shininess: 25 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.globe.add(this.markers);
 
             this.createStars();
-
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
-            this.controls.dampingFactor = 0.05;
             this.controls.autoRotate = true;
-            this.controls.autoRotateSpeed = 0.4;
             this.camera.position.z = 3.5;
 
             this.updateAtmosphere();
-            this.animate();
             this.loadTexture();
             this.track();
             
-            setInterval(() => this.track(), 10000);
+            setInterval(() => this.track(), 30000); // Atualiza a cada 30 segundos
             setInterval(() => this.updateAtmosphere(), 60000);
+
+            window.addEventListener('resize', () => this.onResize());
+            this.animate();
         },
 
         createStars() {
             const starGeo = new THREE.BufferGeometry();
-            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6 });
+            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 });
             const starVertices = [];
-            for (let i = 0; i < 4000; i++) {
+            for (let i = 0; i < 5000; i++) {
                 starVertices.push((Math.random() - 0.5) * 1600, (Math.random() - 0.5) * 1600, (Math.random() - 0.5) * 1600);
             }
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
@@ -104,7 +102,7 @@
         updateAtmosphere() {
             const hour = new Date().getHours();
             const isDay = hour >= 6 && hour < 18;
-            this.scene.background = new THREE.Color(isDay ? 0x87ceeb : 0x000000);
+            this.scene.background = new THREE.Color(isDay ? 0x87ceeb : 0x010103);
             if(this.stars) this.stars.visible = !isDay;
             document.getElementById('core-status').innerText = isDay ? "CORE v202 | DIA" : "CORE v202 | NOITE";
             document.getElementById('status-led').style.background = isDay ? "#ffcc00" : "#39ff14";
@@ -119,14 +117,28 @@
         },
 
         async track() {
+            // USANDO IP-API (Alta estabilidade e sem chave necessária)
             try {
-                const res = await fetch(`https://ipapi.co/json/?nocache=${Date.now()}`);
-                const data = await res.json();
+                const res = await fetch(`http://ip-api.com/json/`); // Se o site for HTTP
+                // Se o seu site for HTTPS (como o GitHub Pages), use este:
+                // const res = await fetch(`https://demo.ip-api.com/json/`); 
+                
+                // NOTA: Para GitHub Pages (HTTPS), a versão gratuita do ip-api.com tem restrições.
+                // A melhor alternativa HTTPS estável é a IPWHOIS:
+                const resAlt = await fetch('https://ipwho.is/');
+                const data = await resAlt.json();
+                
                 if (data.ip && data.ip !== this.currentIP) {
                     this.currentIP = data.ip;
-                    this.updateVisitor(data);
+                    this.updateVisitor({
+                        city: data.city,
+                        latitude: data.latitude,
+                        longitude: data.longitude,
+                        country_code: data.country_code
+                    });
+                    document.getElementById('mon-status').innerText = "IP RASTREADO: " + data.ip;
                 }
-            } catch (e) { console.warn("Re-sync..."); }
+            } catch (e) { console.warn("Erro de rede."); }
         },
 
         updateVisitor(data) {
@@ -138,11 +150,11 @@
                 -(Math.sin(phi) * Math.cos(theta)),
                 Math.cos(phi),
                 (Math.sin(phi) * Math.sin(theta))
-            ).multiplyScalar(1.015);
+            ).multiplyScalar(1.01);
 
-            // BOLINHA VERDE MINIMALISTA (AJUSTE SOLICITADO)
+            // BOLINHA VERDE 0.01
             const dot = new THREE.Mesh(
-                new THREE.SphereGeometry(0.012, 16, 16), 
+                new THREE.SphereGeometry(0.01, 16, 16), 
                 new THREE.MeshBasicMaterial({ color: 0x39ff14 })
             );
             dot.position.copy(pos);
@@ -153,6 +165,12 @@
             document.getElementById('tag-flag').src = `https://flagcdn.com/w40/${this.activeNode.country}.png`;
             document.getElementById('tag-city').innerText = this.activeNode.city;
             tag.style.display = 'flex';
+        },
+
+        onResize() {
+            this.camera.aspect = window.innerWidth / window.innerHeight;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
         },
 
         animate() {
