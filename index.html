@@ -2,76 +2,75 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - SUPERNOVA v10.0</title>
+    <title>RAU - APEX v11.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-        #interface-v10 {
+        #rau-v11 {
             position: absolute; top: 40px; left: 40px; z-index: 1000;
-            background: linear-gradient(180deg, rgba(0,25,0,0.9) 0%, rgba(0,5,0,0.95) 100%);
-            color: #39ff14; padding: 30px; border-left: 6px solid #39ff14;
-            box-shadow: 0 0 40px rgba(0,0,0,1); pointer-events: none;
+            background: rgba(0, 15, 0, 0.95); color: #39ff14; padding: 25px;
+            border: 2px solid #39ff14; box-shadow: 0 0 40px rgba(57, 255, 20, 0.2);
+            pointer-events: none; border-radius: 2px;
         }
-        .v-tag { font-weight: 900; letter-spacing: 5px; font-size: 1.2em; text-shadow: 0 0 10px #39ff14; }
-        .data-stream { color: #fff; font-size: 0.9em; margin-top: 15px; }
-        .blink { color: #ff0000; animation: blinker 0.6s step-start infinite; }
-        @keyframes blinker { 50% { opacity: 0; } }
-        canvas { cursor: all-scroll; }
+        .header { font-weight: 900; letter-spacing: 4px; border-bottom: 1px solid #39ff14; padding-bottom: 5px; }
+        .stats { margin-top: 15px; font-size: 0.9em; color: #fff; }
+        .live-dot { color: #ff0000; animation: blink 0.5s step-end infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        canvas { cursor: move; }
     </style>
 </head>
 <body>
 
-<div id="interface-v10">
-    <div class="v-tag">RAU SYSTEM v10.0</div>
-    <div class="data-stream">
-        <span class="blink">●</span> RADAR: <span id="my-loc">SINCRO...</span><br>
-        <hr style="border:0; border-top:1px solid rgba(57,255,20,0.3); margin:15px 0;">
-        OPERATIVOS ATIVOS: <span id="count" style="font-size: 1.8em; font-weight: 900;">0</span>
+<div id="rau-v11">
+    <div class="header">RAU APEX v11.0</div>
+    <div class="stats">
+        <span class="live-dot">●</span> LINK: <span id="node-city">SINCRO...</span><br>
+        OUVINTES ATIVOS: <span id="count" style="font-size: 1.5em; color: #39ff14;">0</span>
     </div>
 </div>
 
 <script>
-    // 1. FIREBASE ULTRA-CORE
-    const _s = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const firebaseConfig = { apiKey: atob(_s[0]), authDomain: atob(_s[1]), projectId: atob(_s[2]), appId: atob(_s[3]) };
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    // 1. FIREBASE CORE BLINDADO
+    const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
-    const sessionToken = "V10_" + Math.random().toString(36).substr(2, 6);
+    const sessionKey = "APEX_" + Math.random().toString(36).substr(2, 6);
 
-    // 2. RENDERING ENGINE (GPU Optimized)
+    // 2. ENGINE DE ALTA PERFORMANCE
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    const anchor = new THREE.Group(); 
-    scene.add(anchor);
+    const world = new THREE.Group(); 
+    scene.add(world);
 
-    const globe = new THREE.Mesh(
+    const earth = new THREE.Mesh(
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({
             map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            shininess: 10
+            shininess: 12
         })
     );
-    anchor.add(globe);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.95));
-    camera.position.z = 3.8;
+    world.add(earth);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+    camera.position.z = 3.6;
 
-    // 3. OMNI-SYNC POOL (Zero Flicker)
-    const activeUnits = new Map();
+    // 3. CACHE DE MEMÓRIA VIVA (Sincronização Atómica)
+    const markerPool = new Map();
 
-    function syncRadar(data) {
-        const incomingIds = new Set(data.map(d => d.id));
+    function sync(data) {
+        const ids = new Set(data.map(d => d.id));
 
-        data.forEach(unit => {
-            if (!activeUnits.has(unit.id)) {
-                const phi = (90 - unit.lat) * (Math.PI / 180);
-                const theta = (unit.lng + 180) * (Math.PI / 180);
+        data.forEach(u => {
+            if (!markerPool.has(u.id)) {
+                const phi = (90 - u.lat) * (Math.PI / 180);
+                const theta = (u.lng + 180) * (Math.PI / 180);
                 const pos = new THREE.Vector3().setFromSphericalCoords(1.02, phi, theta);
 
                 const group = new THREE.Group();
@@ -81,69 +80,66 @@
 
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                canvas.width = 256; canvas.height = 64;
-                ctx.fillStyle = 'rgba(0,30,0,0.9)'; ctx.fillRect(0,0,256,64);
-                ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 4; ctx.strokeRect(0,0,256,64);
-                ctx.font = 'bold 26px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-                ctx.fillText(unit.city.toUpperCase(), 128, 42);
+                canvas.width = 300; canvas.height = 100;
+                ctx.fillStyle = 'rgba(0,30,0,0.9)'; ctx.fillRect(0,0,300,100);
+                ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 4; ctx.strokeRect(0,0,300,100);
+                ctx.font = 'bold 32px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+                ctx.fillText(u.city.toUpperCase(), 150, 60);
 
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: true }));
                 sprite.position.copy(pos.clone().multiplyScalar(1.15));
-                sprite.scale.set(0.45, 0.12, 1);
+                sprite.scale.set(0.5, 0.15, 1);
                 group.add(sprite);
 
-                anchor.add(group);
-                activeUnits.set(unit.id, group);
+                world.add(group);
+                markerPool.set(u.id, group);
             }
         });
 
-        activeUnits.forEach((obj, id) => {
-            if (!incomingIds.has(id)) {
-                anchor.remove(obj);
-                activeUnits.delete(id);
+        markerPool.forEach((obj, id) => {
+            if (!ids.has(id)) {
+                world.remove(obj);
+                markerPool.delete(id);
             }
         });
     }
 
-    // 4. CONTROLOS DE ALTA PRECISÃO
-    let drag = false, prevM = { x: 0, y: 0 };
-    document.addEventListener('mousedown', (e) => { drag = true; prevM = { x: e.clientX, y: e.clientY }; });
-    window.addEventListener('mouseup', () => drag = false);
+    // 4. FISICA DE ROTAÇÃO (Prioridade Zero-Lag)
+    let isDrag = false, lastX, lastY;
+    document.addEventListener('mousedown', (e) => { isDrag = true; lastX = e.clientX; lastY = e.clientY; });
+    window.addEventListener('mouseup', () => isDrag = false);
     window.addEventListener('mousemove', (e) => {
-        if (drag) {
-            anchor.rotation.y += (e.clientX - prevM.x) * 0.006;
-            anchor.rotation.x += (e.clientY - prevM.y) * 0.006;
-            prevM = { x: e.clientX, y: e.clientY };
-            anchor.updateMatrixWorld(); // Sincronia forçada
+        if (isDrag) {
+            world.rotation.y += (e.clientX - lastX) * 0.006;
+            world.rotation.x += (e.clientY - lastY) * 0.006;
+            lastX = e.clientX; lastY = e.clientY;
         }
     });
 
     // 5. UPLINK CRÍTICO
-    async function activate() {
-        try {
-            const ip = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
-            document.getElementById('my-loc').innerText = ip.city.toUpperCase();
-            const [lat, lng] = ip.loc.split(',').map(Number);
+    async function powerUp() {
+        const ip = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
+        document.getElementById('node-city').innerText = ip.city.toUpperCase();
+        const [lat, lng] = ip.loc.split(',').map(Number);
 
-            const up = () => db.collection('RAU_V10').doc(sessionToken).set({ lat, lng, city: ip.city, ts: firebase.firestore.FieldValue.serverTimestamp() });
-            up(); setInterval(up, 25000);
+        const up = () => db.collection('RAU_APEX').doc(sessionKey).set({ lat, lng, city: ip.city, ts: firebase.firestore.FieldValue.serverTimestamp() });
+        up(); setInterval(up, 25000);
 
-            db.collection('RAU_V10').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                const results = [];
-                snap.forEach(doc => results.push({ id: doc.id, ...doc.data() }));
-                syncRadar(results);
-                document.getElementById('count').innerText = snap.size;
-            });
-        } catch(e) { console.error("LINK ERROR"); }
+        db.collection('RAU_APEX').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+            const list = [];
+            snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+            sync(list);
+            document.getElementById('count').innerText = snap.size;
+        });
     }
 
-    function loop() {
-        requestAnimationFrame(loop);
-        if (!drag) anchor.rotation.y += 0.0012;
+    function render() {
+        requestAnimationFrame(render);
+        if (!isDrag) world.rotation.y += 0.0015;
         renderer.render(scene, camera);
     }
 
-    activate(); loop();
+    powerUp(); render();
 </script>
 </body>
 </html>
