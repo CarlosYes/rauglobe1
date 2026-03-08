@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v175.0 - GEO-SYNC ENGINE</title>
+    <title>RAU MONITOR v175.0 - ENGINE RECOVERY</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -19,7 +19,7 @@
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; }
         #mon-flag-ui { height: 18px; margin-right: 8px; vertical-align: middle; display: none; }
         #mon-status { font-size: 10px; color: #39ff14; opacity: 0.7; margin-top: 8px; border-top: 1px solid #1a1a1a; padding-top: 8px; }
-        canvas { display: block; outline: none; }
+        canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; }
     </style>
 </head>
 <body oncontextmenu="return false;">
@@ -27,14 +27,14 @@
 <div id="rau-ui">
     <div class="status-row">
         <div id="led"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">CORE v175.0 | GEO-SYNC</span>
+        <span style="font-size: 11px; letter-spacing: 1px;">CORE v175.0 | RECOVERED</span>
     </div>
     <div class="monitor-display">
         <div style="display: flex; align-items: center;">
             <img id="mon-flag-ui" src="">
-            <span id="mon-city">SCANNING...</span>
+            <span id="mon-city">RECONNECTING...</span>
         </div>
-        <div id="mon-status">Aguardando telemetria...</div>
+        <div id="mon-status">Restaurando motor gráfico...</div>
     </div>
 </div>
 
@@ -56,53 +56,57 @@
             this.controls.autoRotateSpeed = 0.5;
             this.camera.position.z = 3.5;
 
-            // Construção do Globo
+            // 1. Criar Globo Imediatamente (Sem esperar textura)
             const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 5 });
+            const mat = new THREE.MeshPhongMaterial({ color: 0x050505, shininess: 10 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.scene.add(this.markers);
 
-            // Carregar textura do mapa
+            // 2. Luzes (Essencial para não ficar preto)
+            this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+            sun.position.set(5, 3, 5);
+            this.scene.add(sun);
+
+            // 3. Carregar Textura em Background
             new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
                 this.globe.material.color.set(0xffffff);
                 this.globe.material.needsUpdate = true;
             });
 
-            this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
             this.animate();
-            this.pulse();
-            setInterval(() => this.pulse(), 4000);
+            this.checkNetwork();
+            setInterval(() => this.checkNetwork(), 5000);
         },
 
-        async pulse() {
+        async checkNetwork() {
             try {
-                const res = await fetch(`https://ipapi.co/json/?nocache=${Date.now()}`);
+                const res = await fetch(`https://ipapi.co/json/?v=${Date.now()}`);
                 const data = await res.json();
                 if (data.ip !== this.currentIP) {
                     this.currentIP = data.ip;
-                    this.updateUplink(data);
+                    this.deployMarkers(data);
                 }
-            } catch (e) { console.log("Signal lost..."); }
+            } catch (e) { console.log("Network lag..."); }
         },
 
-        async updateUplink(data) {
+        deployMarkers(data) {
             const { latitude: lat, longitude: lon, city, country_code: iso } = data;
-            const cityUpper = (city || "UNKNOWN").toUpperCase();
+            const cityUpper = (city || "DETECTED").toUpperCase();
             const isoLower = iso.toLowerCase();
 
-            // Atualiza UI
+            // UI
             document.getElementById('mon-city').innerText = cityUpper;
             const flagUi = document.getElementById('mon-flag-ui');
             flagUi.src = `https://flagcdn.com/w80/${isoLower}.png`;
             flagUi.style.display = 'inline-block';
-            document.getElementById('mon-status').innerText = `IP: ${data.ip} | NODE: ${iso} | LIVE`;
+            document.getElementById('mon-status').innerText = `IP: ${data.ip} | NODE: ${iso} | ACTIVE`;
 
-            // Limpa apenas após ter os novos dados
             this.markers.clear();
 
-            // Coordenadas
+            // Posicionamento
             const phi = (90 - lat) * (Math.PI / 180);
             const theta = (lon + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3(
@@ -111,21 +115,20 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            // 1. LED Verde
+            // Ponto LED
             const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // 2. Bandeira (Sprite)
-            const flagTex = await new Promise(resolve => {
-                new THREE.TextureLoader().load(`https://flagcdn.com/w160/${isoLower}.png`, resolve);
+            // Bandeira (Sem travar o código)
+            new THREE.TextureLoader().load(`https://flagcdn.com/w160/${isoLower}.png`, (fTex) => {
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex }));
+                sprite.position.copy(pos.clone().multiplyScalar(1.15));
+                sprite.scale.set(0.28, 0.16, 1);
+                this.markers.add(sprite);
             });
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: flagTex }));
-            sprite.position.copy(pos.clone().multiplyScalar(1.15));
-            sprite.scale.set(0.28, 0.16, 1);
-            this.markers.add(sprite);
 
-            // 3. Nome da Cidade (Canvas)
+            // Nome da Cidade (Canvas HD)
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = 512; canvas.height = 128;
@@ -136,14 +139,13 @@
             label.scale.set(0.7, 0.18, 1);
             this.markers.add(label);
 
-            // Fly-to suave
-            const camTarget = pos.clone().multiplyScalar(3.5);
-            this.camera.position.lerp(camTarget, 0.1);
+            // Auto-focus
+            this.camera.position.lerp(pos.clone().multiplyScalar(3.8), 0.1);
         },
 
         animate() {
             requestAnimationFrame(() => this.animate());
-            this.controls.update();
+            if (this.controls) this.controls.update();
             this.renderer.render(this.scene, this.camera);
         }
     };
