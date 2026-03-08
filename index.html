@@ -2,28 +2,28 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v198.0 - ABSOLUTE STABILITY</title>
+    <title>RAU MONITOR v200.0 - ORIGINAL RESTORED</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; user-select: none; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 15, 0, 0.9); border-left: 3px solid #39ff14;
+            background: rgba(0, 10, 0, 0.85); border-left: 3px solid #39ff14;
             padding: 15px; width: 280px; pointer-events: none;
-            backdrop-filter: blur(8px);
+            backdrop-filter: blur(10px);
         }
-        .monitor-display { background: rgba(0, 5, 0, 0.95); border: 1px solid #1a1a1a; padding: 12px; }
+        .monitor-display { background: rgba(0, 0, 0, 0.9); border: 1px solid #1a1a1a; padding: 12px; }
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; }
         
-        /* HUD flutuante para Cidade e Bandeira */
+        /* Tag de Visita (Bandeira + Cidade) */
         #visitor-tag {
             position: absolute; display: none; align-items: center; gap: 10px;
-            background: rgba(0, 30, 0, 0.9); border: 1px solid #39ff14;
+            background: rgba(0, 20, 0, 0.9); border: 1px solid #39ff14;
             padding: 6px 12px; border-radius: 4px; color: #fff;
             font-size: 14px; font-weight: bold; z-index: 500;
             transform: translate(-50%, -150%);
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
         }
         .flag-icon { width: 24px; height: 16px; border: 1px solid #39ff14; object-fit: cover; }
         canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; outline: none; }
@@ -33,12 +33,12 @@
 
 <div id="rau-ui">
     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-        <div id="led" style="width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; animation: pulse 1s infinite;"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">RAU CORE v198 | STABLE</span>
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14;"></div>
+        <span style="font-size: 11px; letter-spacing: 1px;">RAU CORE v200 | ORIGINAL</span>
     </div>
     <div class="monitor-display">
-        <span id="mon-city">SCANNING...</span>
-        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">A detetar telemetria...</div>
+        <span id="mon-city">AQUIRING SIGNAL...</span>
+        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Rastreando nó ativo...</div>
     </div>
 </div>
 
@@ -48,7 +48,7 @@
 </div>
 
 <script>
-    const RAU_SYSTEM = {
+    const RAU = {
         scene: new THREE.Scene(),
         camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000),
         renderer: new THREE.WebGLRenderer({ antialias: true }),
@@ -60,25 +60,23 @@
             this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
 
-            // Iluminação
-            this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+            // Iluminação Clássica
+            this.scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.7);
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
 
-            // Criar Globo de Emergência (Visível imediatamente)
-            const geo = new THREE.SphereGeometry(1, 40, 40);
-            const mat = new THREE.MeshPhongMaterial({ 
-                color: 0x001100, 
-                wireframe: true, 
-                transparent: true, 
-                opacity: 0.2 
-            });
+            // O Globo Anterior (Realista)
+            const geo = new THREE.SphereGeometry(1, 64, 64);
+            const mat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 15 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.globe.add(this.markers);
 
-            // Controles de Giro Suave
+            // Estrelas de fundo
+            this.addStars();
+
+            // Giro Suave (Damping)
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
             this.controls.dampingFactor = 0.05;
@@ -86,17 +84,26 @@
             this.controls.autoRotateSpeed = 0.5;
             this.camera.position.z = 3.5;
 
-            this.loadTexture();
+            this.loadEarth();
             this.animate();
             this.track();
             setInterval(() => this.track(), 10000);
         },
 
-        loadTexture() {
+        addStars() {
+            const starGeo = new THREE.BufferGeometry();
+            const coords = [];
+            for (let i = 0; i < 6000; i++) {
+                coords.push((Math.random() - 0.5) * 1800, (Math.random() - 0.5) * 1800, (Math.random() - 0.5) * 1800);
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(coords, 3));
+            this.scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 })));
+        },
+
+        loadEarth() {
             new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
-                this.globe.material.wireframe = false;
-                this.globe.material.opacity = 1;
+                this.globe.material.color.set(0xffffff);
                 this.globe.material.needsUpdate = true;
             });
         },
@@ -107,12 +114,12 @@
                 const data = await res.json();
                 if (data.ip && data.ip !== this.currentIP) {
                     this.currentIP = data.ip;
-                    this.updateVisitor(data);
+                    this.updateUI(data);
                 }
-            } catch (e) { console.log("Erro de rede."); }
+            } catch (e) { console.log("Erro de rede"); }
         },
 
-        updateVisitor(data) {
+        updateUI(data) {
             document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
             
             this.markers.clear();
@@ -124,10 +131,12 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
+            // Marcador LED 3D
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
 
+            // Dados HUD
             this.activeNode = { mesh: dot, city: data.city, country: data.country_code.toLowerCase() };
             
             const tag = document.getElementById('visitor-tag');
@@ -155,8 +164,7 @@
         }
     };
 
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-    window.onload = () => RAU_SYSTEM.init();
+    window.onload = () => RAU.init();
 </script>
 </body>
 </html>
