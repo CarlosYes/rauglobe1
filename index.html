@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - RADAR PERSISTENTE v4.0</title>
+    <title>RAU - RADAR BLACK OPS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
@@ -12,43 +12,42 @@
         #canvas-container:active { cursor: grabbing; }
         .hud { 
             position: absolute; top: 20px; left: 20px; z-index: 100; 
-            color: #39ff14; background: rgba(0, 20, 0, 0.9); padding: 20px; 
-            border: 2px solid #39ff14; pointer-events: none;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
+            color: #39ff14; background: rgba(0, 15, 0, 0.9); padding: 20px; 
+            border: 2px solid #39ff14; pointer-events: none; border-radius: 4px;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
         }
-        .status { color: #ff0000; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        .scan { color: #ff0000; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.3; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <b style="font-size: 1.2em; text-transform: uppercase;">Radar Radio Amigos Unidos</b><br>
-    <span class="status">●</span> LINK SATÉLITE: <span id="my-loc" style="color:#fff">CONNECTING...</span><br>
+    <b style="font-size: 1.2em; letter-spacing: 2px;">RADAR RADIO AMIGOS UNIDOS</b><br>
+    <span class="scan">●</span> SCANNER ATIVO: <span id="my-loc" style="color:#fff">SINCRO...</span><br>
     <hr style="border:0; border-top:1px solid #39ff14; margin:10px 0; opacity: 0.3;">
-    UNIDADES ATIVAS: <span id="count" style="font-size: 1.4em; font-weight: bold;">0</span>
+    UNIDADES ONLINE: <span id="count" style="font-size: 1.4em; font-weight: bold;">1</span>
 </div>
 
 <div id="canvas-container"></div>
 
 <script>
-    // 1. ENGINE CORE
+    // 1. FIREBASE CORE
+    const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
+    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    const db = firebase.firestore();
+    const myId = "OP_" + Math.random().toString(36).substr(2, 5);
+
+    // 2. SCENE & WORLD
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-    const world = new THREE.Group(); // Grupo mestre para rotação
-    scene.add(world);
-
-    // Luz e Terra
-    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.5);
-    sun.position.set(5, 3, 5);
-    scene.add(sun);
-    camera.position.z = 3;
+    const mainGroup = new THREE.Group(); 
+    scene.add(mainGroup);
 
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
@@ -56,36 +55,42 @@
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({
             map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            shininess: 5
+            shininess: 10
         })
     );
-    world.add(earth);
+    mainGroup.add(earth);
 
-    // 2. SISTEMA DE GESTÃO DE MARCADORES
-    const activeMarkers = new Map(); 
+    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.4);
+    sun.position.set(5, 3, 5);
+    scene.add(sun);
+    camera.position.z = 3;
 
-    function createLabel(text) {
+    // 3. SISTEMA DE UNIDADES PERSISTENTES
+    const markerMap = new Map();
+
+    function createUnitSprite(city) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 512; canvas.height = 128;
-        ctx.fillStyle = 'rgba(0, 40, 0, 0.85)';
-        ctx.fillRect(10, 20, 492, 88);
+        ctx.fillStyle = 'rgba(0, 40, 0, 0.9)';
+        ctx.fillRect(0, 30, 512, 70);
         ctx.strokeStyle = '#39ff14';
         ctx.lineWidth = 4;
-        ctx.strokeRect(10, 20, 492, 88);
+        ctx.strokeRect(0, 30, 512, 70);
         ctx.font = 'Bold 42px Courier New';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
-        ctx.fillText(text.toUpperCase(), 256, 78);
-        
+        ctx.fillText(city.toUpperCase(), 256, 80);
+
         const tex = new THREE.CanvasTexture(canvas);
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true }));
         sprite.scale.set(0.6, 0.15, 1);
         return sprite;
     }
 
-    function updateRadar(lat, lng, city, id) {
-        if (activeMarkers.has(id)) return; 
+    function addOrUpdateUnit(id, lat, lng, city) {
+        if (markerMap.has(id)) return;
 
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
@@ -100,15 +105,15 @@
         dot.position.copy(pos);
         group.add(dot);
 
-        const label = createLabel(city || "Ouvinte");
+        const label = createUnitSprite(city || "Ouvinte");
         label.position.copy(pos.clone().multiplyScalar(1.1));
         group.add(label);
 
-        world.add(group);
-        activeMarkers.set(id, group);
+        mainGroup.add(group);
+        markerMap.set(id, group);
     }
 
-    // 3. INTERATIVIDADE (Rato comanda o Grupo World)
+    // 4. INTERATIVIDADE TOTAL
     let isDragging = false;
     let mouseX = 0, mouseY = 0;
 
@@ -118,66 +123,53 @@
         if (isDragging) {
             const dx = e.clientX - mouseX;
             const dy = e.clientY - mouseY;
-            world.rotation.y += dx * 0.007;
-            world.rotation.x += dy * 0.007;
+            mainGroup.rotation.y += dx * 0.008;
+            mainGroup.rotation.x += dy * 0.008;
             mouseX = e.clientX;
             mouseY = e.clientY;
         }
     });
 
-    // 4. FIREBASE ENGINE
-    const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
-    if (!firebase.apps.length) firebase.initializeApp(cfg);
-    const db = firebase.firestore();
-    const myId = "RAU_" + Math.random().toString(36).substr(2, 4);
-
-    async function start() {
+    // 5. FIREBASE REALTIME SYNC
+    async function init() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
             document.getElementById('my-loc').innerText = data.city.toUpperCase();
             const [lat, lng] = data.loc.split(',').map(Number);
 
-            const report = () => db.collection('rau_v5').doc(myId).set({
+            const report = () => db.collection('rau_final').doc(myId).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
-            report(); setInterval(report, 20000);
+            report(); setInterval(report, 25000);
 
-            db.collection('rau_v5').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+            db.collection('rau_final').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
                 const currentIds = new Set();
-                snap.forEach(doc => currentIds.add(doc.id));
-                
-                activeMarkers.forEach((obj, id) => {
-                    if (!currentIds.has(id)) {
-                        world.remove(obj);
-                        activeMarkers.delete(id);
-                    }
-                });
-
                 snap.forEach(doc => {
                     const d = doc.data();
-                    if(d.lat) updateRadar(d.lat, d.lng, d.city, doc.id);
+                    currentIds.add(doc.id);
+                    if(d.lat) addOrUpdateUnit(doc.id, d.lat, d.lng, d.city);
+                });
+
+                markerMap.forEach((obj, id) => {
+                    if (!currentIds.has(id)) {
+                        mainGroup.remove(obj);
+                        markerMap.delete(id);
+                    }
                 });
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.log("Erro GPS"); }
+        } catch(e) { console.error("OFFLINE"); }
     }
 
     function animate() {
         requestAnimationFrame(animate);
-        if (!isDragging) world.rotation.y += 0.002;
+        if (!isDragging) mainGroup.rotation.y += 0.002;
         renderer.render(scene, camera);
     }
 
-    start();
+    init();
     animate();
-
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
 </script>
 </body>
 </html>
