@@ -2,139 +2,115 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v61.0 - ANTI-FREEZE</title>
+    <title>RAU RADAR v62.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
-            position: absolute; top: 20px; left: 20px; z-index: 10000;
-            background: rgba(0, 15, 0, 0.98); border: 2px solid #39ff14;
-            padding: 20px; width: 300px; box-shadow: 0 0 30px rgba(0, 255, 0, 0.4);
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: rgba(0, 10, 0, 0.95); border: 2px solid #39ff14;
+            padding: 20px; width: 280px; box-shadow: 0 0 40px rgba(0, 255, 0, 0.3);
         }
-        #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; line-height: 0.8; margin: 10px 0; }
-        .label { font-size: 10px; letter-spacing: 1px; font-weight: bold; text-transform: uppercase; }
-        .monitor-display { background: #000; border: 1px solid #222; padding: 12px; margin-top: 15px; }
-        #mon-city { font-size: 20px; color: #fff; font-weight: bold; display: block; }
-        #net-info { font-size: 9px; color: #39ff14; opacity: 0.5; margin-top: 8px; display: block; border-top: 1px solid #1a1a1a; padding-top: 5px; }
+        #count { font-size: 4em; font-weight: 900; color: #fff; display: block; line-height: 0.8; }
+        .label { font-size: 10px; font-weight: bold; text-transform: uppercase; opacity: 0.8; }
+        #city-display { margin-top: 15px; padding: 10px; background: #002200; border: 1px solid #333; }
+        #city-name { font-size: 18px; color: #fff; font-weight: bold; display: block; }
+        #status { font-size: 9px; color: #39ff14; margin-top: 5px; display: block; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div class="label">RAU COMMAND v61.0</div>
-    <span id="count">--</span>
-    <div class="label">SINAIS NO GLOBO</div>
-
-    <div class="monitor-display">
-        <span id="mon-city">A LIGAR...</span>
-        <span id="net-info">A ESTABELECER TÚNEL...</span>
+    <div class="label">RAU COMMAND v62.0</div>
+    <span id="count">0</span>
+    <div class="label">UTILIZADORES ONLINE</div>
+    
+    <div id="city-display">
+        <span class="label" style="font-size: 8px;">A TUA LOCALIZAÇÃO:</span>
+        <span id="city-name">A CONECTAR...</span>
+        <span id="status">SINAL: PROCURANDO SERVIDOR...</span>
     </div>
 </div>
 
 <script>
-    // 1. LINK DO SERVIDOR (Garante que este link está correto no Render)
-    const socket = io("https://URL-DO-TEU-SERVIDOR.onrender.com", { 
-        transports: ['websocket'], 
-        upgrade: false 
+    // 🔗 SUBSTITUI PELO TEU LINK DO RENDER AQUI!
+    const SERVER_URL = "https://TEU-PROJETO.onrender.com"; 
+    const socket = io(SERVER_URL, { transports: ['websocket', 'polling'] });
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.autoRotate = true; camera.position.z = 3.5;
+
+    const globeGroup = new THREE.Group();
+    scene.add(globeGroup);
+
+    const globe = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 64, 64),
+        new THREE.MeshPhongMaterial({
+            map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
+            shininess: 5
+        })
+    );
+    globeGroup.add(globe);
+    scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+
+    // SINCRONIA DE REDE
+    socket.on('connect', async () => {
+        document.getElementById('status').innerText = "SINAL: CONECTADO AO SERVIDOR";
+        try {
+            const res = await fetch("https://ipapi.co/json/").then(r => r.json());
+            socket.emit('report-location', {
+                city: res.city || "DESCONHECIDO",
+                lat: res.latitude || 0,
+                lon: res.longitude || 0,
+                country: (res.country_code || "un").toLowerCase()
+            });
+        } catch(e) {
+            socket.emit('report-location', { city: "RAU-NODE", lat: 0, lon: 0, country: "un" });
+        }
     });
 
-    let scene, camera, renderer, controls, globe, globeGroup;
-
-    function init() {
-        scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-        
-        controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.autoRotate = true; camera.position.z = 3.5;
-
-        globeGroup = new THREE.Group();
-        scene.add(globeGroup);
-
-        globe = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), new THREE.MeshPhongMaterial({ shininess: 8 }));
-        globeGroup.add(globe);
-
-        new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
-            globe.material.map = tex; globe.material.needsUpdate = true;
-        });
-
-        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
-        animate();
-    }
-
-    // 2. GESTÃO DE SINAIS (MULTIPLAYER)
     socket.on('update-peers', (peers) => {
         const peerList = Object.values(peers);
         document.getElementById('count').innerText = peerList.length;
 
-        // Limpa apenas marcadores
+        // Limpa e redesenha
         for(let i = globeGroup.children.length - 1; i > 0; i--) globeGroup.remove(globeGroup.children[i]);
 
         peerList.forEach(p => {
             const isLocal = p.id === socket.id;
-            if(isLocal) {
-                document.getElementById('mon-city').innerText = p.city.toUpperCase();
-                document.getElementById('net-info').innerText = "SINAL ATIVO | ID: " + p.id.substring(0,8);
-            }
-            renderPeer(p, isLocal);
+            if(isLocal) document.getElementById('city-name').innerText = p.city.toUpperCase();
+            
+            const phi = (90 - p.lat) * (Math.PI / 180);
+            const theta = (p.lon + 180) * (Math.PI / 180);
+            const pos = new THREE.Vector3(-(Math.sin(phi)*Math.cos(theta))*1.02, Math.cos(phi)*1.02, (Math.sin(phi)*Math.sin(theta))*1.02);
+
+            const dotColor = isLocal ? 0x39ff14 : 0xff3939;
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 16, 16), new THREE.MeshBasicMaterial({ color: dotColor }));
+            dot.position.copy(pos);
+            globeGroup.add(dot);
         });
     });
 
-    function renderPeer(data, isLocal) {
-        const phi = (90 - data.lat) * (Math.PI / 180);
-        const theta = (data.lon + 180) * (Math.PI / 180);
-        const pos = new THREE.Vector3(-(Math.sin(phi)*Math.cos(theta))*1.01, Math.cos(phi)*1.01, (Math.sin(phi)*Math.sin(theta))*1.01);
-
-        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: isLocal ? 0x39ff14 : 0xff3939 }));
-        dot.position.copy(pos); globeGroup.add(dot);
-
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 256; canvas.height = 64;
-        ctx.fillStyle = isLocal ? '#39ff14' : '#ff3939';
-        ctx.font = 'bold 30px Courier New'; ctx.textAlign = 'center';
-        ctx.fillText(data.city.toUpperCase(), 128, 45);
-        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
-        sprite.position.copy(pos.clone().multiplyScalar(1.25));
-        sprite.scale.set(0.6, 0.15, 1);
-        globeGroup.add(sprite);
-    }
-
-    // 3. BYPASS DE SINCRONIA (RESOLVE O TRAVAMENTO)
-    socket.on('connect', async () => {
-        document.getElementById('mon-city').innerText = "A RASTREAR...";
-        
-        // Tenta localizar, mas não trava o Socket se falhar
-        try {
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 3000); // 3 segundos de limite
-
-            const res = await fetch(`https://ipapi.co/json/?nocache=${Date.now()}`, { signal: controller.signal });
-            const data = await res.json();
-            
-            socket.emit('report-location', {
-                city: data.city || "RAU-NODE",
-                lat: data.latitude || 0,
-                lon: data.longitude || 0,
-                country: (data.country_code || "un").toLowerCase()
-            });
-            clearTimeout(id);
-        } catch(e) {
-            // Se o GPS falhar, o Socket ainda envia um sinal de "User Online" genérico
-            socket.emit('report-location', { city: "SINAL OCULTO", lat: 0, lon: 0, country: "un" });
-        }
-    });
-
     socket.on('disconnect', () => {
-        document.getElementById('mon-city').innerText = "RECONECTANDO...";
+        document.getElementById('status').innerText = "SINAL: PERDIDO (RECONECTANDO)";
     });
 
     function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
-    window.onload = init;
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
 </script>
 </body>
 </html>
