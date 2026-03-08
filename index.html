@@ -2,19 +2,22 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v202.0 - UNLIMITED NODE</title>
+    <title>RAU MONITOR v202.0 - FIXO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
+        
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 10, 0, 0.9); border-left: 3px solid #39ff14;
             padding: 15px; width: 280px; pointer-events: none;
             backdrop-filter: blur(10px);
         }
+
         .monitor-display { background: rgba(0, 0, 0, 0.9); border: 1px solid #1a1a1a; padding: 12px; }
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; }
+        
         #visitor-tag {
             position: absolute; display: none; align-items: center; gap: 10px;
             background: rgba(0, 20, 0, 0.95); border: 1px solid #39ff14;
@@ -22,8 +25,9 @@
             font-size: 14px; font-weight: bold; z-index: 500;
             transform: translate(-50%, -150%);
             box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
-            pointer-events: none;
+            pointer-events: none; white-space: nowrap;
         }
+
         .flag-icon { width: 24px; height: 16px; border: 1px solid #39ff14; object-fit: cover; }
         canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; outline: none; }
     </style>
@@ -37,7 +41,7 @@
     </div>
     <div class="monitor-display">
         <span id="mon-city">A SINCRONIZAR...</span>
-        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Link de Telemetria Ativo...</div>
+        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Telemetria Global Ativa...</div>
     </div>
 </div>
 
@@ -71,16 +75,19 @@
             this.globe.add(this.markers);
 
             this.createStars();
+
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
             this.controls.autoRotate = true;
+            this.controls.autoRotateSpeed = 0.5;
             this.camera.position.z = 3.5;
 
             this.updateAtmosphere();
             this.loadTexture();
-            this.track();
             
-            setInterval(() => this.track(), 30000); // Atualiza a cada 30 segundos
+            // Ciclo de rastreamento robusto
+            this.track();
+            setInterval(() => this.track(), 15000); 
             setInterval(() => this.updateAtmosphere(), 60000);
 
             window.addEventListener('resize', () => this.onResize());
@@ -106,6 +113,7 @@
             if(this.stars) this.stars.visible = !isDay;
             document.getElementById('core-status').innerText = isDay ? "CORE v202 | DIA" : "CORE v202 | NOITE";
             document.getElementById('status-led').style.background = isDay ? "#ffcc00" : "#39ff14";
+            document.getElementById('status-led').style.boxShadow = isDay ? "0 0 10px #ffcc00" : "0 0 10px #39ff14";
         },
 
         loadTexture() {
@@ -117,32 +125,36 @@
         },
 
         async track() {
-            // USANDO IP-API (Alta estabilidade e sem chave necessária)
+            // Rastreamento compatível com HTTPS (GitHub Pages) e Redundância
             try {
-                const res = await fetch(`http://ip-api.com/json/`); // Se o site for HTTP
-                // Se o seu site for HTTPS (como o GitHub Pages), use este:
-                // const res = await fetch(`https://demo.ip-api.com/json/`); 
-                
-                // NOTA: Para GitHub Pages (HTTPS), a versão gratuita do ip-api.com tem restrições.
-                // A melhor alternativa HTTPS estável é a IPWHOIS:
-                const resAlt = await fetch('https://ipwho.is/');
-                const data = await resAlt.json();
-                
-                if (data.ip && data.ip !== this.currentIP) {
-                    this.currentIP = data.ip;
-                    this.updateVisitor({
-                        city: data.city,
-                        latitude: data.latitude,
-                        longitude: data.longitude,
-                        country_code: data.country_code
-                    });
-                    document.getElementById('mon-status').innerText = "IP RASTREADO: " + data.ip;
-                }
-            } catch (e) { console.warn("Erro de rede."); }
+                const res = await fetch('https://ipapi.co/json/');
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                this.updateVisitor(data);
+            } catch (e) {
+                try {
+                    const resAlt = await fetch('https://ipwho.is/');
+                    const dataAlt = await resAlt.json();
+                    if(dataAlt.success) {
+                        this.updateVisitor({
+                            city: dataAlt.city,
+                            latitude: dataAlt.latitude,
+                            longitude: dataAlt.longitude,
+                            country_code: dataAlt.country_code,
+                            ip: dataAlt.ip
+                        });
+                    }
+                } catch(e2) { console.warn("Sinal instável."); }
+            }
         },
 
         updateVisitor(data) {
+            if (data.ip === this.currentIP) return;
+            this.currentIP = data.ip;
+
             document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
+            document.getElementById('mon-status').innerText = "LINK ATIVO: " + data.ip;
+
             this.markers.clear();
             const phi = (90 - data.latitude) * (Math.PI / 180);
             const theta = (data.longitude + 180) * (Math.PI / 180);
@@ -150,9 +162,9 @@
                 -(Math.sin(phi) * Math.cos(theta)),
                 Math.cos(phi),
                 (Math.sin(phi) * Math.sin(theta))
-            ).multiplyScalar(1.01);
+            ).multiplyScalar(1.015);
 
-            // BOLINHA VERDE 0.01
+            // BOLINHA MINIMALISTA 0.01
             const dot = new THREE.Mesh(
                 new THREE.SphereGeometry(0.01, 16, 16), 
                 new THREE.MeshBasicMaterial({ color: 0x39ff14 })
@@ -181,9 +193,11 @@
                 const vector = new THREE.Vector3();
                 this.activeNode.mesh.getWorldPosition(vector);
                 vector.project(this.camera);
+                
                 const tag = document.getElementById('visitor-tag');
-                if (vector.z > 1) { tag.style.opacity = '0'; } 
-                else { 
+                if (vector.z > 1) { 
+                    tag.style.opacity = '0'; 
+                } else { 
                     tag.style.opacity = '1';
                     tag.style.left = `${(vector.x * 0.5 + 0.5) * window.innerWidth}px`;
                     tag.style.top = `${(vector.y * -0.5 + 0.5) * window.innerHeight}px`;
