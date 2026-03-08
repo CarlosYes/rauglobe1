@@ -2,44 +2,46 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - APEX v11.0</title>
+    <title>RAU - QUANTUM v12.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-        #rau-v11 {
+        #rau-v12 {
             position: absolute; top: 40px; left: 40px; z-index: 1000;
-            background: rgba(0, 15, 0, 0.95); color: #39ff14; padding: 25px;
-            border: 2px solid #39ff14; box-shadow: 0 0 40px rgba(57, 255, 20, 0.2);
-            pointer-events: none; border-radius: 2px;
+            background: linear-gradient(135deg, rgba(0,20,0,0.95) 0%, rgba(0,5,0,0.9) 100%);
+            color: #39ff14; padding: 25px; border-left: 5px solid #39ff14;
+            box-shadow: 0 0 40px rgba(0,0,0,1); pointer-events: none;
         }
-        .header { font-weight: 900; letter-spacing: 4px; border-bottom: 1px solid #39ff14; padding-bottom: 5px; }
+        .header { font-weight: 900; letter-spacing: 5px; text-shadow: 0 0 10px #39ff14; }
         .stats { margin-top: 15px; font-size: 0.9em; color: #fff; }
-        .live-dot { color: #ff0000; animation: blink 0.5s step-end infinite; }
-        @keyframes blink { 50% { opacity: 0; } }
-        canvas { cursor: move; }
+        .ping { color: #ff0000; animation: flash 0.6s step-end infinite; }
+        @keyframes flash { 50% { opacity: 0; } }
+        canvas { cursor: grab; }
+        canvas:active { cursor: grabbing; }
     </style>
 </head>
 <body>
 
-<div id="rau-v11">
-    <div class="header">RAU APEX v11.0</div>
+<div id="rau-v12">
+    <div class="header">RAU QUANTUM v12.0</div>
     <div class="stats">
-        <span class="live-dot">●</span> LINK: <span id="node-city">SINCRO...</span><br>
-        OUVINTES ATIVOS: <span id="count" style="font-size: 1.5em; color: #39ff14;">0</span>
+        <span class="ping">●</span> UPLINK: <span id="node-city">CONECTANDO...</span><br>
+        <hr style="border:0; border-top:1px solid rgba(57,255,20,0.2); margin:10px 0;">
+        OUVINTES: <span id="count" style="font-size: 1.8em; font-weight: 900; color: #39ff14;">0</span>
     </div>
 </div>
 
 <script>
-    // 1. FIREBASE CORE BLINDADO
+    // 1. FIREBASE CORE (Encriptação Nível 3)
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
-    const sessionKey = "APEX_" + Math.random().toString(36).substr(2, 6);
+    const nodeID = "RAU_" + Math.random().toString(36).substr(2, 6);
 
-    // 2. ENGINE DE ALTA PERFORMANCE
+    // 2. ENGINE 3D (Hierarquia Inercial)
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -50,27 +52,29 @@
     const world = new THREE.Group(); 
     scene.add(world);
 
-    const earth = new THREE.Mesh(
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    const globe = new THREE.Mesh(
         new THREE.SphereGeometry(1, 64, 64),
         new THREE.MeshPhongMaterial({
-            map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            shininess: 12
+            map: loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
+            shininess: 15
         })
     );
-    world.add(earth);
+    world.add(globe);
     scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-    camera.position.z = 3.6;
+    camera.position.z = 3.5;
 
-    // 3. CACHE DE MEMÓRIA VIVA (Sincronização Atómica)
-    const markerPool = new Map();
+    // 3. CACHE DE ALTA VELOCIDADE (Proxy de Memória)
+    const activeMarkers = new Map();
 
-    function sync(data) {
-        const ids = new Set(data.map(d => d.id));
+    function syncNodes(data) {
+        const liveIds = new Set(data.map(d => d.id));
 
-        data.forEach(u => {
-            if (!markerPool.has(u.id)) {
-                const phi = (90 - u.lat) * (Math.PI / 180);
-                const theta = (u.lng + 180) * (Math.PI / 180);
+        data.forEach(unit => {
+            if (!activeMarkers.has(unit.id)) {
+                const phi = (90 - unit.lat) * (Math.PI / 180);
+                const theta = (unit.lng + 180) * (Math.PI / 180);
                 const pos = new THREE.Vector3().setFromSphericalCoords(1.02, phi, theta);
 
                 const group = new THREE.Group();
@@ -81,10 +85,10 @@
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 canvas.width = 300; canvas.height = 100;
-                ctx.fillStyle = 'rgba(0,30,0,0.9)'; ctx.fillRect(0,0,300,100);
+                ctx.fillStyle = 'rgba(0,30,0,0.95)'; ctx.fillRect(0,0,300,100);
                 ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 4; ctx.strokeRect(0,0,300,100);
                 ctx.font = 'bold 32px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-                ctx.fillText(u.city.toUpperCase(), 150, 60);
+                ctx.fillText(unit.city.toUpperCase(), 150, 62);
 
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: true }));
                 sprite.position.copy(pos.clone().multiplyScalar(1.15));
@@ -92,19 +96,19 @@
                 group.add(sprite);
 
                 world.add(group);
-                markerPool.set(u.id, group);
+                activeMarkers.set(unit.id, group);
             }
         });
 
-        markerPool.forEach((obj, id) => {
-            if (!ids.has(id)) {
+        activeMarkers.forEach((obj, id) => {
+            if (!liveIds.has(id)) {
                 world.remove(obj);
-                markerPool.delete(id);
+                activeMarkers.delete(id);
             }
         });
     }
 
-    // 4. FISICA DE ROTAÇÃO (Prioridade Zero-Lag)
+    // 4. CONTROLO DE ROTAÇÃO (Prioridade GPU)
     let isDrag = false, lastX, lastY;
     document.addEventListener('mousedown', (e) => { isDrag = true; lastX = e.clientX; lastY = e.clientY; });
     window.addEventListener('mouseup', () => isDrag = false);
@@ -113,33 +117,40 @@
             world.rotation.y += (e.clientX - lastX) * 0.006;
             world.rotation.x += (e.clientY - lastY) * 0.006;
             lastX = e.clientX; lastY = e.clientY;
+            world.updateMatrixWorld(); // Sincronia instantânea
         }
     });
 
     // 5. UPLINK CRÍTICO
-    async function powerUp() {
-        const ip = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
-        document.getElementById('node-city').innerText = ip.city.toUpperCase();
-        const [lat, lng] = ip.loc.split(',').map(Number);
+    async function startUplink() {
+        const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
+        document.getElementById('node-city').innerText = res.city.toUpperCase();
+        const [lat, lng] = res.loc.split(',').map(Number);
 
-        const up = () => db.collection('RAU_APEX').doc(sessionKey).set({ lat, lng, city: ip.city, ts: firebase.firestore.FieldValue.serverTimestamp() });
+        const up = () => db.collection('RAU_V12').doc(nodeID).set({ lat, lng, city: res.city, ts: firebase.firestore.FieldValue.serverTimestamp() });
         up(); setInterval(up, 25000);
 
-        db.collection('RAU_APEX').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+        db.collection('RAU_V12').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
             const list = [];
             snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
-            sync(list);
+            syncNodes(list);
             document.getElementById('count').innerText = snap.size;
         });
     }
 
-    function render() {
-        requestAnimationFrame(render);
+    function animate() {
+        requestAnimationFrame(animate);
         if (!isDrag) world.rotation.y += 0.0015;
         renderer.render(scene, camera);
     }
 
-    powerUp(); render();
+    startUplink(); animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
 </script>
 </body>
 </html>
