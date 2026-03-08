@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v202.0 - CIRCADIAN</title>
+    <title>RAU MONITOR v202.0 - CIRCADIAN (Small Marker)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -26,6 +26,7 @@
             transform: translate(-50%, -150%);
             box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
             pointer-events: none;
+            white-space: nowrap;
         }
 
         .flag-icon { width: 24px; height: 16px; border: 1px solid #39ff14; object-fit: cover; }
@@ -37,7 +38,7 @@
 <div id="rau-ui">
     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
         <div id="status-led" style="width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14;"></div>
-        <span id="core-status" style="font-size: 11px; letter-spacing: 1px;">CORE v202 | DIA</span>
+        <span id="core-status" style="font-size: 11px; letter-spacing: 1px;">CORE v202 | ESTÁVEL</span>
     </div>
     <div class="monitor-display">
         <span id="mon-city">A SINCRONIZAR...</span>
@@ -63,24 +64,20 @@
             this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
 
-            // Luzes
             const ambient = new THREE.AmbientLight(0xffffff, 0.8);
             this.scene.add(ambient);
             const sun = new THREE.DirectionalLight(0xffffff, 1);
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
 
-            // Globo
             const geo = new THREE.SphereGeometry(1, 64, 64);
             const mat = new THREE.MeshPhongMaterial({ shininess: 15 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.globe.add(this.markers);
 
-            // Estrelas (Para a noite)
             this.createStars();
 
-            // Controles
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
             this.controls.autoRotate = true;
@@ -92,7 +89,7 @@
             this.track();
             
             setInterval(() => this.track(), 10000);
-            setInterval(() => this.updateAtmosphere(), 60000); // Checa luz a cada minuto
+            setInterval(() => this.updateAtmosphere(), 60000);
 
             window.addEventListener('resize', () => this.onResize());
             this.animate();
@@ -103,10 +100,7 @@
             const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 });
             const starVertices = [];
             for (let i = 0; i < 5000; i++) {
-                const x = (Math.random() - 0.5) * 1500;
-                const y = (Math.random() - 0.5) * 1500;
-                const z = -Math.random() * 1500;
-                starVertices.push(x, y, z);
+                starVertices.push((Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500, -Math.random() * 1500);
             }
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
             this.stars = new THREE.Points(starGeo, starMat);
@@ -116,27 +110,21 @@
         updateAtmosphere() {
             const hour = new Date().getHours();
             const isDay = hour >= 6 && hour < 18;
-            
             if (isDay) {
-                // Fundo de Dia: Azul Atmosférico
                 this.scene.background = new THREE.Color(0x87ceeb);
                 if(this.stars) this.stars.visible = false;
                 document.getElementById('core-status').innerText = "CORE v202 | MODO DIA";
                 document.getElementById('status-led').style.background = "#ffcc00";
-                document.getElementById('status-led').style.boxShadow = "0 0 10px #ffcc00";
             } else {
-                // Fundo de Noite: Espaço Profundo
                 this.scene.background = new THREE.Color(0x020205);
                 if(this.stars) this.stars.visible = true;
                 document.getElementById('core-status').innerText = "CORE v202 | MODO NOITE";
                 document.getElementById('status-led').style.background = "#39ff14";
-                document.getElementById('status-led').style.boxShadow = "0 0 10px #39ff14";
             }
         },
 
         loadTexture() {
-            const loader = new THREE.TextureLoader();
-            loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
+            new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
                 this.globe.material.needsUpdate = true;
             });
@@ -150,12 +138,11 @@
                     this.currentIP = data.ip;
                     this.updateVisitor(data);
                 }
-            } catch (e) { console.warn("Tracking Offline"); }
+            } catch (e) { console.warn("Offline"); }
         },
 
         updateVisitor(data) {
             document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
-            
             this.markers.clear();
             const phi = (90 - data.latitude) * (Math.PI / 180);
             const theta = (data.longitude + 180) * (Math.PI / 180);
@@ -163,27 +150,17 @@
                 -(Math.sin(phi) * Math.cos(theta)),
                 Math.cos(phi),
                 (Math.sin(phi) * Math.sin(theta))
-            ).multiplyScalar(1.02);
+            ).multiplyScalar(1.01); // Ligeiramente acima da superfície
 
-            // Ponto do Visitante (Neon Green)
+            // === A BOLINHA VERDE MAIS PEQUENA (Ajustado de 0.04 para 0.01) ===
             const dot = new THREE.Mesh(
-                new THREE.SphereGeometry(0.04, 20, 20), 
+                new THREE.SphereGeometry(0.01, 12, 12), // Muito pequena
                 new THREE.MeshBasicMaterial({ color: 0x39ff14 })
             );
             dot.position.copy(pos);
-            
-            // Brilho externo do ponto
-            const glow = new THREE.Mesh(
-                new THREE.SphereGeometry(0.06, 20, 20),
-                new THREE.MeshBasicMaterial({ color: 0x39ff14, transparent: true, opacity: 0.3 })
-            );
-            glow.position.copy(pos);
-            
             this.markers.add(dot);
-            this.markers.add(glow);
 
             this.activeNode = { mesh: dot, city: data.city, country: data.country_code.toLowerCase() };
-            
             const tag = document.getElementById('visitor-tag');
             document.getElementById('tag-flag').src = `https://flagcdn.com/w40/${this.activeNode.country}.png`;
             document.getElementById('tag-city').innerText = this.activeNode.city;
@@ -204,15 +181,15 @@
                 const vector = new THREE.Vector3();
                 this.activeNode.mesh.getWorldPosition(vector);
                 
-                // Checar se o ponto está na face visível do globo
-                const cameraDir = new THREE.Vector3();
-                this.camera.getWorldDirection(cameraDir);
-                const dotToCamera = new THREE.Vector3().subVectors(this.camera.position, vector);
+                // Checar face visível (Otimizado)
+                const eye = this.camera.position.clone().normalize();
+                const pos = vector.clone().normalize();
                 
                 vector.project(this.camera);
                 const tag = document.getElementById('visitor-tag');
 
-                if (dotToCamera.dot(vector) < 0 || vector.z > 1) { 
+                // Se o ponto estiver na face oposta da esfera, esconde a tag
+                if (eye.dot(pos) < 0.2 || vector.z > 1) { 
                     tag.style.opacity = '0'; 
                 } else { 
                     tag.style.opacity = '1';
