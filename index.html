@@ -90,7 +90,6 @@
 
     async function fetchLocation() {
         try {
-            // Rastreamento real via IP
             const res = await fetch('https://ipapi.co/json/');
             const data = await res.json();
 
@@ -133,7 +132,9 @@
         anchorGroup.add(dot);
 
         // Bandeira flutuante no Globo
-        new THREE.TextureLoader().load(`https://flagcdn.com/w160/${country}.png`, (fTex) => {
+        const flagLoader = new THREE.TextureLoader();
+        flagLoader.crossOrigin = 'Anonymous';
+        flagLoader.load(`https://flagcdn.com/w160/${country}.png`, (fTex) => {
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: fTex }));
             sprite.position.copy(pos.clone().multiplyScalar(1.15));
             sprite.scale.set(0.25, 0.15, 1);
