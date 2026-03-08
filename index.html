@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - RADAR INTERATIVO V6</title>
+    <title>RAU - RADAR FINAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
@@ -12,7 +12,7 @@
         #canvas-container:active { cursor: grabbing; }
         .hud { 
             position: absolute; top: 20px; left: 20px; z-index: 100; 
-            color: #39ff14; background: rgba(0, 20, 0, 0.9); padding: 15px; 
+            color: #39ff14; background: rgba(0, 15, 0, 0.9); padding: 15px; 
             border: 1px solid #39ff14; pointer-events: none; border-radius: 4px;
         }
     </style>
@@ -21,7 +21,7 @@
 
 <div class="hud">
     <b style="font-size: 1.2em;">RADAR RADIO AMIGOS UNIDOS</b><br>
-    <span id="my-loc">Sincronizando sinal...</span><br>
+    <span id="my-loc">A sincronizar satélite...</span><br>
     <hr style="border:0; border-top:1px solid #39ff14; margin:8px 0; opacity: 0.3;">
     OUVINTES ONLINE: <span id="count" style="font-size: 1.3em;">1</span>
 </div>
@@ -29,14 +29,14 @@
 <div id="canvas-container"></div>
 
 <script>
-    // 1. CONFIGURAÇÃO FIREBASE
+    // 1. FIREBASE
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
     const myId = "RAU_" + Math.random().toString(36).substr(2, 5);
 
-    // 2. SETUP THREE.JS
+    // 2. THREE.JS
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -63,18 +63,16 @@
     scene.add(sun);
     camera.position.z = 3;
 
-    // 3. ETIQUETAS WEBGL (SPRITES)
+    // 3. ETIQUETAS WEBGL
     function createLabelSprite(text) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 512; canvas.height = 128;
-        
         ctx.fillStyle = 'rgba(0, 30, 0, 0.85)';
         ctx.fillRect(0, 30, 512, 70);
         ctx.strokeStyle = '#39ff14';
         ctx.lineWidth = 4;
         ctx.strokeRect(0, 30, 512, 70);
-        
         ctx.font = 'Bold 42px Courier New';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
@@ -109,7 +107,7 @@
         mainGroup.add(mGroup);
     }
 
-    // 4. INTERATIVIDADE COM RATO (O QUE FALTAVA)
+    // 4. INTERATIVIDADE (O GIRO DO RATO)
     let isDragging = false;
     let mouseX = 0, mouseY = 0;
 
@@ -126,7 +124,7 @@
         }
     });
 
-    // 5. SINCRONIZAÇÃO DE DADOS
+    // 5. DATA SYNC
     async function startRadar() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
@@ -134,12 +132,12 @@
             document.getElementById('my-loc').innerText = "Tu em: " + data.city;
             const [lat, lng] = data.loc.split(',').map(Number);
 
-            const push = () => db.collection('rau_v7').doc(myId).set({
+            const push = () => db.collection('rau_v8').doc(myId).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             push(); setInterval(push, 25000);
 
-            db.collection('rau_v7').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+            db.collection('rau_v8').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
                 const toDelete = [];
                 mainGroup.traverse(c => { if(c.name === "visitor") toDelete.push(c); });
                 toDelete.forEach(c => mainGroup.remove(c));
