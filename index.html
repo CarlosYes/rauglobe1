@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - RADAR FINAL</title>
+    <title>RAU - RADAR INTERATIVO FINAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
@@ -14,6 +14,7 @@
             position: absolute; top: 20px; left: 20px; z-index: 100; 
             color: #39ff14; background: rgba(0, 15, 0, 0.9); padding: 15px; 
             border: 1px solid #39ff14; pointer-events: none; border-radius: 4px;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.2);
         }
     </style>
 </head>
@@ -21,22 +22,22 @@
 
 <div class="hud">
     <b style="font-size: 1.2em;">RADAR RADIO AMIGOS UNIDOS</b><br>
-    <span id="my-loc">A sincronizar satélite...</span><br>
+    <span id="my-loc">Sincronizando satélite...</span><br>
     <hr style="border:0; border-top:1px solid #39ff14; margin:8px 0; opacity: 0.3;">
-    OUVINTES ONLINE: <span id="count" style="font-size: 1.3em;">1</span>
+    OUVINTES ONLINE: <span id="count" style="font-size: 1.3em; font-weight: bold;">1</span>
 </div>
 
 <div id="canvas-container"></div>
 
 <script>
-    // 1. FIREBASE
+    // 1. CONFIGURAÇÃO FIREBASE
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
     const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
     const myId = "RAU_" + Math.random().toString(36).substr(2, 5);
 
-    // 2. THREE.JS
+    // 2. MOTOR GRÁFICO THREE.JS
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -63,7 +64,7 @@
     scene.add(sun);
     camera.position.z = 3;
 
-    // 3. ETIQUETAS WEBGL
+    // 3. ETIQUETAS WEBGL (NOMES DAS CIDADES)
     function createLabelSprite(text) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -124,7 +125,7 @@
         }
     });
 
-    // 5. DATA SYNC
+    // 5. SINCRONIZAÇÃO DE DADOS
     async function startRadar() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
@@ -132,19 +133,19 @@
             document.getElementById('my-loc').innerText = "Tu em: " + data.city;
             const [lat, lng] = data.loc.split(',').map(Number);
 
-            const push = () => db.collection('rau_v8').doc(myId).set({
+            const push = () => db.collection('rau_v9').doc(myId).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             push(); setInterval(push, 25000);
 
-            db.collection('rau_v8').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+            db.collection('rau_v9').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
                 const toDelete = [];
                 mainGroup.traverse(c => { if(c.name === "visitor") toDelete.push(c); });
                 toDelete.forEach(c => mainGroup.remove(c));
                 snap.forEach(doc => addMarker(doc.data().lat, doc.data().lng, doc.data().city));
                 document.getElementById('count').innerText = snap.size;
             });
-        } catch(e) { console.error("Erro GPS"); }
+        } catch(e) { console.error("Falha GPS"); }
     }
 
     function animate() {
