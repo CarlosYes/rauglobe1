@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - COMANDO CENTRAL v6.5</title>
+    <title>RAU - COMANDO GLOBAL v7.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
@@ -11,10 +11,10 @@
         #radar-hud {
             position: absolute; top: 25px; left: 25px; z-index: 1000;
             background: rgba(0, 20, 0, 0.9); color: #39ff14; padding: 20px;
-            border: 2px solid #39ff14; border-radius: 5px; pointer-events: none;
-            box-shadow: 0 0 25px rgba(57, 255, 20, 0.3);
+            border: 2px solid #39ff14; border-radius: 4px; pointer-events: none;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
         }
-        .status-blink { color: #ff0000; animation: blink 1s infinite; }
+        .live { color: #ff0000; animation: blink 1s infinite; }
         @keyframes blink { 50% { opacity: 0.2; } }
         canvas { cursor: grab; }
         canvas:active { cursor: grabbing; }
@@ -23,32 +23,32 @@
 <body>
 
 <div id="radar-hud">
-    <b style="font-size: 1.2em; letter-spacing: 2px;">RAU GLOBAL COMMAND</b><br>
-    <span class="status-blink">●</span> LINK: <span id="my-city" style="color:#fff">SINCRO...</span><br>
-    <hr style="border:0; border-top:1px solid #39ff14; margin:10px 0; opacity: 0.3;">
+    <b style="font-size: 1.1em; letter-spacing: 2px;">RAU COMMAND CENTER</b><br>
+    <span class="live">●</span> STATUS: <span id="my-city" style="color:#fff">SINCRO...</span><br>
+    <hr style="border:0; border-top:1px solid #39ff14; margin:10px 0; opacity: 0.2;">
     OPERATIVOS: <span id="count" style="font-size: 1.5em; font-weight: 900; color:#fff">0</span>
 </div>
 
 <script>
-    // 1. DATA ENCRYPTION (Sessão Segura)
+    // 1. FIREBASE CORE (Encriptado)
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const config = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
-    if (!firebase.apps.length) firebase.initializeApp(config);
+    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
     const db = firebase.firestore();
-    const mySessionId = "RAU_" + Math.random().toString(36).substr(2, 5);
+    const sessionID = "NODE_" + Math.random().toString(36).substr(2, 5);
 
-    // 2. ENGINE 3D (Hierarquia Inquebrável)
+    // 2. MOTOR 3D (Hierarquia de Camadas)
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     document.body.appendChild(renderer.domElement);
 
-    const world = new THREE.Group(); // Grupo que contém TUDO (Globo + Marcadores)
-    scene.add(world);
+    const mainWorld = new THREE.Group(); 
+    scene.add(mainWorld);
 
-    // Iluminação
+    // Iluminação Profissional
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const sun = new THREE.DirectionalLight(0xffffff, 0.5);
     sun.position.set(5, 3, 5);
@@ -64,13 +64,13 @@
             shininess: 5
         })
     );
-    world.add(globe);
+    mainWorld.add(globe);
 
-    // 3. CACHE DE MARCADORES (O Segredo da Fluidez)
-    const markerCache = new Map();
+    // 3. CACHE DINÂMICA (Memória Persistente)
+    const unitCache = new Map();
 
     function createMarker(id, lat, lng, city) {
-        if (markerCache.has(id)) return;
+        if (unitCache.has(id)) return;
 
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
@@ -78,76 +78,74 @@
 
         const group = new THREE.Group();
         
-        // Dot verde
+        // Ponto Radar
         const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 12), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
         dot.position.copy(pos);
         group.add(dot);
 
-        // Canvas Label
+        // Etiqueta Holo
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 400; canvas.height = 100;
-        ctx.fillStyle = 'rgba(0, 30, 0, 0.85)';
+        ctx.fillStyle = 'rgba(0, 30, 0, 0.9)';
         ctx.fillRect(0, 0, 400, 100);
-        ctx.strokeStyle = '#39ff14';
-        ctx.lineWidth = 6;
-        ctx.strokeRect(0, 0, 400, 100);
-        ctx.font = 'bold 36px Courier New';
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
+        ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 6; ctx.strokeRect(0, 0, 400, 100);
+        ctx.font = 'bold 36px Courier New'; ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center';
         ctx.fillText(city.toUpperCase(), 200, 60);
 
-        const tex = new THREE.CanvasTexture(canvas);
-        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true }));
-        sprite.position.copy(pos.clone().multiplyScalar(1.1));
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ 
+            map: new THREE.CanvasTexture(canvas), 
+            depthTest: true 
+        }));
+        sprite.position.copy(pos.clone().multiplyScalar(1.12));
         sprite.scale.set(0.5, 0.125, 1);
         group.add(sprite);
 
-        world.add(group);
-        markerCache.set(id, group);
+        mainWorld.add(group);
+        unitCache.set(id, group);
     }
 
-    // 4. CONTROLOS (Persistência de Rotação)
-    let isDown = false;
+    // 4. CONTROLOS INERCIAIS
+    let isDragging = false;
     let lastMouse = { x: 0, y: 0 };
 
-    document.addEventListener('mousedown', (e) => { isDown = true; lastMouse = { x: e.clientX, y: e.clientY }; });
-    window.addEventListener('mouseup', () => isDown = false);
+    document.addEventListener('mousedown', (e) => { isDragging = true; lastMouse = { x: e.clientX, y: e.clientY }; });
+    window.addEventListener('mouseup', () => isDragging = false);
     window.addEventListener('mousemove', (e) => {
-        if (isDown) {
+        if (isDragging) {
             const dx = e.clientX - lastMouse.x;
             const dy = e.clientY - lastMouse.y;
-            world.rotation.y += dx * 0.007;
-            world.rotation.x += dy * 0.007;
+            mainWorld.rotation.y += dx * 0.007;
+            mainWorld.rotation.x += dy * 0.007;
             lastMouse = { x: e.clientX, y: e.clientY };
         }
     });
 
-    // 5. DATA SYNC (O Uplink)
-    async function startRadar() {
+    // 5. UPLINK DE DADOS
+    async function initRadar() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
             const data = await res.json();
             document.getElementById('my-city').innerText = data.city.toUpperCase();
             const [lat, lng] = data.loc.split(',').map(Number);
 
-            const update = () => db.collection('RAU_ELITE').doc(mySessionId).set({
+            const report = () => db.collection('RAU_V7').doc(sessionID).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
-            update(); setInterval(update, 20000);
+            report(); setInterval(report, 20000);
 
-            db.collection('RAU_ELITE').where('ts', '>', new Date(Date.now() - 50000)).onSnapshot(snap => {
-                const currentIds = new Set();
+            db.collection('RAU_V7').where('ts', '>', new Date(Date.now() - 50000)).onSnapshot(snap => {
+                const activeSet = new Set();
                 snap.forEach(doc => {
-                    currentIds.add(doc.id);
+                    activeSet.add(doc.id);
                     const d = doc.data();
                     if(d.lat) createMarker(doc.id, d.lat, d.lng, d.city);
                 });
 
-                markerCache.forEach((obj, id) => {
-                    if (!currentIds.has(id)) {
-                        world.remove(obj);
-                        markerCache.delete(id);
+                unitCache.forEach((obj, id) => {
+                    if (!activeSet.has(id)) {
+                        mainWorld.remove(obj);
+                        unitCache.delete(id);
                     }
                 });
                 document.getElementById('count').innerText = snap.size;
@@ -157,11 +155,11 @@
 
     function animate() {
         requestAnimationFrame(animate);
-        if (!isDown) world.rotation.y += 0.002;
+        if (!isDragging) mainWorld.rotation.y += 0.002;
         renderer.render(scene, camera);
     }
 
-    startRadar();
+    initRadar();
     animate();
 
     window.addEventListener('resize', () => {
