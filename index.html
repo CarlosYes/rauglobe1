@@ -2,17 +2,17 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v54.0</title>
+    <title>RAU RADAR v55.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 15, 0, 0.9); color: #39ff14; padding: 20px;
+            background: rgba(0, 20, 0, 0.9); color: #39ff14; padding: 20px;
             border: 1px solid #39ff14; border-radius: 2px; pointer-events: none;
         }
-        #count { font-size: 3em; font-weight: 900; color: #fff; display: block; line-height: 1; margin: 10px 0; }
+        #count { font-size: 3em; font-weight: 900; color: #fff; display: block; line-height: 1; }
         .label { font-size: 10px; letter-spacing: 1px; color: #39ff14; font-weight: bold; text-transform: uppercase; }
         #city-tag { color: #fff; font-weight: bold; background: #003300; padding: 2px 10px; border: 1px solid #39ff14; }
     </style>
@@ -20,7 +20,7 @@
 <body>
 
 <div id="rau-ui">
-    <div class="label">RAU COMMAND v54.0</div>
+    <div class="label">RAU COMMAND v55.0</div>
     <span id="count">1</span>
     <div class="label">LOCALIZAÇÃO ATIVA:</div>
     <div id="city-tag">A RASTREAR...</div>
@@ -32,7 +32,7 @@
 </div>
 
 <script>
-    // 1. GESTÃO DE MEMÓRIA (Volume e Autoplay)
+    // 1. MEMÓRIA DO PLAYER
     const rauStorage = {
         save: (v, a) => { localStorage.setItem('rau_v', v); localStorage.setItem('rau_a', a); },
         load: () => ({ v: localStorage.getItem('rau_v') || "0.80", a: localStorage.getItem('rau_a') || "true" })
@@ -50,28 +50,24 @@
 
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.autoRotate = true; // GIRA SOZINHO
-    controls.autoRotateSpeed = 1.2;
-    controls.minDistance = 1.8;
-    controls.maxDistance = 6;
-
-    const world = new THREE.Group(); scene.add(world);
-
-    const globe = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 64, 64), 
-        new THREE.MeshPhongMaterial({
-            map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
-            shininess: 5
-        })
-    );
-    world.add(globe);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    controls.autoRotate = true; 
+    controls.autoRotateSpeed = 1.0;
     camera.position.set(0, 0, 3.5);
 
-    // 3. FUNÇÃO DE PRECISÃO (BELGIUM TARGET)
-    async function deployRadar() {
+    // Criamos o GLOBO
+    const globeGeometry = new THREE.SphereGeometry(1, 64, 64);
+    const globeMaterial = new THREE.MeshPhongMaterial({
+        map: new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'),
+        shininess: 5
+    });
+    const globe = new THREE.Mesh(globeGeometry, globeMaterial);
+    scene.add(globe);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+
+    // 3. COLOCAR MARCAÇÃO DENTRO DO GLOBO (GIRA COM ELE)
+    async function addCityMarker() {
         let city = "BRUGES";
-        let lat = 51.2093, lon = 3.2247; // Coordenadas REAIS de Bruges
+        let lat = 51.2093, lon = 3.2247; // Default Bruges
 
         try {
             const res = await fetch("https://ipapi.co/json/").then(r => r.json());
@@ -80,11 +76,11 @@
                 lat = res.latitude;
                 lon = res.longitude;
             }
-        } catch (e) { console.log("Usando Fallback: Bruges"); }
+        } catch (e) { console.log("Usando Bruges"); }
 
         document.getElementById('city-tag').innerText = city;
 
-        // MATEMÁTICA DE POSICIONAMENTO
+        // MATEMÁTICA DE POSIÇÃO
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lon + 180) * (Math.PI / 180);
         
@@ -92,12 +88,14 @@
         const z = Math.sin(phi) * Math.sin(theta);
         const y = Math.cos(phi);
 
-        // Criar Marcador Verde
+        // Marcador (Ponto Verde)
         const dot = new THREE.Mesh(new THREE.SphereGeometry(0.015, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
         dot.position.set(x, y, z);
-        world.add(dot);
+        
+        // ADICIONAMOS O DOT COMO FILHO DO GLOBO (IMPORTANTE!)
+        globe.add(dot);
 
-        // Criar Etiqueta Flutuante
+        // Etiqueta Flutuante
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 300; canvas.height = 100;
@@ -109,7 +107,9 @@
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
         sprite.position.set(x * 1.2, y * 1.2, z * 1.2);
         sprite.scale.set(0.7, 0.22, 1);
-        world.add(sprite);
+        
+        // ADICIONAMOS O SPRITE COMO FILHO DO GLOBO
+        globe.add(sprite);
     }
 
     function animate() {
@@ -118,7 +118,7 @@
         renderer.render(scene, camera);
     }
 
-    deployRadar();
+    addCityMarker();
     animate();
 
     window.addEventListener('resize', () => {
