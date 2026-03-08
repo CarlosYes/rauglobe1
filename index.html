@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v188.0 - ABSOLUTE VISIBILITY</title>
+    <title>RAU MONITOR v189.0 - FINAL STABILITY</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -16,7 +16,7 @@
         .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
         #led { width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        .monitor-display { background: rgba(5, 10, 5, 0.9); border: 1px solid #1a1a1a; padding: 12px; }
+        .monitor-display { background: rgba(5, 5, 5, 0.9); border: 1px solid #1a1a1a; padding: 12px; }
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; }
         #mon-status { font-size: 10px; color: #39ff14; opacity: 0.8; margin-top: 8px; border-top: 1px solid #39ff1444; padding-top: 8px; white-space: pre-line; line-height: 1.4; }
         canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; outline: none; }
@@ -27,11 +27,11 @@
 <div id="rau-ui">
     <div class="status-row">
         <div id="led"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">CORE v188.0 | TELEMETRY RECOVERY</span>
+        <span style="font-size: 11px; letter-spacing: 1px;">CORE v189.0 | ACTIVE SYNC</span>
     </div>
     <div class="monitor-display">
-        <span id="mon-city">AQUIRING SIGNAL...</span>
-        <div id="mon-status">Iniciando protocolo de visibilidade...</div>
+        <span id="mon-city">AQUIRING LINK...</span>
+        <div id="mon-status">Iniciando telemetria de nó...</div>
     </div>
 </div>
 
@@ -52,41 +52,41 @@
             this.controls.enableDamping = true;
             this.controls.dampingFactor = 0.05;
             this.controls.autoRotate = true;
-            this.controls.autoRotateSpeed = 0.6;
+            this.controls.autoRotateSpeed = 0.5;
             this.camera.position.set(0, 0, 3.8);
 
-            // Luzes redundantes (Acaba com o escuro)
-            this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-            const directional = new THREE.DirectionalLight(0xffffff, 0.8);
-            directional.position.set(5, 3, 5);
-            this.scene.add(directional);
+            // Luzes redundantes para evitar o globo escuro
+            this.scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+            sun.position.set(5, 3, 5);
+            this.scene.add(sun);
 
-            // Criar o globo com "auto-brilho" (Emissive)
+            // Globo com auto-iluminação inicial
             const geo = new THREE.SphereGeometry(1, 64, 64);
             const mat = new THREE.MeshPhongMaterial({ 
                 color: 0x1a1a1a, 
-                emissive: 0x111111, // Faz o globo brilhar suavemente mesmo sem textura
+                emissive: 0x111111,
                 shininess: 25 
             });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             
-            // Adicionar grupo de marcadores como filho do globo (Giram juntos)
+            // ADICIONAR MARCADORES COMO FILHOS DO GLOBO (Essencial para girarem juntos)
             this.globe.add(this.markers);
 
             // Estrelas
             this.addStars();
 
-            // Carregar textura de forma segura
+            // Carregar textura
             new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
-                this.globe.material.emissive.set(0x000000); // Remove o brilho interno quando a textura chega
+                this.globe.material.emissive.set(0x000000);
                 this.globe.material.needsUpdate = true;
             });
 
             this.animate();
-            this.trackVisitor();
-            setInterval(() => this.trackVisitor(), 10000);
+            this.track();
+            setInterval(() => this.track(), 10000);
         },
 
         addStars() {
@@ -99,39 +99,38 @@
             this.scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 })));
         },
 
-        async trackVisitor() {
+        async track() {
             try {
-                const res = await fetch(`https://ipapi.co/json/?nocache=${Date.now()}`);
+                const res = await fetch(`https://ipapi.co/json/?v=${Date.now()}`);
                 const data = await res.json();
                 
                 if (data.ip && data.ip !== this.currentIP) {
                     this.currentIP = data.ip;
-                    this.deployMarker(data);
+                    this.deploy(data);
                 }
             } catch (e) {
-                document.getElementById('mon-status').innerText = "LINK LAGGING...\nRE-SCANNING NODES";
+                document.getElementById('mon-status').innerText = "LINK LAGGING...";
             }
         },
 
-        deployMarker(data) {
-            const { latitude: lat, longitude: lon, city, country_code: iso, org } = data;
-            
-            document.getElementById('mon-city').innerText = (city || "ACTIVE NODE").toUpperCase();
-            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nNODE: ${iso}\nPROVIDER: ${org}\nSTATUS: LIVE DATA STREAM`;
+        deploy(data) {
+            // UI Update
+            document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
+            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nNODE: ${data.country_code}\nISP: ${data.org}\nSTATUS: LIVE DATA STREAM`;
 
-            // Limpar marcadores antigos
+            // Limpar visitas antigas
             while(this.markers.children.length > 0) { this.markers.remove(this.markers.children[0]); }
 
-            // Converter Coordenadas
-            const phi = (90 - lat) * (Math.PI / 180);
-            const theta = (lon + 180) * (Math.PI / 180);
+            // Coordenadas
+            const phi = (90 - data.latitude) * (Math.PI / 180);
+            const theta = (data.longitude + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3(
                 -(Math.sin(phi) * Math.cos(theta)),
                 Math.cos(phi),
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.01);
 
-            // O Marcador (O que você quer ver aparecer)
+            // Ponto de Visita
             const dot = new THREE.Mesh(
                 new THREE.SphereGeometry(0.04, 16, 16),
                 new THREE.MeshBasicMaterial({ color: 0x39ff14 })
@@ -139,22 +138,22 @@
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // Anel de Radar
+            // Anel Pulsante
             const ring = new THREE.Mesh(
                 new THREE.RingGeometry(0.05, 0.07, 32),
-                new THREE.MeshBasicMaterial({ color: 0x39ff14, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
+                new THREE.MeshBasicMaterial({ color: 0x39ff14, side: THREE.DoubleSide, transparent: true, opacity: 0.7 })
             );
             ring.position.copy(pos.clone().multiplyScalar(1.005));
             ring.lookAt(new THREE.Vector3(0,0,0));
             this.markers.add(ring);
 
-            // Focar suavemente
+            // Giro da câmera suave
             this.camera.position.lerp(pos.clone().multiplyScalar(3.8), 0.05);
         },
 
         animate() {
             requestAnimationFrame(() => this.animate());
-            if (this.controls) this.controls.update(); // Giro suave garantido
+            if (this.controls) this.controls.update();
             this.renderer.render(this.scene, this.camera);
         }
     };
