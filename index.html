@@ -2,25 +2,31 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v178.0 - RESILIENT ENGINE</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAU MONITOR v179.0 - HARD RECOVERY</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+            "three/examples/jsm/controls/OrbitControls": "https://unpkg.com/three@0.128.0/examples/jsm/controls/OrbitControls.js"
+        }
+    }
+    </script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; user-select: none; }
+        body { margin: 0; background: #050505; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 20, 0, 0.9); border-left: 3px solid #39ff14;
             padding: 15px; width: 280px; pointer-events: none;
-            backdrop-filter: blur(10px); box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
         }
         .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
         #led { width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14; animation: pulse 1s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .monitor-display { background: rgba(0, 0, 0, 0.8); border: 1px solid #1a1a1a; padding: 12px; }
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; }
-        #mon-flag-ui { height: 18px; margin-right: 8px; vertical-align: middle; display: none; border: 1px solid #333; }
         #mon-status { font-size: 10px; color: #39ff14; opacity: 0.8; margin-top: 8px; border-top: 1px solid #39ff1444; padding-top: 8px; white-space: pre-line; }
-        canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; }
+        canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; background: #000; }
     </style>
 </head>
 <body oncontextmenu="return false;">
@@ -28,166 +34,112 @@
 <div id="rau-ui">
     <div class="status-row">
         <div id="led"></div>
-        <span style="font-size: 11px; letter-spacing: 1px;">CORE v178.0 | STABLE RECOVERY</span>
+        <span style="font-size: 11px; letter-spacing: 1px;">CORE v179.0 | ENGINE: <span id="engine-state">INIT</span></span>
     </div>
     <div class="monitor-display">
-        <div style="display: flex; align-items: center;">
-            <img id="mon-flag-ui" src="">
-            <span id="mon-city">RECONNECTING...</span>
-        </div>
-        <div id="mon-status">Aguardando dados de rede...</div>
+        <span id="mon-city">CONNECTING...</span>
+        <div id="mon-status">Aguardando telemetria...</div>
     </div>
 </div>
 
-<script>
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+
     const RAU_SYSTEM = {
         scene: new THREE.Scene(),
         camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000),
-        renderer: new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" }),
-        controls: null, globe: null, markers: new THREE.Group(), 
-        stars: null, currentIP: null,
+        renderer: new THREE.WebGLRenderer({ antialias: true, alpha: false }),
+        controls: null, globe: null, markers: new THREE.Group(), stars: null, currentIP: null,
 
-        init() {
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(window.devicePixelRatio);
-            document.body.appendChild(this.renderer.domElement);
+        async init() {
+            try {
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                document.body.appendChild(this.renderer.domElement);
 
-            this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-            this.controls.enableDamping = true;
-            this.controls.autoRotate = true;
-            this.controls.autoRotateSpeed = 0.6;
-            this.camera.position.set(0, 0, 3.5);
+                this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.enableDamping = true;
+                this.camera.position.set(0, 0, 3.5);
 
-            // 1. ILUMINAÇÃO REFORÇADA (Evita o círculo negro)
-            const ambient = new THREE.AmbientLight(0xffffff, 1.2); 
-            this.scene.add(ambient);
-            const directional = new THREE.DirectionalLight(0xffffff, 0.8);
-            directional.position.set(5, 3, 5);
-            this.scene.add(directional);
+                // Luzes potentes para evitar círculo negro
+                this.scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+                const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+                sun.position.set(5, 3, 5);
+                this.scene.add(sun);
 
-            // 2. GLOBO COM MATERIAL DE BACKUP
-            const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ 
-                color: 0x151515, 
-                shininess: 20,
-                bumpScale: 0.05
-            });
-            this.globe = new THREE.Mesh(geo, mat);
-            this.scene.add(this.globe);
-            this.scene.add(this.markers);
+                // Globo com cor de segurança (Cinza Tech) caso a textura falhe
+                const geo = new THREE.SphereGeometry(1, 64, 64);
+                const mat = new THREE.MeshPhongMaterial({ color: 0x222222, shininess: 15 });
+                this.globe = new THREE.Mesh(geo, mat);
+                this.scene.add(this.globe);
+                this.scene.add(this.markers);
 
-            // Carregamento de Textura com tratamento de erro
-            const loader = new THREE.TextureLoader();
-            loader.load(
-                'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', 
-                (tex) => {
+                // Carregar Estrelas
+                this.createStars();
+
+                // Carregar Textura
+                new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                     this.globe.material.map = tex;
                     this.globe.material.color.set(0xffffff);
                     this.globe.material.needsUpdate = true;
-                },
-                undefined,
-                (err) => { console.log("Erro ao carregar textura, mantendo modo tech."); }
-            );
+                });
 
-            this.updateEnvironment();
-            this.animate();
-            
-            // Iniciar rastreamento
-            this.checkNetwork();
-            setInterval(() => this.checkNetwork(), 7000); 
-        },
-
-        updateEnvironment() {
-            const hour = new Date().getHours();
-            const isNight = (hour < 6 || hour > 18);
-
-            if (isNight) {
-                this.scene.background = new THREE.Color(0x000002);
-                this.createStars();
-            } else {
-                if (this.stars) this.scene.remove(this.stars);
-                this.scene.background = new THREE.Color(0x1a2a3a); // Azul escuro profundo para contraste
-                this.scene.fog = new THREE.FogExp2(0x1a2a3a, 0.1);
+                document.getElementById('engine-state').innerText = "RUNNING";
+                this.animate();
+                this.checkNetwork();
+                setInterval(() => this.checkNetwork(), 8000);
+            } catch (e) {
+                document.getElementById('engine-state').innerText = "FATAL ERROR";
+                console.error(e);
             }
         },
 
         createStars() {
-            if (this.stars) return;
             const starGeo = new THREE.BufferGeometry();
             const coords = [];
-            for (let i = 0; i < 6000; i++) {
-                coords.push((Math.random() - 0.5) * 1200, (Math.random() - 0.5) * 1200, (Math.random() - 0.5) * 1200);
+            for (let i = 0; i < 7000; i++) {
+                coords.push((Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500);
             }
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(coords, 3));
-            this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 }));
+            this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.8 }));
             this.scene.add(this.stars);
         },
 
         async checkNetwork() {
             try {
-                // Cache-buster para detectar troca de VPN na hora
-                const res = await fetch(`https://ipapi.co/json/?v=${Date.now()}`);
+                // Cache-buster agressivo para VPN
+                const res = await fetch(`https://ipapi.co/json/?timestamp=${Date.now()}`);
                 const data = await res.json();
 
                 if (data.ip && data.ip !== this.currentIP) {
                     this.currentIP = data.ip;
-                    this.deployMarkers(data);
+                    this.updateUI(data);
                 }
-            } catch (e) { 
-                document.getElementById('mon-status').innerText = "NETWORK ERROR\nRETRYING CONNECTION...";
+            } catch (e) {
+                document.getElementById('mon-status').innerText = "NETWORK LAG...";
             }
         },
 
-        deployMarkers(data) {
-            const { latitude: lat, longitude: lon, city, country_code: iso, org } = data;
-            const cityUpper = (city || "ESTAÇÃO REMOTA").toUpperCase();
-            const isoLower = iso ? iso.toLowerCase() : "";
-
-            // UI Update
-            document.getElementById('mon-city').innerText = cityUpper;
-            if(isoLower) {
-                const flagUi = document.getElementById('mon-flag-ui');
-                flagUi.src = `https://flagcdn.com/w80/${isoLower}.png`;
-                flagUi.style.display = 'inline-block';
-            }
-            
-            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nNODE: ${iso || '??'}\nISP: ${org || 'PRIVATE'}\nSTATUS: SENSOR ACTIVE`;
+        updateUI(data) {
+            const city = (data.city || "DESCONHECIDO").toUpperCase();
+            document.getElementById('mon-city').innerText = city;
+            document.getElementById('mon-status').innerText = `IP: ${data.ip}\nNODE: ${data.country_code}\nORG: ${data.org || 'PRIVATE'}\nSTATUS: ONLINE`;
 
             this.markers.clear();
-            
-            // Conversão de Coordenadas
-            const phi = (90 - lat) * (Math.PI / 180);
-            const theta = (lon + 180) * (Math.PI / 180);
+            const phi = (90 - data.latitude) * (Math.PI / 180);
+            const theta = (data.longitude + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3(
                 -(Math.sin(phi) * Math.cos(theta)),
                 Math.cos(phi),
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.02);
 
-            // LED de localização (Verde Neon)
-            const dot = new THREE.Mesh(
-                new THREE.SphereGeometry(0.025, 16, 16), 
-                new THREE.MeshBasicMaterial({ color: 0x39ff14 })
-            );
+            const dot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 16), new THREE.MeshBasicMaterial({ color: 0x39ff14 }));
             dot.position.copy(pos);
             this.markers.add(dot);
 
-            // Nome da Cidade em Sprite
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = 512; canvas.height = 128;
-            ctx.fillStyle = '#39ff14'; 
-            ctx.font = 'bold 44px Courier New';
-            ctx.textAlign = 'center'; 
-            ctx.fillText(cityUpper, 256, 80);
-            
-            const labelMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) });
-            const label = new THREE.Sprite(labelMat);
-            label.position.copy(pos.clone().multiplyScalar(1.25));
-            label.scale.set(0.7, 0.18, 1);
-            this.markers.add(label);
-
-            // Focar a câmera no novo local (VPN detectada)
+            // Focar a câmera suavemente
             this.camera.position.lerp(pos.clone().multiplyScalar(3.5), 0.1);
         },
 
@@ -198,12 +150,7 @@
         }
     };
 
-    window.onload = () => RAU_SYSTEM.init();
-    window.onresize = () => {
-        RAU_SYSTEM.camera.aspect = window.innerWidth / window.innerHeight;
-        RAU_SYSTEM.camera.updateProjectionMatrix();
-        RAU_SYSTEM.renderer.setSize(window.innerWidth, window.innerHeight);
-    };
+    window.addEventListener('load', () => RAU_SYSTEM.init());
 </script>
 </body>
 </html>
