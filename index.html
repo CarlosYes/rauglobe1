@@ -2,14 +2,14 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v202.0 - RECOVERY MODE</title>
+    <title>RAU MONITOR v202.0 - FIXO & ESTÁVEL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 10, 0, 0.85); border-left: 3px solid #39ff14;
+            background: rgba(0, 10, 0, 0.9); border-left: 3px solid #39ff14;
             padding: 15px; width: 280px; pointer-events: none;
             backdrop-filter: blur(10px);
         }
@@ -33,11 +33,11 @@
 <div id="rau-ui">
     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
         <div id="status-led" style="width: 10px; height: 10px; border-radius: 50%; background: #39ff14; box-shadow: 0 0 10px #39ff14;"></div>
-        <span id="core-status" style="font-size: 11px; letter-spacing: 1px;">CORE v202 | ONLINE</span>
+        <span id="core-status" style="font-size: 11px; letter-spacing: 1px;">CORE v202 | ESTÁVEL</span>
     </div>
     <div class="monitor-display">
         <span id="mon-city">A SINCRONIZAR...</span>
-        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Rastreamento em tempo real...</div>
+        <div id="mon-status" style="font-size: 10px; opacity: 0.8; margin-top: 5px;">Telemetria Global v202...</div>
     </div>
 </div>
 
@@ -56,7 +56,7 @@
 
         init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
 
             this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
@@ -64,8 +64,9 @@
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
 
+            // GLOBO
             const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ shininess: 10 });
+            const mat = new THREE.MeshPhongMaterial({ shininess: 15 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.globe.add(this.markers);
@@ -79,10 +80,9 @@
 
             this.updateAtmosphere();
             this.loadTexture();
+            this.track(); // Chama rastreio imediato
             
-            // Início imediato do rastreio
-            this.track();
-            setInterval(() => this.track(), 15000);
+            setInterval(() => this.track(), 20000);
             setInterval(() => this.updateAtmosphere(), 60000);
 
             window.addEventListener('resize', () => this.onResize());
@@ -91,10 +91,10 @@
 
         createStars() {
             const starGeo = new THREE.BufferGeometry();
-            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.8 });
+            const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.7 });
             const starVertices = [];
             for (let i = 0; i < 6000; i++) {
-                starVertices.push((Math.random() - 0.5) * 1800, (Math.random() - 0.5) * 1800, (Math.random() - 0.5) * 1800);
+                starVertices.push((Math.random() - 0.5) * 1600, (Math.random() - 0.5) * 1600, (Math.random() - 0.5) * 1800);
             }
             starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
             this.stars = new THREE.Points(starGeo, starMat);
@@ -108,6 +108,7 @@
             if(this.stars) this.stars.visible = !isDay;
             document.getElementById('core-status').innerText = isDay ? "CORE v202 | DIA" : "CORE v202 | NOITE";
             document.getElementById('status-led').style.background = isDay ? "#ffcc00" : "#39ff14";
+            document.getElementById('status-led').style.boxShadow = isDay ? "0 0 10px #ffcc00" : "0 0 10px #39ff14";
         },
 
         loadTexture() {
@@ -118,27 +119,39 @@
         },
 
         async track() {
+            // REMOVIDO PROXY HEROKU PARA EVITAR BLOQUEIOS
             try {
-                // Usando cache bypass para forçar atualização
-                const response = await fetch(`https://ipapi.co/json/?nocache=${Math.random()}`);
-                if (!response.ok) throw new Error('Falha na API');
-                
-                const data = await response.json();
-                if (data.ip && data.ip !== this.currentIP) {
-                    this.currentIP = data.ip;
-                    this.updateVisitor(data);
-                    document.getElementById('mon-status').innerText = "Telemetria ativa: " + data.ip;
-                }
-            } catch (e) { 
-                console.warn("Erro de conexão. Tentando recuperar...");
-                document.getElementById('mon-status').innerText = "A tentar reconectar...";
+                // Tenta API 1 (Mais completa)
+                const res = await fetch('https://ipapi.co/json/');
+                if(!res.ok) throw new Error();
+                const data = await res.json();
+                this.applyData(data);
+            } catch (e) {
+                // Tenta API 2 (Fallback sem limite rigoroso)
+                try {
+                    const res2 = await fetch('https://ipwho.is/');
+                    const data2 = await res2.json();
+                    if(data2.success) {
+                        this.applyData({
+                            city: data2.city,
+                            latitude: data2.latitude,
+                            longitude: data2.longitude,
+                            country_code: data2.country_code,
+                            ip: data2.ip
+                        });
+                    }
+                } catch (e2) { console.warn("Erro de conexão total."); }
             }
         },
 
-        updateVisitor(data) {
-            document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
-            this.markers.clear();
+        applyData(data) {
+            if (data.ip === this.currentIP) return;
+            this.currentIP = data.ip;
             
+            document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
+            document.getElementById('mon-status').innerText = "Sinal Estável: " + data.ip;
+            
+            this.markers.clear();
             const phi = (90 - data.latitude) * (Math.PI / 180);
             const theta = (data.longitude + 180) * (Math.PI / 180);
             const pos = new THREE.Vector3(
@@ -147,7 +160,7 @@
                 (Math.sin(phi) * Math.sin(theta))
             ).multiplyScalar(1.01);
 
-            // BOLINHA PEQUENA (0.01)
+            // BOLINHA MINIMALISTA (0.01)
             const dot = new THREE.Mesh(
                 new THREE.SphereGeometry(0.01, 12, 12),
                 new THREE.MeshBasicMaterial({ color: 0x39ff14 })
@@ -180,7 +193,6 @@
                 vector.project(this.camera);
                 
                 const tag = document.getElementById('visitor-tag');
-                // Lógica de visibilidade da tag
                 if (eye.dot(pos) < 0.2 || vector.z > 1) { 
                     tag.style.opacity = '0'; 
                 } else { 
