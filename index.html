@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU - RADAR BLACK OPS</title>
+    <title>RAU - RADAR DE ELITE v5.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
@@ -66,7 +66,7 @@
     scene.add(sun);
     camera.position.z = 3;
 
-    // 3. SISTEMA DE UNIDADES PERSISTENTES
+    // 3. GESTÃO DINÂMICA (Sem destruição de objetos)
     const markerMap = new Map();
 
     function createUnitSprite(city) {
@@ -90,7 +90,7 @@
     }
 
     function addOrUpdateUnit(id, lat, lng, city) {
-        if (markerMap.has(id)) return;
+        if (markerMap.has(id)) return; // Se já existe, não mexe para não quebrar a rotação
 
         const phi = (90 - lat) * (Math.PI / 180);
         const theta = (lng + 180) * (Math.PI / 180);
@@ -113,7 +113,7 @@
         markerMap.set(id, group);
     }
 
-    // 4. INTERATIVIDADE TOTAL
+    // 4. INTERATIVIDADE BLINDADA
     let isDragging = false;
     let mouseX = 0, mouseY = 0;
 
@@ -130,7 +130,7 @@
         }
     });
 
-    // 5. FIREBASE REALTIME SYNC
+    // 5. FIREBASE ENGINE
     async function init() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0");
@@ -138,19 +138,20 @@
             document.getElementById('my-loc').innerText = data.city.toUpperCase();
             const [lat, lng] = data.loc.split(',').map(Number);
 
-            const report = () => db.collection('rau_final').doc(myId).set({
+            const report = () => db.collection('rau_v5').doc(myId).set({
                 lat, lng, city: data.city, ts: firebase.firestore.FieldValue.serverTimestamp()
             });
             report(); setInterval(report, 25000);
 
-            db.collection('rau_final').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
+            db.collection('rau_v5').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
                 const currentIds = new Set();
                 snap.forEach(doc => {
-                    const d = doc.data();
                     currentIds.add(doc.id);
+                    const d = doc.data();
                     if(d.lat) addOrUpdateUnit(doc.id, d.lat, d.lng, d.city);
                 });
 
+                // Limpeza cirúrgica: remove apenas quem ficou offline
                 markerMap.forEach((obj, id) => {
                     if (!currentIds.has(id)) {
                         mainGroup.remove(obj);
