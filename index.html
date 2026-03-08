@@ -139,7 +139,7 @@
             push(); setInterval(push, 25000);
 
             db.collection('rau_v_final').where('ts', '>', new Date(Date.now() - 60000)).onSnapshot(snap => {
-                // Limpeza segura apenas dos marcadores, sem tocar na Terra ou luzes
+                // Limpeza segura apenas dos marcadores
                 const toDelete = [];
                 mainGroup.children.forEach(c => { if(c.name === "visitor_node") toDelete.push(c); });
                 toDelete.forEach(c => mainGroup.remove(c));
