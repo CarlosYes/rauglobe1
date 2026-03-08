@@ -2,60 +2,59 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v34.0 - MEMORY</title>
+    <title>RAU RADAR v37.0 - REALTIME</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 20, 0, 0.9); color: #39ff14; padding: 20px;
-            border: 2px solid #39ff14; border-radius: 10px; pointer-events: none;
+            background: rgba(0, 10, 0, 0.95); color: #39ff14; padding: 25px;
+            border: 2px solid #39ff14; border-radius: 12px; pointer-events: none;
         }
         #count { font-size: 3.5em; font-weight: 900; color: #fff; display: block; }
-        .pref-status { font-size: 10px; color: #888; margin-top: 10px; border-top: 1px solid #222; padding-top: 10px; }
-        #status-msg { font-size: 11px; margin-top: 10px; font-weight: bold; }
-        canvas { cursor: crosshair; }
+        #diag { font-size: 11px; margin-top: 10px; font-weight: bold; }
+        .mem-box { font-size: 10px; color: #888; margin-top: 10px; border-top: 1px solid #222; padding-top: 10px; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <b style="letter-spacing: 2px;">RAU COMMAND v34.0</b><br><br>
-    UNIDADES NO MAPA:
+    <b>RAU COMMAND v37.0</b><br><br>
+    OUVINTES ONLINE:
     <span id="count">0</span>
+    <div id="diag" style="color: #ff3333;">📡 A LIGAR AO REALTIME...</div>
     
-    <div id="status-msg">🛰️ A SINCRONIZAR...</div>
-
-    <div class="pref-status">
-        💾 MEMÓRIA: <span id="mem-v">--</span> | <span id="mem-a">--</span>
+    <div class="mem-box">
+        💾 MEMÓRIA ATIVA:<br>
+        🔈 <span id="v-mem">--</span> | 🔄 <span id="a-mem">--</span>
     </div>
 </div>
 
 <script>
-    // 1. GESTÃO DE MEMÓRIA (Volume e Autoplay)
-    const rauMemory = {
-        save: (v, a) => {
-            localStorage.setItem('rau_v', v);
-            localStorage.setItem('rau_a', a);
-        },
-        load: () => ({
-            v: localStorage.getItem('rau_v') || "0.8",
-            a: localStorage.getItem('rau_a') || "true"
-        })
+    // 1. MEMÓRIA
+    const rauPrefs = {
+        save: (v, a) => { localStorage.setItem('rau_v', v); localStorage.setItem('rau_a', a); },
+        load: () => ({ v: localStorage.getItem('rau_v') || "0.7", a: localStorage.getItem('rau_a') || "true" })
     };
+    const current = rauPrefs.load();
+    document.getElementById('v-mem').innerText = "VOL " + Math.round(current.v * 100) + "%";
+    document.getElementById('a-mem').innerText = "AUTO " + (current.a === "true" ? "ON" : "OFF");
 
-    const myPrefs = rauMemory.load();
-    document.getElementById('mem-v').innerText = "VOL " + Math.round(myPrefs.v * 100) + "%";
-    document.getElementById('mem-a').innerText = "AUTO " + (myPrefs.a === "true" ? "ON" : "OFF");
-
-    // 2. FIREBASE (RAU_V34)
+    // 2. CONFIGURAÇÃO (Realtime Database)
     const _k = ["QUl6YVN5RHYwVGY1ajlJMEx0NGlCMXZvSTk3dGxjM0sxYnd2bS1n", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGEuZmlyZWJhc2VhcHAuY29t", "cmFkaW9kb3NhbWlnb3N1bmlkb3MtYWFkZGE=", "MTo0NTE5NDU2MTIwNzE6d2ViOjM4M2M1NTEjYTkyMjc0NGY2ODQ1ZjAy"];
-    const cfg = { apiKey: atob(_k[0]), authDomain: atob(_k[1]), projectId: atob(_k[2]), appId: atob(_k[3]) };
+    const cfg = { 
+        apiKey: atob(_k[0]), 
+        authDomain: atob(_k[1]), 
+        projectId: atob(_k[2]), 
+        appId: atob(_k[3]),
+        databaseURL: "https://radiodosamigosunidos-aadda-default-rtdb.europe-west1.firebasedatabase.app/" 
+    };
+    
     if (!firebase.apps.length) firebase.initializeApp(cfg);
-    const db = firebase.firestore();
-    const myID = "USER_" + Math.random().toString(36).substr(2, 5);
+    const rdb = firebase.database();
+    const myID = "NODE_" + Math.random().toString(36).substr(2, 5);
 
     // 3. ENGINE 3D
     const scene = new THREE.Scene();
@@ -70,72 +69,40 @@
         shininess: 5
     }));
     world.add(globe);
-    scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+    scene.add(new THREE.AmbientLight(0xffffff, 1.5));
     camera.position.z = 3.5;
 
-    const markers = new Map();
-    function updateGlobe(nodes) {
-        const ids = new Set(nodes.map(n => n.id));
-        nodes.forEach(n => {
-            if (!markers.has(n.id)) {
-                const phi = (90-n.lat)*(Math.PI/180), theta = (n.lng+180)*(Math.PI/180);
-                const pos = new THREE.Vector3().setFromSphericalCoords(1.02, phi, theta);
-                const g = new THREE.Group();
-                g.add(new THREE.Mesh(new THREE.SphereGeometry(0.015,12,12), new THREE.MeshBasicMaterial({color: 0x39ff14})));
-                
-                const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-                canvas.width = 160; canvas.height = 50; ctx.fillStyle = 'rgba(0,30,0,0.9)'; ctx.fillRect(0,0,160,50);
-                ctx.font = 'bold 14px Courier New'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-                ctx.fillText(n.city.toUpperCase(), 80, 30);
-                
-                const s = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(canvas)}));
-                s.position.copy(pos.clone().multiplyScalar(1.15)); s.scale.set(0.4, 0.12, 1);
-                g.add(s); world.add(g); markers.set(n.id, g);
-            }
-        });
-        markers.forEach((obj, id) => { if (!ids.has(id)) { world.remove(obj); markers.delete(id); } });
-    }
-
-    // 4. MOVIMENTO
-    let down = false, lx, ly;
-    window.addEventListener('mousedown', (e) => { down = true; lx = e.clientX; ly = e.clientY; });
-    window.addEventListener('mouseup', () => down = false);
-    window.addEventListener('mousemove', (e) => { if (down) { world.rotation.y += (e.clientX-lx)*0.007; world.rotation.x += (e.clientY-ly)*0.007; lx=e.clientX; ly=e.clientY; } });
-
-    // 5. ATIVAÇÃO COM REGRAS PÚBLICAS
-    async function init() {
+    // 4. ATIVAÇÃO REALTIME
+    async function start() {
         try {
             const res = await fetch("https://ipinfo.io/json?token=e392744f6845f0").then(r => r.json());
             const [lat, lng] = res.loc.split(',').map(Number);
             
-            const up = () => db.collection('RAU_V34').doc(myID).set({
-                lat, lng, city: res.city, ts: firebase.firestore.FieldValue.serverTimestamp(),
-                v: myPrefs.v, a: myPrefs.a
+            const nodeRef = rdb.ref('presence/' + myID);
+            
+            nodeRef.set({
+                lat, lng, city: res.city, ts: Date.now(),
+                v: current.v, a: current.a
             }).then(() => {
-                document.getElementById('status-msg').innerText = "🟢 ONLINE (REGRAS OK)";
-                document.getElementById('status-msg').style.color = "#39ff14";
-            }).catch(e => {
-                document.getElementById('status-msg').innerText = "🔴 ERRO: VERIFICA O FIRESTORE";
+                document.getElementById('diag').innerText = "🟢 REALTIME ONLINE";
+                document.getElementById('diag').style.color = "#39ff14";
+                nodeRef.onDisconnect().remove();
+            }).catch(() => {
+                document.getElementById('diag').innerText = "🔴 ERRO: REGRAS DATABASE";
             });
 
-            up(); setInterval(up, 25000);
-
-            db.collection('RAU_V34').where('ts', '>', new Date(Date.now() - 75000)).onSnapshot(snap => {
-                const list = []; snap.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
-                updateGlobe(list);
-                document.getElementById('count').innerText = snap.size;
+            rdb.ref('presence').on('value', snap => {
+                document.getElementById('count').innerText = snap.numChildren();
             });
-        } catch (e) { document.getElementById('status-msg').innerText = "🟡 SEM REDE"; }
+
+        } catch (e) { document.getElementById('diag').innerText = "🟡 ERRO DE REDE"; }
     }
 
-    function loop() { requestAnimationFrame(loop); if(!down) world.rotation.y += 0.0015; renderer.render(scene, camera); }
-    init(); loop();
+    function loop() { requestAnimationFrame(loop); world.rotation.y += 0.0015; renderer.render(scene, camera); }
+    start(); loop();
 
-    // COMANDO EXTERNO: window.updateRAU(0.5, "true")
-    window.updateRAU = (v, a) => {
-        rauMemory.save(v, a);
-        location.reload();
-    };
+    //window.saveRau(0.5, "true")
+    window.saveRau = (v, a) => { rauPrefs.save(v, a); location.reload(); };
 </script>
 </body>
 </html>
