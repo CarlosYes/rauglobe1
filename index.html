@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v255.0</title>
+    <title>RAU RADAR v256.0</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -12,20 +12,19 @@
 
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
-        #globeViz { position: absolute; top: 0; width: 100vw; height: 100vh; }
+        #globeViz { position: absolute; top: 0; width: 100vw; height: 100vh; z-index: 1; }
         
         .hud-rau {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 5, 20, 0.95); border: 2px solid #39ff14;
-            padding: 15px; border-radius: 4px; color: #fff;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.5); pointer-events: none;
+            background: rgba(0, 10, 30, 0.95); border: 2px solid #39ff14;
+            padding: 20px; border-radius: 5px; color: #fff;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4); pointer-events: none;
         }
-        .count-value { font-size: 55px; font-weight: bold; color: #39ff14; display: block; line-height: 0.8; }
+        .count-big { font-size: 60px; font-weight: bold; color: #39ff14; display: block; line-height: 0.8; }
         
         .tag {
-            background: rgba(0,0,0,0.85); border: 1px solid #39ff14;
-            color: #fff; padding: 4px 8px; font-size: 11px;
-            display: flex; align-items: center; gap: 6px; border-radius: 2px;
+            background: rgba(0,0,0,0.9); border: 1px solid #39ff14;
+            color: #fff; padding: 4px 8px; font-size: 11px; border-radius: 2px;
         }
         .me { border: 2px solid #fff !important; background: #39ff14 !important; color: #000 !important; font-weight: bold; }
     </style>
@@ -33,9 +32,9 @@
 <body>
 
 <div class="hud-rau">
-    <div style="font-size: 10px; opacity: 0.8; letter-spacing: 1px; margin-bottom: 8px;">OUVINTES REAIS AGORA</div>
-    <div id="live-counter" class="count-value">0</div>
-    <div id="status-text" style="font-size: 11px; margin-top: 10px; color: #39ff14;">SINAL: A CONECTAR...</div>
+    <div style="font-size: 11px; opacity: 0.8; letter-spacing: 2px; margin-bottom: 10px;">OUVINTES REAIS</div>
+    <div id="live-total" class="count-big">1</div>
+    <div id="status-msg" style="font-size: 11px; margin-top: 10px; color: #39ff14;">SINAL: A TRANSMITIR...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -49,9 +48,9 @@
 
     if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('rau_radar_v255');
+    const radarRef = db.ref('rau_radar_v256');
 
-    const myID = "RAU_" + Math.random().toString(36).substr(2, 6);
+    const myID = "OUVINTE_" + Math.random().toString(36).substr(2, 5);
     let myNode = radarRef.child(myID);
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -60,7 +59,7 @@
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
         .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14')
-        .pointRadius(d => d.id === myID ? 2.5 : 0.8)
+        .pointRadius(d => d.id === myID ? 2.8 : 1.0)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'tag' + (d.id === myID ? ' me' : '');
@@ -68,42 +67,42 @@
             return el;
         });
 
-    async function bootstrap() {
-        // 1. REGISTO IMEDIATO (Mesmo sem localização, para o contador ser 1)
-        myNode.set({ id: myID, lat: null, lng: null, ts: Date.now() });
+    async function ligar() {
+        // 1. FORÇAR LOGO O REGISTO (Mesmo sem lat/lng)
+        myNode.set({ id: myID, ts: Date.now(), lat: null, lng: null });
         myNode.onDisconnect().remove();
 
-        // 2. TENTAR LOCALIZAÇÃO (IP)
+        // 2. TENTAR POSIÇÃO (IPWHOIS)
         try {
             const res = await fetch('https://ipwho.is/');
             const d = await res.json();
             if (d.success && d.latitude !== 0) {
-                myNode.update({ lat: d.latitude, lng: d.longitude, ts: Date.now() });
-                document.getElementById('status-text').innerText = "SINAL: " + d.city.toUpperCase();
+                myNode.update({ lat: d.latitude, lng: d.longitude });
+                document.getElementById('status-msg').innerText = "SINAL: " + d.city.toUpperCase();
             }
-        } catch(e) { 
-            document.getElementById('status-text').innerText = "SINAL: REDE LIMITADA";
+        } catch(e) {
+            document.getElementById('status-text').innerText = "SINAL: OK (REDE)";
         }
 
-        // 3. SINCRONIZAÇÃO TOTAL
+        // 3. ATUALIZAÇÃO EM TEMPO REAL
         radarRef.on('value', snap => {
             const now = Date.now();
-            const rawData = Object.values(snap.val() || {});
-            // Conta todos os que entraram nos últimos 30 segundos
-            const active = rawData.filter(u => (now - u.ts < 30000));
-            // Mas só desenha no mapa quem tem coordenadas válidas (evita África)
-            const points = active.filter(u => u.lat !== null && u.lat !== 0);
+            const raw = Object.values(snap.val() || {});
+            // Filtra quem está ativo nos últimos 20 segundos
+            const ativos = raw.filter(u => (now - u.ts < 20000));
+            // Filtra quem tem coordenadas para pôr no mapa (evita África)
+            const comMapa = ativos.filter(u => u.lat !== null && u.lat !== 0);
             
-            document.getElementById('live-counter').innerText = active.length;
-            world.pointsData(points);
-            world.htmlElementsData(points);
+            document.getElementById('live-total').innerText = ativos.length || 1;
+            world.pointsData(comMapa);
+            world.htmlElementsData(comMapa);
         });
 
-        // Batimento cardíaco constante
-        setInterval(() => myNode.update({ ts: Date.now() }), 10000);
+        // Batimento cardíaco (Heartbeat)
+        setInterval(() => myNode.update({ ts: Date.now() }), 5000);
     }
 
-    window.onload = bootstrap;
+    window.onload = ligar;
     window.onresize = () => { world.width(window.innerWidth); world.height(window.innerHeight); };
 </script>
 </body>
