@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v216.0 - LIVE NETWORK</title>
+    <title>RAU MONITOR v216.5 - LIVE NETWORK</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
@@ -29,29 +29,32 @@
 <body>
 
 <div id="rau-ui">
-    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v216.0 // LIVE</div>
+    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v216.5 // LIVE</div>
     <div class="monitor-display">
-        <span id="mon-city">CONECTANDO...</span>
-        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">Rede: Sincronizando</div>
+        <span id="mon-city">A SINCRONIZAR...</span>
+        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">Uplink: Ativo</div>
         <div id="mon-listeners" style="font-size: 10px; color: #39ff14; margin-top: 6px; font-weight: bold;">OUVINTES: 0</div>
     </div>
 </div>
 
 <div id="visitor-tag">
     <img id="tag-flag" src="" class="flag-icon">
-    <span id="tag-city">VOCÊ</span>
+    <span id="tag-city">---</span>
 </div>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyDv0Tf5j9I0FL4iB1voI97tlc3K1bwvm-g",
-  authDomain: "radiodosamigosunidos-aadda.firebaseapp.com",
-  databaseURL: "https://radiodosamigosunidos-aadda-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "radiodosamigosunidos-aadda",
-  storageBucket: "radiodosamigosunidos-aadda.firebasestorage.app",
-  messagingSenderId: "451945612071",
-  appId: "1:451945612071:web:383c551ca22744f6845f02"
-};
+    // Configuração oficial do seu projeto Firebase
+    const firebaseConfig = {
+        apiKey: "AIzaSyDv0Tf5j9I0FL4iB1voI97tlc3K1bwvm-g",
+        authDomain: "radiodosamigosunidos-aadda.firebaseapp.com",
+        databaseURL: "https://radiodosamigosunidos-aadda-default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "radiodosamigosunidos-aadda",
+        storageBucket: "radiodosamigosunidos-aadda.firebasestorage.app",
+        messagingSenderId: "451945612071",
+        appId: "1:451945612071:web:383c551ca22744f6845f02"
+    };
+
+    // Inicialização do Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const listenersRef = db.ref('listeners');
@@ -61,47 +64,60 @@ const firebaseConfig = {
         camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000),
         renderer: new THREE.WebGLRenderer({ antialias: true, alpha: true }),
         controls: null, globe: null, markers: new THREE.Group(),
-        myId: null,
+        myId: null, activeNode: null,
 
         init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
 
-            this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+            // Iluminação
+            this.scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
             sun.position.set(5, 3, 5);
             this.scene.add(sun);
 
             this.stars();
 
+            // Globo 3D
             const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 5 });
+            const mat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 15 });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.globe.add(this.markers);
 
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.autoRotate = true;
+            this.controls.autoRotateSpeed = 0.6;
             this.camera.position.z = 3.5;
 
             this.loadTexture();
             this.connectLive();
             this.animate();
+
+            window.addEventListener('resize', () => {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            });
         },
 
         stars() {
             const geo = new THREE.BufferGeometry();
             const pos = [];
-            for (let i = 0; i < 2000; i++) {
-                pos.push((Math.random() - 0.5) * 1200, (Math.random() - 0.5) * 1200, (Math.random() - 0.5) * 1200);
+            for (let i = 0; i < 2500; i++) {
+                pos.push((Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500);
             }
             geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-            this.scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x444444, size: 0.8 })));
+            this.scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x666666, size: 0.7 })));
         },
 
         loadTexture() {
-            new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
+            const loader = new THREE.TextureLoader();
+            loader.setCrossOrigin('anonymous');
+            loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
                 this.globe.material.map = tex;
+                this.globe.material.color.set(0xffffff);
                 this.globe.material.needsUpdate = true;
             });
         },
@@ -118,48 +134,59 @@ const firebaseConfig = {
 
         async connectLive() {
             try {
+                // Obter localização via IP
                 const res = await fetch('https://ipapi.co/json/');
                 const data = await res.json();
                 
-                // 1. Criar ID único para esta sessão
+                if(!data.latitude) throw new Error("Localização indisponível");
+
+                // Gerar ID e registar no Firebase
                 const userRef = listenersRef.push();
                 this.myId = userRef.key;
 
-                // 2. Registrar no banco e remover ao sair (onDisconnect)
                 userRef.set({
                     lat: data.latitude,
                     lng: data.longitude,
-                    city: data.city,
-                    country: data.country_code.toLowerCase(),
-                    timestamp: Date.now()
+                    city: data.city || "Desconhecido",
+                    country: (data.country_code || "un").toLowerCase(),
+                    lastSeen: Date.now()
                 });
+
+                // Remover automaticamente ao desconectar
                 userRef.onDisconnect().remove();
 
-                document.getElementById('mon-city').innerText = data.city.toUpperCase();
-                document.getElementById('mon-status').innerText = "Online como: " + data.ip;
+                document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
+                document.getElementById('mon-status').innerText = "IP: " + data.ip;
 
-                // 3. Ouvir mudanças em tempo real no banco
+                // Monitorizar rede em tempo real
                 listenersRef.on('value', (snapshot) => {
-                    this.updateNetwork(snapshot.val());
+                    this.renderNetwork(snapshot.val());
                 });
 
-            } catch (e) { console.error("Falha no Uplink."); }
+            } catch (e) { 
+                console.error("Erro no Uplink:", e);
+                document.getElementById('mon-city').innerText = "ERRO DE REDE";
+            }
         },
 
-        updateNetwork(allListeners) {
+        renderNetwork(allUsers) {
             this.markers.clear();
-            if (!allListeners) return;
+            if (!allUsers) return;
 
-            const entries = Object.entries(allListeners);
+            const entries = Object.entries(allUsers);
             document.getElementById('mon-listeners').innerText = `OUVINTES: ${entries.length}`;
 
             entries.forEach(([id, info]) => {
                 const pos = this.getCoords(info.lat, info.lng);
-                const isMe = id === this.myId;
+                const isMe = (id === this.myId);
 
                 const dot = new THREE.Mesh(
-                    new THREE.SphereGeometry(isMe ? 0.02 : 0.012, 12, 12),
-                    new THREE.MeshBasicMaterial({ color: isMe ? 0x39ff14 : 0x00ffff })
+                    new THREE.SphereGeometry(isMe ? 0.025 : 0.015, 16, 16),
+                    new THREE.MeshBasicMaterial({ 
+                        color: isMe ? 0x39ff14 : 0x00ffff,
+                        transparent: true,
+                        opacity: 0.9
+                    })
                 );
                 dot.position.copy(pos);
                 this.markers.add(dot);
@@ -167,6 +194,7 @@ const firebaseConfig = {
                 if (isMe) {
                     this.activeNode = { mesh: dot, city: info.city, country: info.country };
                     document.getElementById('tag-flag').src = `https://flagcdn.com/w40/${info.country}.png`;
+                    document.getElementById('tag-city').innerText = info.city;
                     document.getElementById('visitor-tag').style.display = 'flex';
                 }
             });
@@ -175,18 +203,24 @@ const firebaseConfig = {
         animate() {
             requestAnimationFrame(() => this.animate());
             if (this.controls) this.controls.update();
-            if (this.activeNode) {
-                const v = new THREE.Vector3();
-                this.activeNode.mesh.getWorldPosition(v);
-                v.project(this.camera);
+            
+            if (this.activeNode && this.activeNode.mesh) {
+                const vector = new THREE.Vector3();
+                this.activeNode.mesh.getWorldPosition(vector);
+                vector.project(this.camera);
+                
                 const tag = document.getElementById('visitor-tag');
-                tag.style.left = `${(v.x * 0.5 + 0.5) * window.innerWidth}px`;
-                tag.style.top = `${(v.y * -0.5 + 0.5) * window.innerHeight}px`;
-                tag.style.opacity = v.z > 1 ? "0" : "1";
+                const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+                
+                tag.style.left = `${x}px`;
+                tag.style.top = `${y}px`;
+                tag.style.opacity = vector.z > 1 ? "0" : "1";
             }
             this.renderer.render(this.scene, this.camera);
         }
     };
+
     window.onload = () => RAU.init();
 </script>
 </body>
