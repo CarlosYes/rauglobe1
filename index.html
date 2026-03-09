@@ -3,59 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU MONITOR v225.0 - X-STREAM EDITION</title>
+    <title>RAU MONITOR v227.0 - ULTIMATE SHIELD</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
 
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
-
-        #globeViz { position: absolute; width: 100vw; height: 100vh; background: #000; z-index: 1; }
-
-        /* Interface Estilo Matrix/Hacker */
-        .hud-panel {
-            position: absolute; z-index: 1000; padding: 15px;
-            background: rgba(0, 10, 0, 0.9); border: 1px solid rgba(57, 255, 20, 0.3);
-            pointer-events: none;
+        /* CSS de Bloqueio de Fuga (Garante que o globo apareça) */
+        html, body { 
+            margin: 0; padding: 0; width: 100vw; height: 100vh; 
+            background: #000; overflow: hidden; 
+            font-family: 'Segoe UI', Tahoma, sans-serif;
         }
-        #left-panel { top: 20px; left: 20px; border-left: 4px solid #39ff14; width: 260px; }
-        #right-panel { top: 20px; right: 20px; border-right: 4px solid #00ffff; width: 220px; max-height: 80vh; overflow: hidden; }
 
-        .data-box { background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid #111; margin-top: 5px; }
-        .city-label { font-size: 18px; color: #fff; font-weight: 900; text-transform: uppercase; display: block; }
-        
+        #globeViz { 
+            position: absolute; top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            z-index: 1; display: block;
+        }
+
+        /* Interface Estilo XatRadio (Modernizada) */
+        .hud {
+            position: absolute; z-index: 100; padding: 20px;
+            background: rgba(7, 20, 45, 0.85); /* Cor azul escura do código que enviaste */
+            border: 1px solid rgba(169, 169, 169, 0.3);
+            border-radius: 8px; color: #eff1f9; pointer-events: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        #hud-left { top: 20px; left: 20px; width: 280px; border-left: 5px solid #39ff14; }
+        #hud-right { top: 20px; right: 20px; width: 220px; max-height: 80vh; overflow-y: auto; }
+
+        .title { font-size: 14px; font-weight: bold; color: #39ff14; margin-bottom: 5px; text-transform: uppercase; }
+        .city-main { font-size: 22px; font-weight: 900; display: block; margin-bottom: 2px; }
+        .details { font-size: 11px; color: #d9d9d9; opacity: 0.8; }
+
         .entry { 
-            font-size: 10px; padding: 6px 0; border-bottom: 1px solid rgba(0, 255, 255, 0.1);
-            display: flex; align-items: center; gap: 8px; animation: slide 0.3s ease-out;
+            display: flex; align-items: center; gap: 10px; padding: 8px;
+            background: rgba(0,0,0,0.3); margin-bottom: 4px; border-radius: 4px;
+            font-size: 12px; animation: fadeIn 0.5s ease;
         }
-        .flag { width: 16px; height: 11px; filter: contrast(1.2); }
+        .flag { width: 20px; height: 14px; border-radius: 2px; }
         
-        @keyframes slide { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
-<div id="left-panel" class="hud-panel">
-    <div style="font-size: 9px; letter-spacing: 2px; opacity: 0.6;">RAU_NET_MONITOR_v225</div>
-    <div class="data-box">
-        <span id="mon-city">A SINCRONIZAR...</span>
-        <div id="mon-status" style="font-size: 9px; color: #888; margin-top: 4px;">PROTOCOL: SECURE_VPN</div>
-        <div id="mon-count" style="font-size: 11px; color: #39ff14; margin-top: 8px; font-weight: bold;">NODE_ACTIVE: 0</div>
+<div id="hud-left" class="hud">
+    <div class="title">Monitor de Rede RAU</div>
+    <span id="mon-city" class="city-main">CONECTANDO...</span>
+    <div class="details">
+        STATUS: <span style="color:#39ff14">PROTEÇÃO ATIVA (VPN)</span><br>
+        UPLINK: SECURE_CHANNEL_v227
     </div>
+    <div id="mon-count" style="margin-top:15px; font-size:18px; font-weight:bold;">OUVINTES: 0</div>
 </div>
 
-<div id="right-panel" class="hud-panel">
-    <div style="font-size: 10px; color: #00ffff; margin-bottom: 8px; font-weight: bold;">LIVE_GLOBAL_FEED</div>
+<div id="hud-right" class="hud">
+    <div class="title" style="color: #00ffff;">Tráfego em Tempo Real</div>
     <div id="traffic-list"></div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
+    // Configuração do teu Firebase (Mantida)
     const firebaseConfig = {
         apiKey: "AIzaSyDv0Tf5j9I0FL4iB1voI97tlc3K1bwvm-g",
         authDomain: "radiodosamigosunidos-aadda.firebaseapp.com",
@@ -70,69 +84,78 @@
     const db = firebase.database();
     const listenersRef = db.ref('listeners');
 
-    // Inicialização Blindada do Globo
+    // Inicialização do Globo com correção de redimensionamento
     const world = Globe()
         (document.getElementById('globeViz'))
         .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
         .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+        .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
         .pointColor(() => '#39ff14')
-        .pointAltitude(0.12)
-        .pointRadius(0.4)
-        .pointsMerge(false);
+        .pointAltitude(0.1)
+        .pointRadius(0.6)
+        .pointsMerge(true);
 
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.5;
+    world.controls().autoRotateSpeed = 0.6;
 
-    async function connectNetwork() {
+    async function initSystem() {
         try {
-            // Usamos o IPWHO.IS que é o que mais se aproxima da estabilidade do player da XatRadio em HTTPS
-            const res = await fetch('https://ipwho.is/');
-            const data = await res.json();
-            
-            if (!data.success) throw new Error("API Limit");
+            // IPWHO.IS - Melhor para furar bloqueios de VPN e CORS
+            const response = await fetch('https://ipwho.is/');
+            const data = await response.json();
 
-            const myRef = listenersRef.push();
-            const myData = {
+            if (!data.success) throw new Error("Falha na Geolocation");
+
+            const myNode = listenersRef.push();
+            const payload = {
                 lat: data.latitude,
                 lng: data.longitude,
-                city: data.city || "VPN Anonymous",
+                city: data.city || "Nó Anónimo",
                 country: data.country_code.toLowerCase(),
-                timestamp: Date.now()
+                time: Date.now()
             };
 
-            myRef.set(myData);
-            myRef.onDisconnect().remove();
+            myNode.set(payload);
+            myNode.onDisconnect().remove();
 
-            document.getElementById('mon-city').innerText = myData.city.toUpperCase();
-            
-            // Sync Real-Time
+            document.getElementById('mon-city').innerText = payload.city.toUpperCase();
+
+            // Escuta em tempo real (Firebase)
             listenersRef.on('value', snap => {
-                const val = snap.val() || {};
-                const nodes = Object.entries(val);
+                const rawData = snap.val() || {};
+                const list = Object.values(rawData);
                 
-                document.getElementById('mon-count').innerText = `NODE_ACTIVE: ${nodes.length}`;
-                world.pointsData(nodes.map(([id, info]) => ({ lat: info.lat, lng: info.lng })));
+                document.getElementById('mon-count').innerText = `OUVINTES: ${list.length}`;
+                world.pointsData(list);
 
-                const list = document.getElementById('traffic-list');
-                list.innerHTML = '';
-                nodes.sort((a,b) => b[1].timestamp - a[1].timestamp).slice(0, 12).forEach(([id, info]) => {
-                    const row = document.createElement('div');
-                    row.className = 'entry';
-                    row.innerHTML = `<img class="flag" src="https://flagcdn.com/w40/${info.country}.png"><span>${info.city}</span>`;
-                    list.appendChild(row);
+                const listUI = document.getElementById('traffic-list');
+                listUI.innerHTML = '';
+                list.sort((a,b) => b.time - a.time).slice(0, 8).forEach(user => {
+                    const el = document.createElement('div');
+                    el.className = 'entry';
+                    el.innerHTML = `
+                        <img class="flag" src="https://flagcdn.com/w40/${user.country}.png">
+                        <span>${user.city}</span>
+                    `;
+                    listUI.appendChild(el);
                 });
             });
 
-        } catch (e) {
-            document.getElementById('mon-city').innerText = "OFFLINE_MODE";
-            console.error("Rede instável.");
+        } catch (err) {
+            console.error("Erro de Conexão:", err);
+            document.getElementById('mon-city').innerText = "SISTEMA OFFLINE";
         }
     }
 
-    window.addEventListener('resize', () => { world.width(window.innerWidth); world.height(window.innerHeight); });
-    window.onload = connectNetwork;
+    // Garante que o globo ocupa sempre o ecrã todo
+    function resize() {
+        world.width(window.innerWidth);
+        world.height(window.innerHeight);
+    }
+    window.addEventListener('resize', resize);
+    window.onload = () => { resize(); initSystem(); };
 </script>
 </body>
 </html>
