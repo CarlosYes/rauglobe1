@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v218.0 - VPN PRECISION</title>
+    <title>RAU MONITOR v219.0 - SECURE NETWORK</title>
     <script src="https://unpkg.com/three"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
@@ -11,14 +11,12 @@
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         
-        /* UI Esquerda - Status */
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 15, 0, 0.9); border-left: 3px solid #39ff14;
             padding: 15px; width: 260px; pointer-events: none;
         }
 
-        /* UI Direita - Lista Real-Time */
         #live-traffic {
             position: absolute; top: 20px; right: 20px; z-index: 1000;
             background: rgba(0, 10, 0, 0.85); border-right: 3px solid #00ffff;
@@ -32,7 +30,7 @@
             font-size: 10px; padding: 5px 0; border-bottom: 1px solid rgba(57, 255, 20, 0.2);
             display: flex; align-items: center; gap: 8px; animation: slideIn 0.3s ease-out;
         }
-        .flag { width: 16px; height: 11px; }
+        .flag { width: 16px; height: 11px; border: 0.5px solid #555; }
         .city-name { color: #00ffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
@@ -42,10 +40,10 @@
 <body>
 
 <div id="rau-ui">
-    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v218.0 // VPN MODE</div>
+    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v219.0 // SECURE</div>
     <div class="monitor-display">
-        <span id="mon-city">A LOCALIZAR VPN...</span>
-        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">Uplink: Encriptado</div>
+        <span id="mon-city">A SINCRONIZAR...</span>
+        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">Uplink: HTTPS SSL</div>
         <div id="mon-listeners" style="font-size: 10px; color: #39ff14; margin-top: 6px; font-weight: bold;">CONEXÕES: 0</div>
     </div>
 </div>
@@ -85,38 +83,38 @@
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    async function startVpnTracking() {
+    async function startSecureTracking() {
         try {
-            // Usamos o ip-api com 'fields=status,city,countryCode,lat,lon,query' 
-            // para garantir que pegamos o IP público da VPN
-            const res = await fetch('http://ip-api.com/json/?fields=61439');
+            // Alterado para ipwho.is (HTTPS nativo e gratuito para este volume)
+            const res = await fetch('https://ipwho.is/');
             const data = await res.json();
             
+            if(!data.success) throw new Error("Falha na API");
+
             const userRef = listenersRef.push();
             userRef.set({
-                lat: data.lat,
-                lng: data.lon,
+                lat: data.latitude,
+                lng: data.longitude,
                 city: data.city || "VPN Node",
-                country: (data.countryCode || "un").toLowerCase(),
+                country: (data.country_code || "un").toLowerCase(),
                 timestamp: Date.now()
             });
 
             userRef.onDisconnect().remove();
             document.getElementById('mon-city').innerText = (data.city || "VPN ATIVA").toUpperCase();
+            document.getElementById('mon-status').innerText = "IP: " + data.ip;
 
             listenersRef.on('value', snap => {
                 const val = snap.val() || {};
                 const entries = Object.entries(val);
                 
-                // Atualizar contador e Globo
                 document.getElementById('mon-listeners').innerText = `CONEXÕES: ${entries.length}`;
                 world.pointsData(entries.map(([id, info]) => ({ lat: info.lat, lng: info.lng })));
 
-                // Atualizar Lista em Tempo Real (Direita)
                 const container = document.getElementById('traffic-container');
                 container.innerHTML = '';
                 
-                // Mostrar as últimas 15 conexões
+                // Mostrar os últimos 15 em tempo real
                 entries.reverse().slice(0, 15).forEach(([id, info]) => {
                     const row = document.createElement('div');
                     row.className = 'traffic-row';
@@ -129,11 +127,12 @@
             });
 
         } catch (e) {
-            console.error("Erro no Bypass de IP.");
+            document.getElementById('mon-city').innerText = "ERRO DE UPLINK";
+            console.error("Erro no Bypass HTTPS:", e);
         }
     }
 
-    startVpnTracking();
+    startSecureTracking();
 
     window.addEventListener('resize', () => {
         world.width(window.innerWidth);
