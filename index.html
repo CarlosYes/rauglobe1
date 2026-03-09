@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v260.0</title>
+    <title>RAU RADAR v261.0</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -11,33 +11,48 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
-        #globeViz { position: absolute; top: 0; width: 100vw; height: 100vh; z-index: 1; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        #globeViz { position: absolute; top: 0; width: 100vw; height: 100vh; }
         
         .hud-rau {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 10, 30, 0.95); border: 2px solid #39ff14;
-            padding: 15px; border-radius: 4px; color: #fff;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4); pointer-events: none;
+            background: rgba(0, 10, 30, 0.9); border: 1px solid #39ff14;
+            padding: 15px; border-radius: 4px; color: #fff; pointer-events: none;
         }
-        .count-big { font-size: 55px; font-weight: bold; color: #39ff14; display: block; line-height: 0.8; }
+        .count-big { font-size: 48px; font-weight: bold; color: #39ff14; display: block; }
         
-        .tag-rau {
-            display: flex; align-items: center; gap: 8px;
-            background: rgba(0, 0, 0, 0.9); border: 1px solid #39ff14;
-            color: #fff; padding: 5px 10px; border-radius: 3px;
-            font-size: 13px; font-weight: bold;
+        /* A ETIQUETA QUE TU PEDISTE */
+        .rau-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            pointer-events: none;
         }
-        .tag-rau img { width: 22px; border-radius: 2px; }
-        .is-me { border: 2px solid #fff !important; background: #39ff14 !important; color: #000 !important; }
+        .rau-city-box {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #39ff14;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .rau-city-box img { width: 16px; height: 11px; border-radius: 1px; }
+        .dot { width: 8px; height: 8px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 10px #39ff14; }
+        .is-me .dot { background: #fff; box-shadow: 0 0 10px #fff; }
+        .is-me .rau-city-box { border-color: #fff; color: #39ff14; }
     </style>
 </head>
 <body>
 
 <div class="hud-rau">
-    <div style="font-size: 10px; letter-spacing: 2px; opacity: 0.8; margin-bottom: 5px;">OUVINTES EM DIRETO</div>
+    <div style="font-size: 10px; opacity: 0.7; letter-spacing: 1px;">OUVINTES REAIS</div>
     <div id="live-total" class="count-big">1</div>
-    <div id="status-msg" style="font-size: 11px; margin-top: 10px; color: #39ff14;">SINAL: OK</div>
+    <div id="status-msg" style="font-size: 10px; color: #39ff14;">SINAL LOCALIZADO</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,9 +66,9 @@
 
     if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('rau_radar_ultra_v260');
+    const radarRef = db.ref('rau_live_map_v261');
 
-    const myID = "R_" + Math.random().toString(36).substr(2, 6);
+    const myID = "USER_" + Math.random().toString(36).substr(2, 5);
     let myNode = radarRef.child(myID);
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -61,27 +76,32 @@
         .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
-        .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14')
-        .pointRadius(d => d.id === myID ? 3.0 : 1.2)
         .htmlElement(d => {
-            const el = document.createElement('div');
-            el.className = 'tag-rau' + (d.id === myID ? ' is-me' : '');
-            const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
-            el.innerHTML = `${flag} <span>${d.city || 'Ouvinte'}</span>`;
-            return el;
+            const container = document.createElement('div');
+            container.className = 'rau-label' + (d.id === myID ? ' is-me' : '');
+            
+            // Link da bandeira (FlagCDN)
+            const flagUrl = d.country ? `https://flagcdn.com/w40/${d.country.toLowerCase()}.png` : '';
+            const flagImg = d.country ? `<img src="${flagUrl}">` : '';
+            
+            container.innerHTML = `
+                <div class="rau-city-box">${flagImg} <span>${d.city || 'Ouvinte'}</span></div>
+                <div class="dot"></div>
+            `;
+            return container;
         });
 
-    async function ligarAgora() {
-        // PASSO 1: REGISTO CEGO (Número 1 aparece imediatamente)
+    async function startRadar() {
+        // Registo imediato para não marcar 0
         myNode.set({ id: myID, ts: Date.now(), lat: null, lng: null });
         myNode.onDisconnect().remove();
 
-        // PASSO 2: LOCALIZAÇÃO SEM LIMITES
         try {
+            // API Ilimitada para Cidade e País
             const res = await fetch('https://ipapi.co/json/');
             const d = await res.json();
             
-            if (d.latitude) {
+            if (d.latitude && d.latitude !== 0) {
                 myNode.update({
                     lat: d.latitude,
                     lng: d.longitude,
@@ -89,30 +109,28 @@
                     country: d.country_code,
                     ts: Date.now()
                 });
-                document.getElementById('status-msg').innerText = "ONLINE: " + d.city.toUpperCase();
+                document.getElementById('status-msg').innerText = "SINAL: " + d.city.toUpperCase();
             }
         } catch (e) {
-            document.getElementById('status-msg').innerText = "ONLINE (REDE)";
+            document.getElementById('status-msg').innerText = "SINAL: REDE ATIVA";
         }
 
-        // PASSO 3: SINCRONIZAÇÃO EM TEMPO REAL
+        // Sincronização de todos os ouvintes
         radarRef.on('value', snap => {
             const now = Date.now();
-            const data = Object.values(snap.val() || {}).filter(u => (now - u.ts < 30000));
+            const users = Object.values(snap.val() || {}).filter(u => (now - u.ts < 35000));
             
-            // Força o contador a ser no mínimo 1 (tu)
-            document.getElementById('live-total').innerText = Math.max(1, data.length);
+            document.getElementById('live-total').innerText = Math.max(1, users.length);
             
-            // Só desenha quem tem coordenadas (evita África)
-            const pts = data.filter(u => u.lat && u.lat !== 0);
-            world.pointsData(pts);
-            world.htmlElementsData(pts);
+            // Só mostra no mapa quem tem coordenadas (evita a África)
+            const validUsers = users.filter(u => u.lat && u.lat !== 0);
+            world.htmlElementsData(validUsers);
         });
 
         setInterval(() => myNode.update({ ts: Date.now() }), 10000);
     }
 
-    window.onload = ligarAgora;
+    window.onload = startRadar;
     window.onresize = () => { world.width(window.innerWidth); world.height(window.innerHeight); };
 </script>
 </body>
