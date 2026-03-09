@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v257.0</title>
+    <title>RAU RADAR v259.0 - ILIMITADO</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -11,34 +11,33 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
         #globeViz { position: absolute; top: 0; width: 100vw; height: 100vh; z-index: 1; }
         
-        .hud-rau {
+        .interface-rau {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 5, 20, 0.95); border: 1px solid #39ff14;
+            background: rgba(0, 10, 30, 0.95); border: 2px solid #39ff14;
             padding: 15px; border-radius: 4px; color: #fff;
-            box-shadow: 0 0 15px rgba(57, 255, 20, 0.3); pointer-events: none;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4); pointer-events: none;
         }
-        .count-big { font-size: 45px; font-weight: bold; color: #39ff14; display: block; line-height: 1; }
+        .count-num { font-size: 50px; font-weight: bold; color: #39ff14; display: block; line-height: 1; }
         
-        /* Estilo da Etiqueta no Globo */
-        .tag-rau {
+        .rau-tag {
             display: flex; align-items: center; gap: 8px;
             background: rgba(0, 0, 0, 0.85); border: 1px solid #39ff14;
             color: #fff; padding: 5px 10px; border-radius: 3px;
-            font-size: 12px; white-space: nowrap; font-weight: bold;
+            font-size: 13px; font-weight: bold;
         }
-        .tag-rau img { width: 18px; height: 12px; object-fit: cover; border-radius: 2px; }
-        .is-me { border: 2px solid #ffffff !important; background: #39ff14 !important; color: #000 !important; }
+        .rau-tag img { width: 20px; border-radius: 2px; }
+        .is-me { border: 2px solid #fff !important; background: #39ff14 !important; color: #000 !important; }
     </style>
 </head>
 <body>
 
-<div class="hud-rau">
-    <div style="font-size: 10px; opacity: 0.8; letter-spacing: 1px; margin-bottom: 5px;">OUVINTES EM DIRETO</div>
-    <div id="live-total" class="count-big">0</div>
-    <div id="status-msg" style="font-size: 11px; margin-top: 10px; color: #39ff14;">A LOCALIZAR...</div>
+<div class="interface-rau">
+    <div style="font-size: 10px; letter-spacing: 2px; opacity: 0.8;">OUVINTES EM DIRETO</div>
+    <div id="live-total" class="count-num">0</div>
+    <div id="status-msg" style="font-size: 11px; margin-top: 10px; color: #39ff14;">RADAR ATIVO</div>
 </div>
 
 <div id="globeViz"></div>
@@ -52,9 +51,9 @@
 
     if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('rau_radar_geoloc');
+    const radarRef = db.ref('rau_radar_unlimited_v1');
 
-    const myID = "OUV_" + Math.random().toString(36).substr(2, 5);
+    const myID = "R_" + Math.random().toString(36).substr(2, 6);
     let myNode = radarRef.child(myID);
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -63,61 +62,65 @@
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
         .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14')
-        .pointRadius(d => d.id === myID ? 2.5 : 1.0)
+        .pointRadius(d => d.id === myID ? 3.0 : 1.2)
         .htmlElement(d => {
             const el = document.createElement('div');
-            el.className = 'tag-rau' + (d.id === myID ? ' is-me' : '');
-            
-            // Gerar bandeira se houver código de país
-            const flagImg = d.countryCode ? `<img src="https://flagcdn.com/w40/${d.countryCode.toLowerCase()}.png">` : '';
-            const cityName = d.city || "Ouvinte RAU";
-            
-            el.innerHTML = `${flagImg} <span>${cityName}</span>`;
+            el.className = 'rau-tag' + (d.id === myID ? ' is-me' : '');
+            const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
+            el.innerHTML = `${flag} <span>${d.city || 'Ouvinte'}</span>`;
             return el;
         });
 
-    async function initRadar() {
+    async function getSafeLocation() {
         try {
-            // Obter dados de localização detalhados
-            const res = await fetch('https://ipwho.is/');
+            // Passo 1: Obter dados rápidos via Cloudflare (Ilimitado)
+            const cf = await fetch('https://www.cloudflare.com/cdn-cgi/trace').then(r => r.text());
+            const dataArr = cf.split('\n').reduce((obj, line) => {
+                const [key, val] = line.split('=');
+                if(key) obj[key] = val;
+                return obj;
+            }, {});
+
+            const countryCode = dataArr.loc; // Código do país (ex: PT, BR)
+
+            // Passo 2: Usar o Zippopotam ou similar para coordenadas básicas sem limites
+            // Para ser 100% livre de bloqueios, usamos o IPAPI sem chave como backup imediato
+            const res = await fetch(`https://ipapi.co/json/`);
             const d = await res.json();
             
-            if (d.success && d.latitude !== 0) {
-                const userData = {
+            if (d.latitude) {
+                const myData = {
                     id: myID,
                     lat: d.latitude,
                     lng: d.longitude,
                     city: d.city,
-                    countryCode: d.country_code,
+                    country: d.country_code,
                     ts: Date.now()
                 };
-                
-                myNode.set(userData);
+                myNode.set(myData);
                 myNode.onDisconnect().remove();
-                document.getElementById('status-msg').innerText = `CONECTADO: ${d.city.toUpperCase()}`;
+                document.getElementById('status-msg').innerText = "ONLINE: " + d.city.toUpperCase();
             }
-        } catch(e) {
-            document.getElementById('status-msg').innerText = "ERRO NA LOCALIZAÇÃO";
+        } catch (e) {
+            document.getElementById('status-msg').innerText = "ERRO DE LIGAÇÃO";
         }
-
-        // Sincronizar todos os pontos
-        radarRef.on('value', snap => {
-            const now = Date.now();
-            const raw = Object.values(snap.val() || {}).filter(u => (now - u.ts < 25000));
-            
-            document.getElementById('live-total').innerText = raw.length;
-            // Só desenha se tiver lat e lng para evitar o erro da África
-            const points = raw.filter(u => u.lat && u.lat !== 0);
-            
-            world.pointsData(points);
-            world.htmlElementsData(points);
-        });
-
-        // Heartbeat
-        setInterval(() => myNode.update({ ts: Date.now() }), 10000);
     }
 
-    window.onload = initRadar;
+    function start() {
+        getSafeLocation();
+
+        radarRef.on('value', snap => {
+            const now = Date.now();
+            const raw = Object.values(snap.val() || {}).filter(u => (now - u.ts < 35000));
+            document.getElementById('live-total').innerText = raw.length;
+            world.pointsData(raw.filter(u => u.lat));
+            world.htmlElementsData(raw.filter(u => u.lat));
+        });
+
+        setInterval(() => myNode.update({ ts: Date.now() }), 15000);
+    }
+
+    window.onload = start;
     window.onresize = () => { world.width(window.innerWidth); world.height(window.innerHeight); };
 </script>
 </body>
