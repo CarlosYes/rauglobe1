@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v246.0 - PRECISION</title>
+    <title>RAU RADAR v248.0 - REAL TIME</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -14,42 +14,30 @@
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
         #globeViz { position: absolute; top: 0; width: 100vw; height: 100vh; z-index: 1; }
         
-        .hud {
+        .interface {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 10, 25, 0.95); border: 2px solid #39ff14;
+            background: rgba(0, 15, 35, 0.95); border: 2px solid #39ff14;
             padding: 15px; border-radius: 4px; color: #fff;
             box-shadow: 0 0 20px rgba(57, 255, 20, 0.4); pointer-events: none;
         }
-        .count { font-size: 35px; font-weight: bold; color: #39ff14; display: block; }
+        .count-big { font-size: 42px; font-weight: bold; color: #39ff14; display: block; line-height: 1; }
         
-        #instruction-bar {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 101; background: #ff3939; color: #fff; padding: 10px 20px;
-            border-radius: 5px; font-weight: bold; box-shadow: 0 0 15px rgba(255,57,57,0.5);
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; }
-        }
-
-        .tag {
+        .tag-label {
             background: rgba(0,0,0,0.9); border: 1px solid #39ff14;
             color: #fff; padding: 4px 8px; font-size: 11px;
             display: flex; align-items: center; gap: 6px; border-radius: 2px;
+            white-space: nowrap;
         }
-        .me { border: 2px solid #ffffff !important; background: #39ff14 !important; color: #000 !important; font-weight: bold; }
+        .is-me { border: 2px solid #fff !important; background: #39ff14 !important; color: #000 !important; font-weight: 900; }
     </style>
 </head>
 <body>
 
-<div class="hud">
-    <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 1px;">RADAR RAU REAL-TIME</div>
-    <div id="live-total" class="count">0</div>
-    <div id="status" style="font-size: 11px; margin-top: 5px; color: #39ff14;">A AGUARDAR POSIÇÃO...</div>
+<div class="interface">
+    <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7;">Ouvintes Reais (GPS)</div>
+    <div id="live-counter" class="count-big">0</div>
+    <div id="status-msg" style="font-size: 11px; margin-top: 8px; color: #ff3939;">A AGUARDAR GPS...</div>
 </div>
-
-<div id="instruction-bar">CLIQUE NO MAPA ONDE VOCÊ ESTÁ PARA ATIVAR O RADAR</div>
 
 <div id="globeViz"></div>
 
@@ -62,65 +50,61 @@
 
     if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('rau_radar_v6_manual');
+    const radarRef = db.ref('rau_radar_realtime_v7');
 
     const myID = "USER_" + Math.random().toString(36).substr(2, 9);
-    let myPoint = radarRef.child(myID);
-    let hasPosition = false;
+    let myPointRef = radarRef.child(myID);
+    let activePos = false;
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
-        .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14')
-        .pointRadius(d => d.id === myID ? 1.8 : 0.8)
+        .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14') // TU = BRANCO
+        .pointRadius(d => d.id === myID ? 2.0 : 0.8) // TU = GIGANTE
         .htmlElement(d => {
             const el = document.createElement('div');
-            el.className = 'tag' + (d.id === myID ? ' me' : '');
-            el.innerHTML = `<span>${d.id === myID ? 'VOCÊ' : d.city}</span>`;
+            el.className = 'tag-label' + (d.id === myID ? ' is-me' : '');
+            el.innerHTML = `<span>${d.id === myID ? 'VOCÊ ESTÁ AQUI' : 'OUVINTE'}</span>`;
             return el;
         });
 
-    // FUNÇÃO PARA ENVIAR POSIÇÃO REAL
-    function setRealPos(lat, lng, city = "Ouvinte") {
-        if (lat === 0 && lng === 0) return; // PROIBIDO ÁFRICA CENTRAL
+    async function sync(lat, lng) {
+        if (lat === 0 && lng === 0) return; // BLOQUEIO TOTAL DE ÁFRICA
         
-        hasPosition = true;
-        document.getElementById('instruction-bar').style.display = 'none';
-        document.getElementById('status').innerText = "CONECTADO: " + city.toUpperCase();
+        activePos = true;
+        document.getElementById('status-msg').innerText = "SINAL GPS VALIDADO";
+        document.getElementById('status-msg').style.color = "#39ff14";
         
-        myPoint.set({ id: myID, lat, lng, city, ts: Date.now() });
-        myPoint.onDisconnect().remove();
+        myPointRef.set({ id: myID, lat, lng, ts: Date.now() });
+        myPointRef.onDisconnect().remove();
     }
 
-    // CLIQUE NO MAPA PARA DEFINIR POSIÇÃO (FORÇADO)
-    world.onGlobeClick(({ lat, lng }) => {
-        setRealPos(lat, lng, "Posição Manual");
-    });
-
     async function init() {
-        // Tentar GPS automático primeiro
+        // 1. Tentar GPS REAL (Navegador)
         if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(p => {
-                setRealPos(p.coords.latitude, p.coords.longitude, "Localização GPS");
-            }, () => {
-                console.log("GPS recusado, aguardando clique manual.");
-            });
+            navigator.geolocation.getCurrentPosition(
+                p => sync(p.coords.latitude, p.coords.longitude),
+                async () => {
+                    // 2. Se falhar GPS, tenta IP (Backup)
+                    const res = await fetch('https://ipwho.is/');
+                    const d = await res.json();
+                    if(d.latitude && d.latitude !== 0) sync(d.latitude, d.longitude);
+                }
+            );
         }
 
-        // Heartbeat apenas se tiver posição
-        setInterval(() => {
-            if (hasPosition) myPoint.update({ ts: Date.now() });
-        }, 5000);
+        // Heartbeat
+        setInterval(() => { if (activePos) myPointRef.update({ ts: Date.now() }); }, 5000);
 
-        // Sincronizar todos os ouvintes
+        // Radar Sync
         radarRef.on('value', snap => {
             const now = Date.now();
-            const active = Object.values(snap.val() || {}).filter(u => now - u.ts < 20000);
-            document.getElementById('live-total').innerText = active.length;
-            world.pointsData(active);
-            world.htmlElementsData(active);
+            const all = Object.values(snap.val() || {}).filter(u => (now - u.ts < 20000) && (u.lat !== 0));
+            document.getElementById('live-counter').innerText = all.length;
+            world.pointsData(all);
+            world.htmlElementsData(all);
         });
     }
 
