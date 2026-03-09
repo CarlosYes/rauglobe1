@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v253.0</title>
+    <title>RAU RADAR v254.0</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -16,11 +16,11 @@
         
         .hud-rau {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 5, 20, 0.9); border: 1px solid #39ff14;
+            background: rgba(0, 5, 20, 0.95); border: 1px solid #39ff14;
             padding: 15px; border-radius: 4px; color: #fff;
             box-shadow: 0 0 15px rgba(57, 255, 20, 0.4); pointer-events: none;
         }
-        .count-value { font-size: 45px; font-weight: bold; color: #39ff14; display: block; line-height: 1; }
+        .count-value { font-size: 50px; font-weight: bold; color: #39ff14; display: block; line-height: 0.9; }
         
         .user-tag {
             background: rgba(0,0,0,0.85); border: 1px solid #39ff14;
@@ -33,9 +33,9 @@
 <body>
 
 <div class="hud-rau">
-    <div style="font-size: 10px; opacity: 0.8; letter-spacing: 1px; margin-bottom: 5px;">OUVINTES EM DIRETO</div>
+    <div style="font-size: 10px; opacity: 0.8; letter-spacing: 1px; margin-bottom: 5px;">OUVINTES REAIS</div>
     <div id="live-counter" class="count-value">0</div>
-    <div id="status-text" style="font-size: 11px; margin-top: 8px; color: #39ff14;">A CONECTAR...</div>
+    <div id="status-text" style="font-size: 11px; margin-top: 8px; color: #39ff14;">A LIGAR AO SATÉLITE...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -49,11 +49,11 @@
 
     if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('rau_radar_final_v9');
+    const radarRef = db.ref('rau_radar_final_v10'); // Canal novo para limpar erros antigos
 
-    const myID = "U_" + Math.random().toString(36).substr(2, 7);
+    const myID = "RAU_" + Math.random().toString(36).substr(2, 5);
     let myNode = radarRef.child(myID);
-    let isSet = false;
+    let sent = false;
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -61,7 +61,7 @@
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
         .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14')
-        .pointRadius(d => d.id === myID ? 2.2 : 0.8)
+        .pointRadius(d => d.id === myID ? 2.5 : 0.8)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'user-tag' + (d.id === myID ? ' is-me' : '');
@@ -69,40 +69,44 @@
             return el;
         });
 
-    function pushData(lat, lng, label) {
-        if (isSet || lat === 0) return;
-        isSet = true;
-        myNode.set({ id: myID, lat, lng, ts: Date.now() });
+    function sendSignal(lat, lng) {
+        if (lat === 0 || lat === null) return;
+        sent = true;
+        myNode.set({ id: myID, lat: lat, lng: lng, ts: Date.now() });
         myNode.onDisconnect().remove();
-        document.getElementById('status-text').innerText = "RADAR ATIVO (" + label + ")";
+        document.getElementById('status-text').innerText = "SINAL ATIVO";
     }
 
     async function init() {
-        // Tenta IP imediatamente (Plano A - Mais rápido)
+        // 1. Tentar IP imediatamente (Não espera por ninguém)
         try {
             const res = await fetch('https://ipwho.is/');
             const d = await res.json();
-            if (d.latitude && d.latitude !== 0) pushData(d.latitude, d.longitude, "SINAL REDE");
-        } catch(e) {}
+            if (d.success && d.latitude !== 0) {
+                sendSignal(d.latitude, d.longitude);
+            }
+        } catch(e) { console.log("Erro IP"); }
 
-        // Tenta GPS em paralelo (Plano B - Mais preciso)
+        // 2. Se o GPS responder depois, ele atualiza para ser mais preciso
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(p => {
-                pushData(p.coords.latitude, p.coords.longitude, "SINAL GPS");
-            }, null, { timeout: 5000 });
+                sendSignal(p.coords.latitude, p.coords.longitude);
+            });
         }
 
-        // Sincronização em tempo real
+        // Sincronização Real
         radarRef.on('value', snap => {
             const now = Date.now();
-            const data = Object.values(snap.val() || {}).filter(u => (now - u.ts < 25000));
+            const data = Object.values(snap.val() || {}).filter(u => (now - u.ts < 20000));
             document.getElementById('live-counter').innerText = data.length;
             world.pointsData(data);
             world.htmlElementsData(data);
         });
 
-        // Heartbeat
-        setInterval(() => { if (isSet) myNode.update({ ts: Date.now() }); }, 10000);
+        // Manter o sinal vivo (Heartbeat)
+        setInterval(() => {
+            if (sent) myNode.update({ ts: Date.now() });
+        }, 8000);
     }
 
     window.onload = init;
