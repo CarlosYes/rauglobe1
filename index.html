@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU MONITOR v222.0 - ARQUITETURA BLINDADA</title>
+    <title>RAU MONITOR v223.0 - SHIELDED</title>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
     
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
@@ -13,32 +13,20 @@
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            background: #000; 
-            overflow: hidden; 
-            font-family: 'Courier New', monospace; 
-            color: #39ff14;
-            width: 100vw;
-            height: 100vh;
-        }
+        body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; width: 100vw; height: 100vh; }
 
-        /* Contentor do Globo - Forçado a ocupar tudo */
-        #globeViz { 
-            position: absolute; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%; 
-            z-index: 1;
-        }
+        /* Contentor do Globo */
+        #globeViz { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; background: #000; }
 
-        /* Interface UI */
+        /* UI de Status - Esquerda */
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 15, 0, 0.9); border-left: 3px solid #39ff14;
             padding: 15px; width: 260px; pointer-events: none;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.1);
         }
 
+        /* Monitor de Tráfego - Direita */
         #live-traffic {
             position: absolute; top: 20px; right: 20px; z-index: 1000;
             background: rgba(0, 5, 0, 0.85); border-right: 3px solid #00ffff;
@@ -50,44 +38,45 @@
         
         .traffic-row { 
             font-size: 10px; padding: 8px 0; border-bottom: 1px solid rgba(0, 255, 255, 0.1);
-            display: flex; align-items: center; gap: 10px;
+            display: flex; align-items: center; gap: 10px; animation: fadeIn 0.3s ease-in;
         }
         .flag { width: 18px; height: 12px; border: 1px solid #444; }
-        .city-name { color: #00ffff; }
+        .city-name { color: #00ffff; font-weight: bold; }
 
         #boot-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #000; z-index: 9999; display: flex; 
             flex-direction: column; justify-content: center; align-items: center;
-            transition: opacity 1s;
+            transition: opacity 0.8s;
         }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
 
 <div id="boot-screen">
-    <div style="letter-spacing: 8px; font-weight: bold; color: #39ff14;">RAU CORE BOOTING...</div>
-    <div id="load-msg" style="font-size: 10px; margin-top: 10px; color: #888;">Establishing Secure Link...</div>
+    <div style="letter-spacing: 5px; font-weight: bold; color: #39ff14;">RAU CORE v223.0 BOOTING...</div>
+    <div id="load-msg" style="font-size: 10px; margin-top: 10px; color: #888;">Synchronizing with Satellite...</div>
 </div>
 
 <div id="rau-ui">
-    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v222.0 // STABLE</div>
+    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU SYSTEM // ENCRYPTED</div>
     <div class="monitor-display">
         <span id="mon-city">SCANNING...</span>
-        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">UPLINK: ENCRYPTED</div>
+        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">UPLINK: SECURE (VPN MODE)</div>
         <div id="mon-listeners" style="font-size: 10px; color: #39ff14; margin-top: 6px; font-weight: bold;">CONEXÕES: 0</div>
     </div>
 </div>
 
 <div id="live-traffic">
-    <div style="font-size: 10px; margin-bottom: 12px; color: #00ffff; font-weight: bold;">NETWORK TRAFFIC</div>
+    <div style="font-size: 10px; margin-bottom: 12px; color: #00ffff; font-weight: bold; letter-spacing: 1px;">GLOBAL TRAFFIC</div>
     <div id="traffic-container"></div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
-    // Inicialização do Firebase
     const firebaseConfig = {
         apiKey: "AIzaSyDv0Tf5j9I0FL4iB1voI97tlc3K1bwvm-g",
         authDomain: "radiodosamigosunidos-aadda.firebaseapp.com",
@@ -102,11 +91,12 @@
     const db = firebase.database();
     const listenersRef = db.ref('listeners');
 
-    // Setup do Globo
+    // Inicialização do Globo com Texturas HTTPS Estáveis
     const world = Globe()
         (document.getElementById('globeViz'))
         .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
         .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+        .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
         .pointColor(() => '#39ff14')
@@ -116,11 +106,9 @@
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    async function initSystem() {
-        document.getElementById('load-msg').innerText = "Tracing VPN Node...";
-        
+    async function startSystem() {
         try {
-            // Usando IP-API via HTTPS para máxima compatibilidade
+            // Detecção via IP-API (HTTPS)
             const res = await fetch('https://ipapi.co/json/');
             const data = await res.json();
             
@@ -128,7 +116,7 @@
             const userData = {
                 lat: data.latitude || 0,
                 lng: data.longitude || 0,
-                city: data.city || "VPN Anonymous",
+                city: data.city || "Unknown VPN",
                 country: (data.country_code || "un").toLowerCase(),
                 timestamp: Date.now()
             };
@@ -136,22 +124,18 @@
             userRef.set(userData);
             userRef.onDisconnect().remove();
 
-            // Atualizar UI
             document.getElementById('mon-city').innerText = userData.city.toUpperCase();
             document.getElementById('boot-screen').style.opacity = '0';
-            setTimeout(() => document.getElementById('boot-screen').remove(), 1000);
+            setTimeout(() => document.getElementById('boot-screen').remove(), 800);
 
-            // Ouvir Conexões
+            // Sincronização em Tempo Real
             listenersRef.on('value', snap => {
                 const val = snap.val() || {};
                 const entries = Object.entries(val);
                 
                 document.getElementById('mon-listeners').innerText = `CONEXÕES: ${entries.length}`;
-                
-                // Pontos no Globo
                 world.pointsData(entries.map(([id, info]) => ({ lat: info.lat, lng: info.lng })));
 
-                // Lista de Tráfego (Direita)
                 const container = document.getElementById('traffic-container');
                 container.innerHTML = '';
                 entries.sort((a,b) => b[1].timestamp - a[1].timestamp).slice(0, 10).forEach(([id, info]) => {
@@ -166,18 +150,17 @@
             });
 
         } catch (err) {
-            console.error("System Failure:", err);
-            document.getElementById('load-msg').innerText = "CONNECTION ERROR - CHECK VPN";
+            document.getElementById('load-msg').innerText = "CONNECTION ERROR - RETRYING...";
+            setTimeout(startSystem, 3000);
         }
     }
 
-    // Forçar redimensionamento correto
     window.addEventListener('resize', () => {
         world.width(window.innerWidth);
         world.height(window.innerHeight);
     });
 
-    window.onload = initSystem;
+    window.onload = startSystem;
 </script>
 </body>
 </html>
