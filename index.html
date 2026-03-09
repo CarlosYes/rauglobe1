@@ -2,46 +2,37 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v14 - FIX</title>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
+    <title>RAU RADAR v15</title>
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
-        #globeViz { position: absolute; top: 0; width: 100vw; height: 100vh; }
-        
-        .hud-rau {
-            position: absolute; top: 20px; left: 20px; z-index: 1000;
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        #globeViz { width: 100vw; height: 100vh; }
+        .hud {
+            position: absolute; top: 20px; left: 20px; z-index: 100;
             background: rgba(0, 20, 0, 0.9); border: 2px solid #39ff14;
-            padding: 20px; border-radius: 5px; color: #39ff14; pointer-events: none;
+            padding: 15px; color: #39ff14; pointer-events: none;
         }
-        .count-big { font-size: 60px; font-weight: 900; line-height: 1; text-shadow: 0 0 10px #39ff14; }
-        
-        /* Marcador: CIDADE + BANDEIRA */
-        .marker-rau { display: flex; flex-direction: column; align-items: center; z-index: 9999; }
-        .label-rau {
-            background: #39ff14; color: #000; padding: 5px 12px; border-radius: 4px;
-            font-size: 14px; font-weight: 900; display: flex; align-items: center; gap: 10px;
-            white-space: nowrap; box-shadow: 0 0 20px #39ff14; text-transform: uppercase;
+        .count { font-size: 50px; font-weight: bold; }
+        /* O Marcador com Bandeira */
+        .m-rau { display: flex; flex-direction: column; align-items: center; }
+        .l-rau {
+            background: #39ff14; color: #000; padding: 5px 10px; border-radius: 4px;
+            font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 0 15px #39ff14; white-space: nowrap; text-transform: uppercase;
         }
-        .label-rau img { width: 22px; height: auto; border: 1px solid #000; }
-        .dot-rau { 
-            width: 18px; height: 18px; background: #fff; border-radius: 50%; 
-            margin-top: 8px; box-shadow: 0 0 30px #39ff14; animation: pulse-rau 1s infinite;
-        }
-        @keyframes pulse-rau { 0% { transform: scale(1); } 50% { transform: scale(1.6); opacity: 0.5; } 100% { transform: scale(1); } }
+        .l-rau img { width: 20px; height: auto; border: 1px solid #000; }
+        .d-rau { width: 14px; height: 14px; background: #fff; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 20px #39ff14; }
     </style>
 </head>
 <body>
 
-<div class="hud-rau">
-    <div style="font-size: 12px; letter-spacing: 3px; font-weight: bold;">SISTEMA DE RASTREIO RAU</div>
-    <div id="live-total" class="count-big">0</div>
-    <div id="status-log" style="font-size: 11px; margin-top: 10px; color: #fff;">ESTADO: A INICIAR...</div>
+<div class="hud">
+    <div style="font-size: 10px; letter-spacing: 2px;">RADAR EM DIRETO</div>
+    <div id="count" class="count">0</div>
+    <div id="status" style="font-size: 11px; color: #fff;">A SINTONIZAR...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -53,71 +44,59 @@
         projectId: "radiodosamigosunidos-aadda"
     };
 
-    if (!firebase.apps.length) firebase.initializeApp(fbConfig);
+    firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('RADAR_V14_FORCE');
-
-    const myID = "RAU_" + Math.random().toString(36).substr(2, 7);
-    const myNode = radarRef.child(myID);
+    const radarRef = db.ref('RADAR_V15');
+    const myID = "U" + Math.random().toString(36).substr(2, 5);
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
-        .showAtmosphere(true)
-        .atmosphereColor("#39ff14")
         .htmlElement(d => {
             const el = document.createElement('div');
-            el.className = 'marker-rau';
-            const flag = d.country ? `<img src="https://flagcdn.com/w80/${d.country.toLowerCase()}.png">` : '';
-            el.innerHTML = `<div class="label-rau">${flag}<span>${d.city}</span></div><div class="dot-rau"></div>`;
+            el.className = 'm-rau';
+            const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
+            el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.6;
-
-    async function activate() {
-        document.getElementById('status-log').innerText = "ESTADO: BUSCANDO SINAL...";
+    async function init() {
         try {
-            // API via HTTPS (Obrigatória para GitHub Pages)
             const res = await fetch('https://ipapi.co/json/');
             const data = await res.json();
             
             const myPos = {
                 id: myID,
-                lat: parseFloat(data.latitude) || 38.7,
-                lng: parseFloat(data.longitude) || -9.1,
-                city: (data.city || "SINAL ATIVO").toUpperCase(),
+                lat: parseFloat(data.latitude) || 0,
+                lng: parseFloat(data.longitude) || 0,
+                city: (data.city || "Sinal Ativo").toUpperCase(),
                 country: data.country_code || "PT",
                 ts: Date.now()
             };
 
-            // Garante que o contador suba ANTES de mostrar o globo
-            await myNode.set(myPos);
-            myNode.onDisconnect().remove();
+            // Escreve no Firebase
+            await radarRef.child(myID).set(myPos);
+            radarRef.child(myID).onDisconnect().remove();
 
+            document.getElementById('status').innerText = "LIGADO: " + myPos.city;
             world.pointOfView({ lat: myPos.lat, lng: myPos.lng, altitude: 2 }, 2000);
-            document.getElementById('status-log').innerText = "ESTADO: ONLINE (" + myPos.city + ")";
-            
-            // Ativa o ouvinte de dados
+
+            // Ouve as atualizações
             radarRef.on('value', snap => {
                 const users = snap.val() || {};
                 const now = Date.now();
-                const active = Object.values(users).filter(u => (now - u.ts < 45000));
-                
-                document.getElementById('live-total').innerText = active.length;
+                const active = Object.values(users).filter(u => (now - u.ts < 60000));
+                document.getElementById('count').innerText = active.length;
                 world.htmlElementsData(active);
             });
 
-        } catch (err) {
-            document.getElementById('status-log').innerText = "ESTADO: ERRO CRÍTICO (API)";
+        } catch (e) {
+            document.getElementById('status').innerText = "ERRO DE LIGAÇÃO";
         }
     }
 
-    // Heartbeat
-    setInterval(() => myNode.update({ ts: Date.now() }), 10000);
-
-    window.onload = activate;
+    setInterval(() => radarRef.child(myID).update({ ts: Date.now() }), 15000);
+    window.onload = init;
 </script>
 </body>
 </html>
