@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR - LIVE</title>
+    <title>RAU RADAR v253.0</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -16,15 +16,15 @@
         
         .hud-rau {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 10, 30, 0.9); border: 2px solid #39ff14;
+            background: rgba(0, 5, 20, 0.9); border: 1px solid #39ff14;
             padding: 15px; border-radius: 4px; color: #fff;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.5); pointer-events: none;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.4); pointer-events: none;
         }
-        .count-value { font-size: 40px; font-weight: bold; color: #39ff14; display: block; }
+        .count-value { font-size: 45px; font-weight: bold; color: #39ff14; display: block; line-height: 1; }
         
         .user-tag {
             background: rgba(0,0,0,0.85); border: 1px solid #39ff14;
-            color: #fff; padding: 4px 8px; font-size: 11px;
+            color: #fff; padding: 3px 8px; font-size: 11px;
             display: flex; align-items: center; gap: 6px; border-radius: 2px;
         }
         .is-me { border: 2px solid #fff !important; background: #39ff14 !important; color: #000 !important; font-weight: bold; }
@@ -33,9 +33,9 @@
 <body>
 
 <div class="hud-rau">
-    <div style="font-size: 10px; opacity: 0.8; letter-spacing: 1px;">OUVINTES REAIS</div>
+    <div style="font-size: 10px; opacity: 0.8; letter-spacing: 1px; margin-bottom: 5px;">OUVINTES EM DIRETO</div>
     <div id="live-counter" class="count-value">0</div>
-    <div id="status-text" style="font-size: 11px; margin-top: 5px; color: #39ff14;">A INICIAR...</div>
+    <div id="status-text" style="font-size: 11px; margin-top: 8px; color: #39ff14;">A CONECTAR...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -49,11 +49,11 @@
 
     if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('rau_radar_live_final');
+    const radarRef = db.ref('rau_radar_final_v9');
 
-    const myID = "USER_" + Math.random().toString(36).substr(2, 9);
+    const myID = "U_" + Math.random().toString(36).substr(2, 7);
     let myNode = radarRef.child(myID);
-    let localizado = false;
+    let isSet = false;
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -61,62 +61,51 @@
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
         .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14')
-        .pointRadius(d => d.id === myID ? 2.0 : 0.8)
+        .pointRadius(d => d.id === myID ? 2.2 : 0.8)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'user-tag' + (d.id === myID ? ' is-me' : '');
-            el.innerHTML = `<span>${d.id === myID ? 'TU' : 'OUVINTE'}</span>`;
+            el.innerHTML = `<span>${d.id === myID ? 'VOCÊ' : 'OUVINTE'}</span>`;
             return el;
         });
 
-    function enviarDados(lat, lng, city = "Ouvinte") {
-        if (lat === 0 || localizado) return;
-        localizado = true;
-        
+    function pushData(lat, lng, label) {
+        if (isSet || lat === 0) return;
+        isSet = true;
         myNode.set({ id: myID, lat, lng, ts: Date.now() });
         myNode.onDisconnect().remove();
-        document.getElementById('status-text').innerText = "SINAL ONLINE: " + city.toUpperCase();
+        document.getElementById('status-text').innerText = "RADAR ATIVO (" + label + ")";
     }
 
-    async function ligarRadar() {
-        // 1. Tentar GPS (Tempo limite de 3 segundos)
+    async function init() {
+        // Tenta IP imediatamente (Plano A - Mais rápido)
+        try {
+            const res = await fetch('https://ipwho.is/');
+            const d = await res.json();
+            if (d.latitude && d.latitude !== 0) pushData(d.latitude, d.longitude, "SINAL REDE");
+        } catch(e) {}
+
+        // Tenta GPS em paralelo (Plano B - Mais preciso)
         if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                p => enviarDados(p.coords.latitude, p.coords.longitude, "GPS"),
-                () => console.log("GPS negado"),
-                { timeout: 3000 }
-            );
+            navigator.geolocation.getCurrentPosition(p => {
+                pushData(p.coords.latitude, p.coords.longitude, "SINAL GPS");
+            }, null, { timeout: 5000 });
         }
 
-        // 2. Plano B imediato: IP (Para não ficar "A aguardar GPS" para sempre)
-        setTimeout(async () => {
-            if (!localizado) {
-                try {
-                    const res = await fetch('https://ipwho.is/');
-                    const d = await res.json();
-                    if (d.latitude && d.latitude !== 0) {
-                        enviarDados(d.latitude, d.longitude, d.city);
-                    }
-                } catch (e) {
-                    document.getElementById('status-text').innerText = "ERRO DE LIGAÇÃO";
-                }
-            }
-        }, 3500);
-
-        // Atualização do Mapa
+        // Sincronização em tempo real
         radarRef.on('value', snap => {
             const now = Date.now();
-            const all = Object.values(snap.val() || {}).filter(u => (now - u.ts < 25000));
-            document.getElementById('live-counter').innerText = all.length;
-            world.pointsData(all);
-            world.htmlElementsData(all);
+            const data = Object.values(snap.val() || {}).filter(u => (now - u.ts < 25000));
+            document.getElementById('live-counter').innerText = data.length;
+            world.pointsData(data);
+            world.htmlElementsData(data);
         });
-        
+
         // Heartbeat
-        setInterval(() => { if (localizado) myNode.update({ ts: Date.now() }); }, 10000);
+        setInterval(() => { if (isSet) myNode.update({ ts: Date.now() }); }, 10000);
     }
 
-    window.onload = ligarRadar;
+    window.onload = init;
     window.onresize = () => { world.width(window.innerWidth); world.height(window.innerHeight); };
 </script>
 </body>
