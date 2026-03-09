@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU MONITOR v245.0</title>
+    <title>RAU RADAR v246.0 - PRECISION</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -16,28 +16,40 @@
         
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 15, 30, 0.95); border: 1px solid #39ff14;
-            padding: 15px; border-radius: 2px; color: #fff;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.3); pointer-events: none;
+            background: rgba(0, 10, 25, 0.95); border: 2px solid #39ff14;
+            padding: 15px; border-radius: 4px; color: #fff;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4); pointer-events: none;
         }
-        .count { font-size: 38px; font-weight: bold; color: #39ff14; display: block; line-height: 1; }
+        .count { font-size: 35px; font-weight: bold; color: #39ff14; display: block; }
         
-        /* Etiqueta Visual */
+        #instruction-bar {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 101; background: #ff3939; color: #fff; padding: 10px 20px;
+            border-radius: 5px; font-weight: bold; box-shadow: 0 0 15px rgba(255,57,57,0.5);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; }
+        }
+
         .tag {
-            background: rgba(0,0,0,0.85); border: 1px solid #39ff14;
+            background: rgba(0,0,0,0.9); border: 1px solid #39ff14;
             color: #fff; padding: 4px 8px; font-size: 11px;
             display: flex; align-items: center; gap: 6px; border-radius: 2px;
         }
-        .me { border: 2px solid #fff !important; box-shadow: 0 0 10px #39ff14; }
+        .me { border: 2px solid #ffffff !important; background: #39ff14 !important; color: #000 !important; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7;">RAU RADAR REAL</div>
+    <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 1px;">RADAR RAU REAL-TIME</div>
     <div id="live-total" class="count">0</div>
-    <div id="status" style="font-size: 11px; margin-top: 8px; color: #39ff14;">A VALIDAR SINAL...</div>
+    <div id="status" style="font-size: 11px; margin-top: 5px; color: #39ff14;">A AGUARDAR POSIÇÃO...</div>
 </div>
+
+<div id="instruction-bar">CLIQUE NO MAPA ONDE VOCÊ ESTÁ PARA ATIVAR O RADAR</div>
 
 <div id="globeViz"></div>
 
@@ -50,10 +62,11 @@
 
     if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('rau_radar_v5_final');
+    const radarRef = db.ref('rau_radar_v6_manual');
 
-    const myID = "RAU_USER_" + Math.random().toString(36).substr(2, 9);
+    const myID = "USER_" + Math.random().toString(36).substr(2, 9);
     let myPoint = radarRef.child(myID);
+    let hasPosition = false;
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -61,59 +74,50 @@
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
         .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14')
-        .pointRadius(d => d.id === myID ? 1.6 : 0.8)
-        .pointAltitude(0.08)
+        .pointRadius(d => d.id === myID ? 1.8 : 0.8)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'tag' + (d.id === myID ? ' me' : '');
-            el.innerHTML = `<img src="https://flagcdn.com/w20/${d.iso || 'pt'}.png" width="16"> ${d.id === myID ? 'VOCÊ' : d.city}`;
+            el.innerHTML = `<span>${d.id === myID ? 'VOCÊ' : d.city}</span>`;
             return el;
         });
 
-    world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.4;
-
-    // Função que mata o erro de África
-    async function getTrueLocation() {
-        // Tenta GPS do Navegador primeiro
-        return new Promise((resolve) => {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, city: "Localização GPS", iso: "pt" }),
-                    async () => {
-                        // Se falhar GPS, tenta IP
-                        const res = await fetch('https://ipwho.is/');
-                        const d = await res.json();
-                        resolve({ lat: d.latitude, lng: d.longitude, city: d.city, iso: d.country_code.toLowerCase() });
-                    },
-                    { timeout: 5000 }
-                );
-            }
-        });
+    // FUNÇÃO PARA ENVIAR POSIÇÃO REAL
+    function setRealPos(lat, lng, city = "Ouvinte") {
+        if (lat === 0 && lng === 0) return; // PROIBIDO ÁFRICA CENTRAL
+        
+        hasPosition = true;
+        document.getElementById('instruction-bar').style.display = 'none';
+        document.getElementById('status').innerText = "CONECTADO: " + city.toUpperCase();
+        
+        myPoint.set({ id: myID, lat, lng, city, ts: Date.now() });
+        myPoint.onDisconnect().remove();
     }
 
+    // CLIQUE NO MAPA PARA DEFINIR POSIÇÃO (FORÇADO)
+    world.onGlobeClick(({ lat, lng }) => {
+        setRealPos(lat, lng, "Posição Manual");
+    });
+
     async function init() {
-        const loc = await getTrueLocation();
-        
-        // SÓ PUBLICA SE NÃO FOR 0,0
-        if (loc.lat !== 0 && loc.lng !== 0) {
-            const data = { id: myID, ...loc, ts: Date.now() };
-            myPoint.set(data);
-            myPoint.onDisconnect().remove();
-            document.getElementById('status').innerText = "CONECTADO: " + loc.city.toUpperCase();
+        // Tentar GPS automático primeiro
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(p => {
+                setRealPos(p.coords.latitude, p.coords.longitude, "Localização GPS");
+            }, () => {
+                console.log("GPS recusado, aguardando clique manual.");
+            });
         }
 
-        // Heartbeat
+        // Heartbeat apenas se tiver posição
         setInterval(() => {
-            if (loc.lat !== 0) myPoint.update({ ts: Date.now() });
+            if (hasPosition) myPoint.update({ ts: Date.now() });
         }, 5000);
 
-        // Radar Sync
+        // Sincronizar todos os ouvintes
         radarRef.on('value', snap => {
             const now = Date.now();
-            const raw = snap.val() || {};
-            const active = Object.values(raw).filter(u => (now - u.ts < 20000) && (u.lat !== 0));
-            
+            const active = Object.values(snap.val() || {}).filter(u => now - u.ts < 20000);
             document.getElementById('live-total').innerText = active.length;
             world.pointsData(active);
             world.htmlElementsData(active);
