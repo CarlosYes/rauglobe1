@@ -2,45 +2,49 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v216.7 - LIVE NETWORK</title>
+    <title>RAU GEOMONITOR - LIVE VISITS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+        
+        /* UI Estilo Scanner */
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 20, 0, 0.9); border-left: 3px solid #39ff14;
-            padding: 15px; width: 280px; pointer-events: none; border-radius: 0 4px 4px 0;
+            padding: 15px; width: 240px; pointer-events: none;
+            box-shadow: 0 0 20px rgba(0,255,0,0.2);
         }
-        .monitor-display { background: #050505; border: 1px solid #1a1a1a; padding: 10px; }
-        #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; }
-        #visitor-tag {
-            position: absolute; display: none; align-items: center; gap: 8px;
-            background: rgba(0, 0, 0, 0.9); border: 1px solid #39ff14;
-            padding: 5px 12px; color: #fff; font-size: 11px; font-weight: bold;
-            z-index: 500; transform: translate(-50%, -150%); pointer-events: none;
+        .display { background: #050505; border: 1px solid #1a1a1a; padding: 10px; margin-top: 5px; }
+        .label { font-size: 9px; color: #39ff14; letter-spacing: 1px; font-weight: bold; }
+        .count { font-size: 22px; color: #fff; font-weight: 900; display: block; }
+        
+        #tag {
+            position: absolute; display: none; background: rgba(0,0,0,0.8);
+            border: 1px solid #39ff14; padding: 4px 10px; color: #fff;
+            font-size: 10px; z-index: 500; transform: translate(-50%, -140%);
         }
-        .flag-icon { width: 18px; height: 12px; border: 1px solid #333; }
-        canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; outline: none; }
+        canvas { display: block; outline: none; }
     </style>
 </head>
 <body>
 
 <div id="rau-ui">
-    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v216.7 // LIVE</div>
-    <div class="monitor-display">
-        <span id="mon-city">LOCALIZANDO...</span>
-        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">Uplink: Ativo</div>
-        <div id="mon-listeners" style="font-size: 10px; color: #39ff14; margin-top: 6px; font-weight: bold;">OUVINTES: 0</div>
+    <div class="label">RAU GEOMONITOR v220</div>
+    <div class="display">
+        <span class="label">VISITAS TOTAIS</span>
+        <span id="total-val" class="count">0000</span>
     </div>
+    <div class="display">
+        <span class="label">ONLINE AGORA</span>
+        <span id="live-val" class="count" style="color: #00ffff;">00</span>
+    </div>
+    <div id="status" style="font-size: 8px; color: #39ff14; margin-top: 5px; opacity: 0.5;">SINCRONIZADO COM FIREBASE</div>
 </div>
 
-<div id="visitor-tag">
-    <img id="tag-flag" src="" class="flag-icon">
-    <span id="tag-city">---</span>
-</div>
+<div id="tag"><span id="tag-city">---</span></div>
 
 <script>
     const firebaseConfig = {
@@ -55,167 +59,106 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    const listenersRef = db.ref('listeners');
+    const liveRef = db.ref('geovisitas/live');
+    const totalRef = db.ref('geovisitas/total');
 
     const RAU = {
         scene: new THREE.Scene(),
-        camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000),
-        renderer: new THREE.WebGLRenderer({ antialias: true, alpha: true }),
-        controls: null, globe: null, markers: new THREE.Group(),
-        myId: null, activeNode: null,
+        camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000),
+        renderer: new THREE.WebGLRenderer({ antialias: true }),
+        controls: null, globe: new THREE.Group(), dots: new THREE.Group(),
+        myId: null, myMesh: null,
 
-        init() {
+        async init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
-
-            // Iluminação Reforçada para o Globo não ficar negro
-            const ambient = new THREE.AmbientLight(0xffffff, 0.8);
-            this.scene.add(ambient);
             
-            const light1 = new THREE.DirectionalLight(0xffffff, 1);
-            light1.position.set(5, 5, 5);
-            this.scene.add(light1);
+            this.camera.position.z = 3.5;
+            this.scene.add(new THREE.AmbientLight(0xffffff, 1));
 
-            this.stars();
-
-            // Globo com cor azul escura de backup (caso a textura falhe)
-            const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ 
-                color: 0x0a192f, 
-                shininess: 20,
-                specular: 0x333333 
-            });
-            this.globe = new THREE.Mesh(geo, mat);
+            // Globo Estilizado (Grelha de Alta Definição)
+            const geo = new THREE.SphereGeometry(1, 48, 48);
+            const matGrid = new THREE.MeshBasicMaterial({ color: 0x11ff22, wireframe: true, transparent: true, opacity: 0.15 });
+            const core = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x000000 }));
+            
+            this.globe.add(core);
+            this.globe.add(new THREE.Mesh(geo, matGrid));
             this.scene.add(this.globe);
-            this.globe.add(this.markers);
+            this.globe.add(this.dots);
 
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.autoRotate = true;
-            this.controls.autoRotateSpeed = 0.8;
-            this.camera.position.z = 3.5;
 
-            this.loadTexture();
-            this.connectLive();
+            await this.startTracking();
             this.animate();
-
-            window.addEventListener('resize', () => {
-                this.camera.aspect = window.innerWidth / window.innerHeight;
-                this.camera.updateProjectionMatrix();
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-            });
         },
 
-        stars() {
-            const geo = new THREE.BufferGeometry();
-            const pos = [];
-            for (let i = 0; i < 3000; i++) {
-                pos.push((Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500);
-            }
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-            this.scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x888888, size: 0.6 })));
-        },
+        async startTracking() {
+            // 1. Incrementar Visitas Totais
+            totalRef.transaction(v => (v || 0) + 1);
+            totalRef.on('value', s => document.getElementById('total-val').innerText = s.val());
 
-        loadTexture() {
-            const loader = new THREE.TextureLoader();
-            loader.setCrossOrigin('anonymous');
-            // Usando uma textura alternativa mais leve
-            loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg', 
-            (tex) => {
-                this.globe.material.map = tex;
-                this.globe.material.color.set(0xffffff);
-                this.globe.material.needsUpdate = true;
-            }, undefined, (err) => {
-                console.warn("Usando modo radar (sem textura)");
-            });
-        },
-
-        getCoords(lat, lng) {
-            const phi = (90 - lat) * (Math.PI / 180);
-            const theta = (lng + 180) * (Math.PI / 180);
-            return new THREE.Vector3(
-                -(Math.sin(phi) * Math.cos(theta)),
-                Math.cos(phi),
-                (Math.sin(phi) * Math.sin(theta))
-            ).multiplyScalar(1.01);
-        },
-
-        async connectLive() {
+            // 2. Obter Georeferência
             try {
                 const res = await fetch('https://ipapi.co/json/');
                 const data = await res.json();
-                
-                if(!data.latitude) return;
 
-                const userRef = listenersRef.push();
-                this.myId = userRef.key;
+                // 3. Entrar no "Live"
+                const user = liveRef.push();
+                this.myId = user.key;
+                user.set({ lat: data.latitude, lng: data.longitude, city: data.city });
+                user.onDisconnect().remove();
 
-                userRef.set({
-                    lat: data.latitude,
-                    lng: data.longitude,
-                    city: data.city || "Node",
-                    country: (data.country_code || "un").toLowerCase()
-                });
+                // 4. Ouvir quem está online
+                liveRef.on('value', snap => this.updateDots(snap.val()));
 
-                userRef.onDisconnect().remove();
-
-                document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
-                document.getElementById('mon-status').innerText = "IP: " + data.ip;
-
-                listenersRef.on('value', (snap) => this.renderNetwork(snap.val()));
-
-            } catch (e) { console.error("Erro Uplink"); }
+            } catch(e) { console.log("Erro de rede."); }
         },
 
-        renderNetwork(all) {
-            this.markers.clear();
-            if (!all) return;
+        updateDots(users) {
+            this.dots.clear();
+            if(!users) return;
+            const entries = Object.entries(users);
+            document.getElementById('live-val').innerText = entries.length;
 
-            const entries = Object.entries(all);
-            document.getElementById('mon-listeners').innerText = `OUVINTES: ${entries.length}`;
-
-            entries.forEach(([id, info]) => {
-                const pos = this.getCoords(info.lat, info.lng);
+            entries.forEach(([id, u]) => {
+                const pos = this.calcPos(u.lat, u.lng);
                 const isMe = id === this.myId;
-
+                
                 const dot = new THREE.Mesh(
                     new THREE.SphereGeometry(isMe ? 0.03 : 0.02, 16, 16),
                     new THREE.MeshBasicMaterial({ color: isMe ? 0x39ff14 : 0x00ffff })
                 );
                 dot.position.copy(pos);
-                this.markers.add(dot);
-
-                if (isMe) {
-                    this.activeNode = { mesh: dot, city: info.city, country: info.country };
-                    document.getElementById('tag-flag').src = `https://flagcdn.com/w40/${info.country}.png`;
-                    document.getElementById('tag-city').innerText = info.city;
-                    document.getElementById('visitor-tag').style.display = 'flex';
-                }
+                this.dots.add(dot);
+                if(isMe) this.myMesh = dot;
             });
+        },
+
+        calcPos(lat, lng) {
+            const phi = (90 - lat) * (Math.PI / 180);
+            const theta = (lng + 180) * (Math.PI / 180);
+            return new THREE.Vector3(-(Math.sin(phi)*Math.cos(theta)), Math.cos(phi), (Math.sin(phi)*Math.sin(theta))).multiplyScalar(1.01);
         },
 
         animate() {
             requestAnimationFrame(() => this.animate());
-            if (this.controls) this.controls.update();
-            
-            if (this.activeNode && this.activeNode.mesh) {
-                const vector = new THREE.Vector3();
-                this.activeNode.mesh.getWorldPosition(vector);
-                vector.project(this.camera);
-                
-                const tag = document.getElementById('visitor-tag');
-                const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-                const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
-                
-                tag.style.left = `${x}px`;
-                tag.style.top = `${y}px`;
-                tag.style.opacity = (vector.z > 1 || vector.z < -1) ? "0" : "1";
+            this.controls.update();
+            if(this.myMesh) {
+                const v = new THREE.Vector3();
+                this.myMesh.getWorldPosition(v);
+                v.project(this.camera);
+                const tag = document.getElementById('tag');
+                tag.style.display = 'block';
+                tag.style.left = `${(v.x * 0.5 + 0.5) * window.innerWidth}px`;
+                tag.style.top = `${(v.y * -0.5 + 0.5) * window.innerHeight}px`;
+                tag.style.opacity = v.z > 1 ? "0" : "1";
             }
             this.renderer.render(this.scene, this.camera);
         }
     };
 
-    window.onload = () => RAU.init();
+    RAU.init();
 </script>
 </body>
 </html>
