@@ -2,70 +2,68 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU GEOMONITOR - SISTEMA DE VISITAS</title>
+    <title>RAU MONITOR - LIVE GEOLOCATION</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #39ff14; }
         
-        /* Contentor do Globo GIF */
-        #globe-container {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 80vh; height: 80vh; max-width: 90vw;
-            display: flex; align-items: center; justify-content: center;
-        }
-        
-        #globe-gif {
-            width: 100%; height: 100%; object-fit: contain;
-            filter: drop-shadow(0 0 20px rgba(0, 255, 0, 0.2));
-            opacity: 0.8;
+        /* Painel de Monitorização Superior */
+        #rau-header {
+            position: absolute; top: 0; left: 0; width: 100%; z-index: 1000;
+            background: linear-gradient(180deg, rgba(0,20,0,0.9) 0%, transparent 100%);
+            padding: 20px; display: flex; justify-content: space-between; pointer-events: none;
         }
 
-        /* Interface de Monitorização */
-        #rau-ui {
-            position: absolute; top: 30px; left: 30px; z-index: 100;
-            background: rgba(0, 15, 0, 0.9); border-left: 4px solid #39ff14;
-            padding: 20px; width: 280px; box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        .stat-box { background: rgba(0,0,0,0.7); border: 1px solid #39ff14; padding: 10px 20px; border-radius: 4px; }
+        .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #39ff14; display: block; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #fff; }
+
+        /* Lista Lateral de Geovisitas */
+        #live-feed {
+            position: absolute; bottom: 30px; left: 30px; z-index: 1000;
+            width: 250px; max-height: 300px; overflow-y: auto;
+            background: rgba(0,10,0,0.8); border-radius: 8px; padding: 15px;
+            border: 1px solid rgba(57, 255, 20, 0.3);
+            scrollbar-width: thin; scrollbar-color: #39ff14 #000;
         }
-        .display-unit { background: #000; border: 1px solid #1a1a1a; padding: 12px; margin-bottom: 10px; }
-        .label { font-size: 10px; color: #39ff14; letter-spacing: 2px; font-weight: bold; display: block; margin-bottom: 5px; }
-        .counter { font-size: 28px; color: #fff; font-weight: 900; font-family: sans-serif; }
-        
-        #status-bar { font-size: 9px; opacity: 0.5; text-transform: uppercase; }
-        
-        /* Ponto de Localização (Simulado sobre o GIF) */
-        #user-node {
-            position: absolute; width: 12px; height: 12px; background: #39ff14;
-            border-radius: 50%; box-shadow: 0 0 15px #39ff14;
-            display: none; z-index: 50;
+
+        .visitor-item { 
+            display: flex; align-items: center; gap: 10px; margin-bottom: 8px; 
+            font-size: 13px; color: #eee; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;
         }
+        .flag { width: 20px; border-radius: 2px; }
+        .city-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        canvas { display: block; outline: none; }
     </style>
 </head>
 <body>
 
-<div id="rau-ui">
-    <div style="font-size: 11px; margin-bottom: 15px; font-weight: bold;">RAU NETWORK MONITOR // v221</div>
-    
-    <div class="display-unit">
-        <span class="label">TOTAL DE ACESSOS</span>
-        <span id="total-count" class="counter">0000</span>
+<div id="rau-header">
+    <div class="stat-box">
+        <span class="stat-label">Total de Visitas</span>
+        <span id="total-val" class="stat-value">0</span>
     </div>
-
-    <div class="display-unit">
-        <span class="label">CONEXÕES EM DIRETO</span>
-        <span id="live-count" class="counter" style="color: #00ffff;">00</span>
+    <div style="text-align: center; pointer-events: auto;">
+        <h1 style="margin:0; font-size: 18px; letter-spacing: 4px;">RAU GEOMONITOR</h1>
+        <div style="font-size: 9px; color: #00ffff;">SISTEMA DE RASTREIO EM TEMPO REAL</div>
     </div>
-
-    <div id="status-bar">Firebase Uplink: Ativo</div>
+    <div class="stat-box" style="border-color: #00ffff;">
+        <span class="stat-label">Conexões Ativas</span>
+        <span id="live-val" class="stat-value" style="color: #00ffff;">0</span>
+    </div>
 </div>
 
-<div id="globe-container">
-    <img id="globe-gif" src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJpbnI2ZmxidXNidXNidXNidXNidXNidXNidXNidXNidXNidXNidSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKMGpxPucV5z7sk/giphy.gif" alt="RAU Globe">
-    <div id="user-node"></div>
+<div id="live-feed">
+    <div style="font-size: 11px; margin-bottom: 10px; color: #39ff14; font-weight: bold;">LIVE FEED:</div>
+    <div id="visitors-list"></div>
 </div>
 
 <script>
-    // Suas chaves de conexão (Verificadas)
+    // Configuração do teu Firebase
     const firebaseConfig = {
         apiKey: "AIzaSyDv0Tf5j9I0FL4iB1voI97tlc3K1bwvm-g",
         authDomain: "radiodosamigosunidos-aadda.firebaseapp.com",
@@ -78,40 +76,119 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    const statsRef = db.ref('geovisitas');
+    const liveRef = db.ref('geovisitas/live');
+    const totalRef = db.ref('geovisitas/total');
 
-    async function startMonitor() {
-        try {
-            // 1. Contador Total (Soma 1 a cada entrada)
-            statsRef.child('total').transaction(current => (current || 0) + 1);
-            statsRef.child('total').on('value', s => {
-                document.getElementById('total-count').innerText = String(s.val()).padStart(4, '0');
+    // MOTOR DO GLOBO (O teu favorito)
+    const RAU_Globe = {
+        scene: new THREE.Scene(),
+        camera: new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000),
+        renderer: new THREE.WebGLRenderer({ antialias: true }),
+        controls: null, globe: null, dots: new THREE.Group(),
+
+        init() {
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(this.renderer.domElement);
+            
+            this.camera.position.z = 3;
+            this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            
+            const light = new THREE.DirectionalLight(0xffffff, 0.5);
+            light.position.set(5, 3, 5);
+            this.scene.add(light);
+
+            // Criação do Globo
+            const geometry = new THREE.SphereGeometry(1, 64, 64);
+            const material = new THREE.MeshPhongMaterial({ color: 0x111111 });
+            this.globe = new THREE.Mesh(geometry, material);
+            this.scene.add(this.globe);
+            this.globe.add(this.dots);
+
+            // Carregar Textura com Fallback (Segurança)
+            const loader = new THREE.TextureLoader();
+            loader.setCrossOrigin('anonymous');
+            const textureUrl = 'https://unpkg.com/three-globe/example/img/earth-night.jpg';
+            
+            loader.load(textureUrl, 
+                (tex) => { material.map = tex; material.needsUpdate = true; },
+                undefined,
+                () => { material.color.setHex(0x002200); material.wireframe = true; } 
+            );
+
+            this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.autoRotate = true;
+            this.controls.autoRotateSpeed = 0.5;
+
+            this.setupTracking();
+            this.animate();
+        },
+
+        async setupTracking() {
+            totalRef.transaction(c => (c || 0) + 1);
+            totalRef.on('value', s => document.getElementById('total-val').innerText = s.val());
+
+            try {
+                const res = await fetch('https://ipapi.co/json/');
+                const data = await res.json();
+                
+                const user = liveRef.push();
+                user.set({
+                    lat: data.latitude,
+                    lng: data.longitude,
+                    city: data.city || "Unknown",
+                    country: (data.country_code || "un").toLowerCase()
+                });
+                user.onDisconnect().remove();
+
+                liveRef.on('value', snap => this.renderUsers(snap.val()));
+            } catch(e) { console.error("Geo Error"); }
+        },
+
+        renderUsers(users) {
+            this.dots.clear();
+            const listDiv = document.getElementById('visitors-list');
+            listDiv.innerHTML = '';
+            if(!users) return;
+
+            const entries = Object.entries(users);
+            document.getElementById('live-val').innerText = entries.length;
+
+            entries.forEach(([id, u]) => {
+                // Adicionar Ponto no Globo
+                const dot = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.015, 12, 12),
+                    new THREE.MeshBasicMaterial({ color: 0x39ff14 })
+                );
+                
+                const phi = (90 - u.lat) * (Math.PI / 180);
+                const theta = (u.lng + 180) * (Math.PI / 180);
+                dot.position.set(
+                    -(Math.sin(phi) * Math.cos(theta)),
+                    Math.cos(phi),
+                    (Math.sin(phi) * Math.sin(theta))
+                ).multiplyScalar(1.01);
+                
+                this.dots.add(dot);
+
+                // Adicionar na Lista com Bandeira
+                const item = document.createElement('div');
+                item.className = 'visitor-item';
+                item.innerHTML = `
+                    <img class="flag" src="https://flagcdn.com/w40/${u.country}.png">
+                    <span class="city-name">${u.city}</span>
+                `;
+                listDiv.appendChild(item);
             });
+        },
 
-            // 2. Sistema de Conexões Vivas (Online Now)
-            const myConnection = statsRef.child('online').push();
-            myConnection.set({ timestamp: Date.now() });
-            myConnection.onDisconnect().remove();
-
-            // 3. Atualizar o painel de quem está online
-            statsRef.child('online').on('value', snap => {
-                const count = snap.numChildren();
-                document.getElementById('live-count').innerText = String(count).padStart(2, '0');
-            });
-
-            // 4. Detetar Localização básica para o painel
-            const res = await fetch('https://ipapi.co/json/');
-            const data = await res.json();
-            if(data.city) {
-                document.getElementById('status-bar').innerText = "NODE: " + data.city.toUpperCase() + " // UP";
-            }
-
-        } catch (e) {
-            document.getElementById('status-bar').innerText = "ERRO DE SINCRONIZAÇÃO";
+        animate() {
+            requestAnimationFrame(() => this.animate());
+            this.controls.update();
+            this.renderer.render(this.scene, this.camera);
         }
-    }
+    };
 
-    window.onload = startMonitor;
+    window.onload = () => RAU_Globe.init();
 </script>
 
 </body>
