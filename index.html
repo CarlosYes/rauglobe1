@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR - LIVE PRECISION</title>
+    <title>RAU RADAR - DEFINITIVE FIX</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -16,31 +16,30 @@
         
         .hud-rau {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 5, 20, 0.9); border: 1px solid #39ff14;
-            padding: 15px; border-radius: 4px; color: #fff; pointer-events: none;
-            box-shadow: 0 0 15px rgba(57, 255, 20, 0.3);
+            background: rgba(0, 5, 20, 0.95); border: 2px solid #39ff14;
+            padding: 20px; border-radius: 5px; color: #fff; pointer-events: none;
         }
-        .count-big { font-size: 48px; font-weight: bold; color: #39ff14; line-height: 1; }
+        .count-big { font-size: 52px; font-weight: 900; color: #39ff14; line-height: 1; }
         
         .marker-rau { display: flex; flex-direction: column; align-items: center; pointer-events: none; }
         .label-rau {
-            background: #000; border: 1px solid #39ff14; color: #39ff14;
-            padding: 3px 8px; border-radius: 3px; font-size: 12px; font-weight: bold;
-            margin-bottom: 5px; white-space: nowrap; text-transform: uppercase;
+            background: #39ff14; color: #000; padding: 4px 10px; border-radius: 3px;
+            font-size: 14px; font-weight: 900; margin-bottom: 5px; white-space: nowrap;
+            text-transform: uppercase; box-shadow: 0 0 15px #39ff14;
         }
         .dot-rau { 
-            width: 14px; height: 14px; background: #fff; border-radius: 50%; 
-            box-shadow: 0 0 20px #39ff14; animation: pulse 2s infinite;
+            width: 16px; height: 16px; background: #fff; border-radius: 50%; 
+            box-shadow: 0 0 25px #39ff14; animation: pulse 1s infinite;
         }
-        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.5; } 100% { transform: scale(1); opacity: 1; } }
     </style>
 </head>
 <body>
 
 <div class="hud-rau">
-    <div style="font-size: 10px; opacity: 0.7; letter-spacing: 2px;">RADAR ATIVO</div>
+    <div style="font-size: 11px; font-weight: bold; letter-spacing: 2px;">STATUS: <span id="sys-status" style="color:#ff0000">OFFLINE</span></div>
     <div id="live-total" class="count-big">0</div>
-    <div id="status-msg" style="font-size: 11px; color: #39ff14; margin-top: 5px;">A SINTONIZAR...</div>
+    <div id="city-display" style="font-size: 12px; color: #39ff14; margin-top: 5px; font-weight: bold;">---</div>
 </div>
 
 <div id="globeViz"></div>
@@ -54,9 +53,9 @@
 
     if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('rau_radar_final_v4');
+    const radarRef = db.ref('RAU_GLOBAL_LIVE');
 
-    const myID = "R" + Math.random().toString(36).substr(2, 5);
+    const myID = "NODE_" + Math.random().toString(36).substr(2, 5);
     const myNode = radarRef.child(myID);
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -74,60 +73,58 @@
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    // SISTEMA DE LOCALIZAÇÃO MULTI-API (PARA EVITAR BLOQUEIOS)
-    async function locateUser() {
-        const apis = [
-            'https://ipwho.is/',
-            'https://ipapi.co/json/',
-            'https://extreme-ip-lookup.com/json/'
-        ];
-
-        for (let api of apis) {
-            try {
-                const res = await fetch(api);
-                const data = await res.json();
-                
-                // Normalização dos dados conforme a API que responder
-                const lat = data.latitude || data.lat;
-                const lng = data.longitude || data.lon;
-                const city = data.city || "Sinal Ativo";
-
-                if (lat && lng) {
-                    const myData = { id: myID, lat: parseFloat(lat), lng: parseFloat(lng), city: city, ts: Date.now() };
-                    
-                    await myNode.set(myData);
-                    myNode.onDisconnect().remove();
-
-                    world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2 }, 3000);
-                    document.getElementById('status-msg').innerText = "ONLINE: " + city.toUpperCase();
-                    return; // Sucesso, sai do loop
-                }
-            } catch (e) {
-                console.warn(`Falha na API: ${api}`);
+    async function init() {
+        let lat = 0, lng = 0, city = "Ouvinte Online";
+        
+        // Tenta buscar dados de localização (Múltiplas APIs)
+        try {
+            const res = await fetch('https://ipapi.co/json/');
+            const data = await res.json();
+            if(data.latitude) {
+                lat = data.latitude; lng = data.longitude; city = data.city;
             }
+        } catch (e) {
+            console.log("Falha API 1, tentando API 2...");
+            try {
+                const res2 = await fetch('https://ipwho.is/');
+                const data2 = await res2.json();
+                lat = data2.latitude; lng = data2.longitude; city = data2.city;
+            } catch (e2) { city = "Sinal Estático"; }
         }
-        document.getElementById('status-msg').innerText = "SINAL LIMITADO (CORS)";
-    }
 
-    function sync() {
-        radarRef.on('value', snap => {
-            const users = snap.val() || {};
-            const now = Date.now();
-            const active = Object.values(users).filter(u => (now - u.ts < 50000) && u.lat);
+        const myData = { 
+            id: myID, 
+            lat: parseFloat(lat) || 0, 
+            lng: parseFloat(lng) || 0, 
+            city: city.toUpperCase(), 
+            ts: Date.now() 
+        };
+
+        // Força o envio e ativa o radar
+        myNode.set(myData).then(() => {
+            document.getElementById('sys-status').innerText = "ONLINE";
+            document.getElementById('sys-status').style.color = "#39ff14";
+            document.getElementById('city-display').innerText = city.toUpperCase();
             
-            document.getElementById('live-total').innerText = active.length;
-            world.htmlElementsData(active);
+            // Move a câmara para o ponto
+            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2 }, 2000);
+            
+            // Começa a ouvir os outros
+            radarRef.on('value', snap => {
+                const rawData = snap.val() || {};
+                const now = Date.now();
+                const active = Object.values(rawData).filter(u => (now - u.ts < 60000));
+                
+                document.getElementById('live-total').innerText = active.length;
+                world.htmlElementsData(active);
+            });
         });
 
-        setInterval(() => {
-            myNode.update({ ts: Date.now() });
-        }, 15000);
+        myNode.onDisconnect().remove();
+        setInterval(() => myNode.update({ ts: Date.now() }), 15000);
     }
 
-    window.onload = () => {
-        locateUser();
-        sync();
-    };
+    window.onload = init;
 </script>
 </body>
 </html>
