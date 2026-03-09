@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v216.5 - LIVE NETWORK</title>
+    <title>RAU MONITOR v216.7 - LIVE NETWORK</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
@@ -11,16 +11,16 @@
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 15, 0, 0.9); border-left: 3px solid #39ff14;
-            padding: 15px; width: 280px; pointer-events: none;
+            background: rgba(0, 20, 0, 0.9); border-left: 3px solid #39ff14;
+            padding: 15px; width: 280px; pointer-events: none; border-radius: 0 4px 4px 0;
         }
-        .monitor-display { background: #000; border: 1px solid #1a1a1a; padding: 10px; }
+        .monitor-display { background: #050505; border: 1px solid #1a1a1a; padding: 10px; }
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; }
         #visitor-tag {
             position: absolute; display: none; align-items: center; gap: 8px;
             background: rgba(0, 0, 0, 0.9); border: 1px solid #39ff14;
             padding: 5px 12px; color: #fff; font-size: 11px; font-weight: bold;
-            z-index: 500; transform: translate(-50%, -150%);
+            z-index: 500; transform: translate(-50%, -150%); pointer-events: none;
         }
         .flag-icon { width: 18px; height: 12px; border: 1px solid #333; }
         canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; outline: none; }
@@ -29,9 +29,9 @@
 <body>
 
 <div id="rau-ui">
-    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v216.5 // LIVE</div>
+    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v216.7 // LIVE</div>
     <div class="monitor-display">
-        <span id="mon-city">A SINCRONIZAR...</span>
+        <span id="mon-city">LOCALIZANDO...</span>
         <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">Uplink: Ativo</div>
         <div id="mon-listeners" style="font-size: 10px; color: #39ff14; margin-top: 6px; font-weight: bold;">OUVINTES: 0</div>
     </div>
@@ -43,7 +43,6 @@
 </div>
 
 <script>
-    // Configuração oficial do seu projeto Firebase
     const firebaseConfig = {
         apiKey: "AIzaSyDv0Tf5j9I0FL4iB1voI97tlc3K1bwvm-g",
         authDomain: "radiodosamigosunidos-aadda.firebaseapp.com",
@@ -54,7 +53,6 @@
         appId: "1:451945612071:web:383c551ca22744f6845f02"
     };
 
-    // Inicialização do Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const listenersRef = db.ref('listeners');
@@ -71,24 +69,30 @@
             this.renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(this.renderer.domElement);
 
-            // Iluminação
-            this.scene.add(new THREE.AmbientLight(0xffffff, 1.1));
-            const sun = new THREE.DirectionalLight(0xffffff, 0.6);
-            sun.position.set(5, 3, 5);
-            this.scene.add(sun);
+            // Iluminação Reforçada para o Globo não ficar negro
+            const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+            this.scene.add(ambient);
+            
+            const light1 = new THREE.DirectionalLight(0xffffff, 1);
+            light1.position.set(5, 5, 5);
+            this.scene.add(light1);
 
             this.stars();
 
-            // Globo 3D
+            // Globo com cor azul escura de backup (caso a textura falhe)
             const geo = new THREE.SphereGeometry(1, 64, 64);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 15 });
+            const mat = new THREE.MeshPhongMaterial({ 
+                color: 0x0a192f, 
+                shininess: 20,
+                specular: 0x333333 
+            });
             this.globe = new THREE.Mesh(geo, mat);
             this.scene.add(this.globe);
             this.globe.add(this.markers);
 
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.autoRotate = true;
-            this.controls.autoRotateSpeed = 0.6;
+            this.controls.autoRotateSpeed = 0.8;
             this.camera.position.z = 3.5;
 
             this.loadTexture();
@@ -105,20 +109,24 @@
         stars() {
             const geo = new THREE.BufferGeometry();
             const pos = [];
-            for (let i = 0; i < 2500; i++) {
+            for (let i = 0; i < 3000; i++) {
                 pos.push((Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500, (Math.random() - 0.5) * 1500);
             }
             geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-            this.scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x666666, size: 0.7 })));
+            this.scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x888888, size: 0.6 })));
         },
 
         loadTexture() {
             const loader = new THREE.TextureLoader();
             loader.setCrossOrigin('anonymous');
-            loader.load('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg', (tex) => {
+            // Usando uma textura alternativa mais leve
+            loader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_atmos_2048.jpg', 
+            (tex) => {
                 this.globe.material.map = tex;
                 this.globe.material.color.set(0xffffff);
                 this.globe.material.needsUpdate = true;
+            }, undefined, (err) => {
+                console.warn("Usando modo radar (sem textura)");
             });
         },
 
@@ -134,59 +142,45 @@
 
         async connectLive() {
             try {
-                // Obter localização via IP
                 const res = await fetch('https://ipapi.co/json/');
                 const data = await res.json();
                 
-                if(!data.latitude) throw new Error("Localização indisponível");
+                if(!data.latitude) return;
 
-                // Gerar ID e registar no Firebase
                 const userRef = listenersRef.push();
                 this.myId = userRef.key;
 
                 userRef.set({
                     lat: data.latitude,
                     lng: data.longitude,
-                    city: data.city || "Desconhecido",
-                    country: (data.country_code || "un").toLowerCase(),
-                    lastSeen: Date.now()
+                    city: data.city || "Node",
+                    country: (data.country_code || "un").toLowerCase()
                 });
 
-                // Remover automaticamente ao desconectar
                 userRef.onDisconnect().remove();
 
                 document.getElementById('mon-city').innerText = (data.city || "RAU NODE").toUpperCase();
                 document.getElementById('mon-status').innerText = "IP: " + data.ip;
 
-                // Monitorizar rede em tempo real
-                listenersRef.on('value', (snapshot) => {
-                    this.renderNetwork(snapshot.val());
-                });
+                listenersRef.on('value', (snap) => this.renderNetwork(snap.val()));
 
-            } catch (e) { 
-                console.error("Erro no Uplink:", e);
-                document.getElementById('mon-city').innerText = "ERRO DE REDE";
-            }
+            } catch (e) { console.error("Erro Uplink"); }
         },
 
-        renderNetwork(allUsers) {
+        renderNetwork(all) {
             this.markers.clear();
-            if (!allUsers) return;
+            if (!all) return;
 
-            const entries = Object.entries(allUsers);
+            const entries = Object.entries(all);
             document.getElementById('mon-listeners').innerText = `OUVINTES: ${entries.length}`;
 
             entries.forEach(([id, info]) => {
                 const pos = this.getCoords(info.lat, info.lng);
-                const isMe = (id === this.myId);
+                const isMe = id === this.myId;
 
                 const dot = new THREE.Mesh(
-                    new THREE.SphereGeometry(isMe ? 0.025 : 0.015, 16, 16),
-                    new THREE.MeshBasicMaterial({ 
-                        color: isMe ? 0x39ff14 : 0x00ffff,
-                        transparent: true,
-                        opacity: 0.9
-                    })
+                    new THREE.SphereGeometry(isMe ? 0.03 : 0.02, 16, 16),
+                    new THREE.MeshBasicMaterial({ color: isMe ? 0x39ff14 : 0x00ffff })
                 );
                 dot.position.copy(pos);
                 this.markers.add(dot);
@@ -215,7 +209,7 @@
                 
                 tag.style.left = `${x}px`;
                 tag.style.top = `${y}px`;
-                tag.style.opacity = vector.z > 1 ? "0" : "1";
+                tag.style.opacity = (vector.z > 1 || vector.z < -1) ? "0" : "1";
             }
             this.renderer.render(this.scene, this.camera);
         }
