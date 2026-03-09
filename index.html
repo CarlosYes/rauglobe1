@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v243.0</title>
+    <title>RAU RADAR v244.0</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -16,27 +16,35 @@
         
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 20, 40, 0.9); border: 2px solid #39ff14;
+            background: rgba(0, 20, 40, 0.95); border: 2px solid #39ff14;
             padding: 15px; border-radius: 4px; color: #fff;
             box-shadow: 0 0 15px #39ff14; pointer-events: none;
         }
         .count-num { font-size: 35px; font-weight: bold; color: #39ff14; display: block; }
         
+        /* Instrução flutuante */
+        #hint {
+            position: absolute; bottom: 20px; width: 100%; text-align: center;
+            z-index: 100; color: #39ff14; font-size: 12px; text-shadow: 0 0 5px #000;
+        }
+
         .tag {
             background: rgba(0,0,0,0.8); border: 1px solid #39ff14;
             color: #fff; padding: 3px 8px; font-size: 11px;
             display: flex; align-items: center; gap: 6px; border-radius: 2px;
         }
-        .me { border: 2px solid #fff !important; background: #39ff14 !important; color: #000 !important; }
+        .me { border: 2px solid #fff !important; background: #39ff14 !important; color: #000 !important; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; opacity: 0.8; letter-spacing: 1px;">OUVINTES REAIS AGORA</div>
+    <div style="font-size: 10px; opacity: 0.8;">RADAR RAU EM DIRETO</div>
     <div id="live-total" class="count-num">0</div>
-    <div id="status" style="font-size: 11px; margin-top: 5px; color: #39ff14;">A INICIAR...</div>
+    <div id="status" style="font-size: 11px; margin-top: 5px; color: #39ff14;">A SINCRONIZAR...</div>
 </div>
+
+<div id="hint">Se o ponto estiver errado, <b>clique com o botão direito</b> na sua localização real.</div>
 
 <div id="globeViz"></div>
 
@@ -47,11 +55,12 @@
         projectId: "radiodosamigosunidos-aadda"
     };
 
-    if (!firebase.apps.length) { firebase.initializeApp(fbConfig); }
+    if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('rau_radar_final');
+    const radarRef = db.ref('rau_radar_v4');
 
-    const myID = "RAU_" + Math.random().toString(36).substr(2, 9);
+    const myID = "USER_" + Math.random().toString(36).substr(2, 9);
+    let myPoint = radarRef.child(myID);
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -59,7 +68,7 @@
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
         .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14')
-        .pointRadius(d => d.id === myID ? 1.4 : 0.8)
+        .pointRadius(d => d.id === myID ? 1.5 : 0.8)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'tag' + (d.id === myID ? ' me' : '');
@@ -67,31 +76,37 @@
             return el;
         });
 
-    world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.5;
+    // Função para atualizar posição no Firebase
+    function updatePos(lat, lng, city = "Ouvinte", iso = "un") {
+        myPoint.update({ id: myID, lat, lng, city, iso, ts: Date.now() });
+    }
 
-    async function bootstrap() {
-        const myPoint = radarRef.child(myID);
-        
-        // 1. Criar ponto imediato (para o contador não ser 0)
-        let myData = { id: myID, lat: 0, lng: 0, city: "A localizar...", iso: "un", ts: Date.now() };
-        await myPoint.set(myData);
+    // Permitir Calibração Manual (Botão direito ou Clique longo)
+    document.getElementById('globeViz').oncontextmenu = (e) => {
+        e.preventDefault();
+        const { lat, lng } = world.getCoords(e.clientX, e.clientY);
+        updatePos(lat, lng, "Posição Manual", "un");
+        document.getElementById('status').innerText = "POSIÇÃO CALIBRADA!";
+    };
+
+    async function init() {
+        // 1. Ponto Inicial (Temporário no mar para o contador subir)
+        updatePos(0, 0, "A localizar...", "un");
         myPoint.onDisconnect().remove();
 
-        // 2. Tentar obter localização real
+        // 2. Tentar Localização IP (Automático)
         try {
             const res = await fetch('https://ipwho.is/');
             const d = await res.json();
             if(d.success) {
-                myData = { ...myData, lat: d.latitude, lng: d.longitude, city: d.city, iso: d.country_code.toLowerCase(), ts: Date.now() };
-                await myPoint.update(myData);
-                document.getElementById('status').innerText = "CONECTADO: " + d.city.toUpperCase();
+                updatePos(d.latitude, d.longitude, d.city, d.country_code.toLowerCase());
+                document.getElementById('status').innerText = "LOCALIZADO: " + d.city.toUpperCase();
             }
         } catch (e) {
-            document.getElementById('status').innerText = "ERRO DE LOCALIZAÇÃO (USANDO PADRÃO)";
+            document.getElementById('status').innerText = "ERRO IP: USE O CLIQUE DIRETO NO MAPA";
         }
 
-        // 3. Batimento cardíaco
+        // 3. Batimento Cardíaco (Sinal de vida)
         setInterval(() => myPoint.update({ ts: Date.now() }), 5000);
 
         // 4. Sincronização em Tempo Real
@@ -104,7 +119,7 @@
         });
     }
 
-    window.onload = bootstrap;
+    window.onload = init;
     window.onresize = () => { world.width(window.innerWidth); world.height(window.innerHeight); };
 </script>
 </body>
