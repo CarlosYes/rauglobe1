@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v241.0 - PRECISION</title>
+    <title>RAU RADAR v242.0</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -16,28 +16,28 @@
         
         .revolver-hud {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(7, 20, 45, 0.9); border: 1px solid #39ff14;
-            padding: 15px; border-radius: 4px; color: #fff;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4); pointer-events: none;
+            background: rgba(0, 10, 30, 0.9); border: 2px solid #39ff14;
+            padding: 15px; border-radius: 5px; color: #fff;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.5); pointer-events: none;
         }
-        .counter { font-size: 28px; font-weight: bold; color: #39ff14; display: block; }
+        .counter { font-size: 32px; font-weight: bold; color: #39ff14; line-height: 1; }
         
-        /* Estilo da Etiqueta */
         .city-tag {
-            background: rgba(0, 0, 0, 0.85); border: 1px solid #39ff14;
-            color: #39ff14; padding: 4px 8px; font-size: 11px;
-            display: flex; align-items: center; gap: 6px; border-radius: 3px;
-            white-space: nowrap; font-weight: bold;
+            background: rgba(0, 0, 0, 0.8); border: 1px solid #39ff14;
+            color: #fff; padding: 3px 7px; font-size: 11px;
+            display: flex; align-items: center; gap: 6px; border-radius: 2px;
+            box-shadow: 0 0 8px rgba(57, 255, 20, 0.4);
         }
-        .my-own-point { border-color: #ff3939 !important; color: #ff3939 !important; }
+        /* Destaque para o TEU ponto */
+        .is-me { border: 2px solid #fff !important; background: #39ff14 !important; color: #000 !important; font-weight: 900; }
     </style>
 </head>
 <body>
 
 <div class="revolver-hud">
-    <span style="font-size: 10px; text-transform: uppercase; color: #aaa;">Ouvintes em Tempo Real</span>
-    <span id="live-count" class="counter">0</span>
-    <div id="status-info" style="font-size: 11px; margin-top: 5px;">A LOCALIZAR...</div>
+    <div style="font-size: 10px; text-transform: uppercase; margin-bottom: 5px; opacity: 0.8;">Ouvintes em Direto</div>
+    <div id="live-count" class="counter">0</div>
+    <div id="my-info" style="font-size: 11px; margin-top: 8px; color: #39ff14;">A localizar sinal...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,75 +51,66 @@
 
     firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const liveRef = db.ref('revolver_live_v2');
+    const liveRef = db.ref('rau_revolver_v3');
 
-    // ID de sessão único para este navegador
-    const sessionID = "USER_" + Math.random().toString(36).substring(2, 15);
+    // Gera um ID único para TU seres o centro do mapa
+    const myID = "ME_" + Math.random().toString(36).substr(2, 9);
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
-        .pointColor(d => d.id === sessionID ? '#ff3939' : '#39ff14') // O teu ponto é VERMELHO, outros VERDES
-        .pointRadius(d => d.id === sessionID ? 1.2 : 0.7)
-        .pointAltitude(0.06)
+        .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14') // O teu ponto é BRANCO (para se ver bem)
+        .pointRadius(d => d.id === myID ? 1.5 : 0.8)
+        .pointAltitude(0.07)
         .htmlElement(d => {
             const div = document.createElement('div');
-            div.className = 'city-tag' + (d.id === sessionID ? ' my-own-point' : '');
-            div.innerHTML = `<img src="https://flagcdn.com/w20/${d.iso}.png" width="16"> ${d.id === sessionID ? 'TU: ' : ''}${d.city}`;
+            div.className = 'city-tag' + (d.id === myID ? ' is-me' : '');
+            div.innerHTML = `<img src="https://flagcdn.com/w20/${d.iso}.png" width="16"> ${d.id === myID ? 'VOCÊ: ' : ''}${d.city}`;
             return div;
         });
 
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.5;
+    world.controls().autoRotateSpeed = 0.6;
 
-    async function startRadar() {
+    async function start() {
         try {
-            // Tenta obter localização
             const res = await fetch('https://ipwho.is/');
             const d = await res.json();
             
-            const myNode = liveRef.child(sessionID);
-            const myData = {
-                id: sessionID,
-                lat: d.latitude,
-                lng: d.longitude,
-                city: d.city || "Ouvinte",
+            const myNode = liveRef.child(myID);
+            const data = {
+                id: myID,
+                lat: d.latitude || 0,
+                lng: d.longitude || 0,
+                city: d.city || "Desconhecido",
                 iso: (d.country_code || "un").toLowerCase(),
-                lastSeen: Date.now()
+                time: Date.now()
             };
 
-            // Publica e limpa ao fechar
-            myNode.set(myData);
-            mySessionRef = myNode;
+            myNode.set(data);
             myNode.onDisconnect().remove();
 
-            document.getElementById('status-info').innerText = "ONLINE EM: " + myData.city.toUpperCase();
+            document.getElementById('my-info').innerText = "ESTÁS EM: " + data.city.toUpperCase();
 
-            // Loop de Atualização (Heartbeat)
-            setInterval(() => {
-                myNode.update({ lastSeen: Date.now() });
-            }, 5000);
+            // Heartbeat para manter o ponto vivo
+            setInterval(() => { myNode.update({ time: Date.now() }); }, 5000);
 
-            // Escuta Geral
+            // Atualização Global
             liveRef.on('value', snap => {
                 const now = Date.now();
-                const all = snap.val() || {};
-                const active = Object.values(all).filter(u => now - u.lastSeen < 15000);
-
-                document.getElementById('live-count').innerText = active.length;
-                world.pointsData(active);
-                world.htmlElementsData(active);
+                const all = Object.values(snap.val() || {}).filter(u => now - u.time < 15000);
+                document.getElementById('live-count').innerText = all.length;
+                world.pointsData(all);
+                world.htmlElementsData(all);
             });
 
-        } catch (e) {
-            document.getElementById('status-info').innerText = "ERRO DE SINCRONIZAÇÃO";
-        }
+        } catch (e) { document.getElementById('my-info').innerText = "ERRO NA REDE"; }
     }
 
-    window.addEventListener('resize', () => { world.width(window.innerWidth); world.height(window.innerHeight); });
-    window.onload = startRadar;
+    window.onload = start;
+    window.onresize = () => { world.width(window.innerWidth); world.height(window.innerHeight); };
 </script>
 </body>
 </html>
