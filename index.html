@@ -2,47 +2,43 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR - VISUAL PRECISION</title>
-    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
-    <script src="https://unpkg.com/globe.gl"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAU RADAR v12 - FLAG & CITY PRECISION</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
-        #globeViz { width: 100vw; height: 100vh; }
-        
-        /* Painel Superior */
-        .hud-rau {
-            position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 15, 5, 0.9); border: 2px solid #39ff14;
-            padding: 15px; border-radius: 5px; color: #fff; pointer-events: none;
-        }
-        .count-big { font-size: 45px; font-weight: 900; color: #39ff14; line-height: 1; }
 
-        /* Marcadores no Globo (O que faltava) */
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Roboto, sans-serif; }
+        #globeViz { position: absolute; top: 0; width: 100vw; height: 100vh; }
+        
+        .hud-rau {
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: rgba(0, 8, 20, 0.9); border: 1px solid #39ff14;
+            padding: 15px; border-radius: 4px; color: #fff; pointer-events: none;
+        }
+        .count-big { font-size: 52px; font-weight: 900; color: #39ff14; line-height: 0.9; }
+        
+        /* O Marcador que pediste: Cidade + Bandeira */
         .rau-marker { display: flex; flex-direction: column; align-items: center; pointer-events: none; }
-        .rau-label {
-            background: rgba(0, 0, 0, 0.85); border: 1px solid #39ff14;
-            color: #fff; padding: 5px 10px; border-radius: 4px;
-            font-size: 12px; font-weight: bold; white-space: nowrap;
-            display: flex; align-items: center; gap: 8px; /* Espaço para a bandeira */
-            box-shadow: 0 0 15px rgba(57, 255, 20, 0.3);
-            margin-bottom: 5px; text-transform: uppercase;
+        .rau-box {
+            background: rgba(0, 0, 0, 0.9); border: 1px solid #39ff14;
+            color: #fff; padding: 4px 10px; border-radius: 3px;
+            font-size: 11px; font-weight: bold; display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); text-transform: uppercase;
         }
-        .rau-label img { width: 18px; height: auto; border-radius: 2px; } /* Estilo da Bandeira */
-        .rau-dot { 
-            width: 12px; height: 12px; background: #fff; border-radius: 50%; 
-            box-shadow: 0 0 20px #39ff14; animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.4); } 100% { transform: scale(1); } }
+        .rau-box img { width: 18px; height: auto; border: 1px solid rgba(255,255,255,0.3); }
+        .pulse-dot { width: 10px; height: 10px; background: #fff; border-radius: 50%; margin-top: 4px; box-shadow: 0 0 15px #39ff14; }
     </style>
 </head>
 <body>
 
 <div class="hud-rau">
-    <div style="font-size: 10px; letter-spacing: 2px; opacity: 0.8;">OUVINTES ONLINE</div>
-    <div id="count" class="count-big">0</div>
-    <div id="status" style="font-size: 11px; color: #39ff14; margin-top: 5px;">A SINTONIZAR...</div>
+    <div style="font-size: 10px; letter-spacing: 2px; opacity: 0.7;">OUVINTES ONLINE</div>
+    <div id="live-total" class="count-big">0</div>
+    <div id="status-info" style="font-size: 10px; color: #39ff14; margin-top: 8px; border-top: 1px dotted #39ff14; padding-top: 4px;">A RASTREAR IP...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -56,40 +52,36 @@
 
     if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('RADAR_FINAL_VISUAL');
+    const radarRef = db.ref('RAU_PRECISION_V12');
 
-    const myID = "RAU_" + Math.random().toString(36).substr(2, 6);
+    const myID = "R" + Math.random().toString(36).substr(2, 5);
     const myNode = radarRef.child(myID);
 
-    // Configuração do Globo com Marcadores HTML (Cidade + Bandeira)
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
         .htmlElement(d => {
-            const container = document.createElement('div');
-            container.className = 'rau-marker';
-            
-            // Link da bandeira usando o código do país (ex: pt, br, fr)
-            const flagImg = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
-            
-            container.innerHTML = `
-                <div class="rau-label">
-                    ${flagImg}
+            const el = document.createElement('div');
+            el.className = 'rau-marker';
+            // FlagCDN para a bandeira usando o country_code
+            const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
+            el.innerHTML = `
+                <div class="rau-box">
+                    ${flag}
                     <span>${d.city}</span>
                 </div>
-                <div class="rau-dot"></div>
+                <div class="pulse-dot"></div>
             `;
-            return container;
+            return el;
         });
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    async function start() {
+    async function track() {
         try {
-            // API de IP que traz o código do país para a bandeira
             const res = await fetch('https://ipwho.is/');
             const data = await res.json();
             
@@ -98,8 +90,8 @@
                     id: myID,
                     lat: parseFloat(data.latitude),
                     lng: parseFloat(data.longitude),
-                    city: data.city || "Desconhecido",
-                    country: data.country_code, // EX: "PT"
+                    city: data.city || "Sinal Ativo",
+                    country: data.country_code || "PT",
                     ts: Date.now()
                 };
 
@@ -107,26 +99,27 @@
                 myNode.onDisconnect().remove();
 
                 world.pointOfView({ lat: payload.lat, lng: payload.lng, altitude: 2 }, 2000);
-                document.getElementById('status').innerText = "ONLINE EM: " + payload.city.toUpperCase();
+                document.getElementById('status-info').innerText = `SINAL: ${payload.city} (${payload.country})`;
             }
         } catch (e) {
-            document.getElementById('status').innerText = "ERRO DE RASTREIO";
+            document.getElementById('status-info').innerText = "ERRO NO RASTREIO";
         }
     }
 
-    // Sincronização Real-Time
-    radarRef.on('value', snap => {
-        const data = snap.val() || {};
-        const now = Date.now();
-        const active = Object.values(data).filter(u => (now - u.ts < 60000) && u.lat);
-        
-        document.getElementById('count').innerText = active.length;
-        world.htmlElementsData(active);
-    });
+    function sync() {
+        radarRef.on('value', snap => {
+            const data = snap.val() || {};
+            const now = Date.now();
+            const active = Object.values(data).filter(u => (now - u.ts < 60000) && u.lat);
+            
+            document.getElementById('live-total').innerText = active.length;
+            world.htmlElementsData(active);
+        });
 
-    setInterval(() => myNode.update({ ts: Date.now() }), 15000);
+        setInterval(() => myNode.update({ ts: Date.now() }), 15000);
+    }
 
-    window.onload = start;
+    window.onload = () => { track(); sync(); };
 </script>
 </body>
 </html>
