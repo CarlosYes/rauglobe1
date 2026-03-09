@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v248.0 - REAL TIME</title>
+    <title>RAU RADAR - OUVINTES REAIS</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl@2.26.12/dist/globe.gl.min.js"></script>
@@ -11,37 +11,37 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
-        #globeViz { position: absolute; top: 0; width: 100vw; height: 100vh; z-index: 1; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
+        #globeViz { position: absolute; top: 0; width: 100vw; height: 100vh; }
         
-        .interface {
+        .hud-rau {
             position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 15, 35, 0.95); border: 2px solid #39ff14;
+            background: rgba(0, 10, 30, 0.9); border: 2px solid #39ff14;
             padding: 15px; border-radius: 4px; color: #fff;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4); pointer-events: none;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.5); pointer-events: none;
         }
-        .count-big { font-size: 42px; font-weight: bold; color: #39ff14; display: block; line-height: 1; }
+        .count-value { font-size: 40px; font-weight: bold; color: #39ff14; display: block; }
         
-        .tag-label {
-            background: rgba(0,0,0,0.9); border: 1px solid #39ff14;
+        .user-tag {
+            background: rgba(0,0,0,0.85); border: 1px solid #39ff14;
             color: #fff; padding: 4px 8px; font-size: 11px;
             display: flex; align-items: center; gap: 6px; border-radius: 2px;
-            white-space: nowrap;
         }
-        .is-me { border: 2px solid #fff !important; background: #39ff14 !important; color: #000 !important; font-weight: 900; }
+        .is-me { border: 2px solid #fff !important; background: #39ff14 !important; color: #000 !important; font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div class="interface">
-    <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7;">Ouvintes Reais (GPS)</div>
-    <div id="live-counter" class="count-big">0</div>
-    <div id="status-msg" style="font-size: 11px; margin-top: 8px; color: #ff3939;">A AGUARDAR GPS...</div>
+<div class="hud-rau">
+    <div style="font-size: 10px; opacity: 0.8; letter-spacing: 1px;">OUVINTES EM DIRETO</div>
+    <div id="live-counter" class="count-value">0</div>
+    <div id="status-text" style="font-size: 11px; margin-top: 5px; color: #39ff14;">A SINCRONIZAR...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
+    // Configuração Firebase RAU
     const fbConfig = {
         apiKey: "AIzaSyDv0Tf5j9I0FL4iB1voI97tlc3K1bwvm-g",
         databaseURL: "https://radiodosamigosunidos-aadda-default-rtdb.europe-west1.firebasedatabase.app",
@@ -50,65 +50,74 @@
 
     if (!firebase.apps.length) firebase.initializeApp(fbConfig);
     const db = firebase.database();
-    const radarRef = db.ref('rau_radar_realtime_v7');
+    const radarRef = db.ref('rau_radar_live'); // Canal de dados limpo
 
     const myID = "USER_" + Math.random().toString(36).substr(2, 9);
-    let myPointRef = radarRef.child(myID);
-    let activePos = false;
+    let myNode = radarRef.child(myID);
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
-        .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14') // TU = BRANCO
-        .pointRadius(d => d.id === myID ? 2.0 : 0.8) // TU = GIGANTE
+        .pointColor(d => d.id === myID ? '#ffffff' : '#39ff14')
+        .pointRadius(d => d.id === myID ? 2.0 : 0.8)
         .htmlElement(d => {
             const el = document.createElement('div');
-            el.className = 'tag-label' + (d.id === myID ? ' is-me' : '');
-            el.innerHTML = `<span>${d.id === myID ? 'VOCÊ ESTÁ AQUI' : 'OUVINTE'}</span>`;
+            el.className = 'user-tag' + (d.id === myID ? ' is-me' : '');
+            el.innerHTML = `<span>${d.id === myID ? 'ESTÁ AQUI' : 'OUVINTE'}</span>`;
             return el;
         });
 
-    async function sync(lat, lng) {
-        if (lat === 0 && lng === 0) return; // BLOQUEIO TOTAL DE ÁFRICA
-        
-        activePos = true;
-        document.getElementById('status-msg').innerText = "SINAL GPS VALIDADO";
-        document.getElementById('status-msg').style.color = "#39ff14";
-        
-        myPointRef.set({ id: myID, lat, lng, ts: Date.now() });
-        myPointRef.onDisconnect().remove();
-    }
+    world.controls().autoRotate = true;
+    world.controls().autoRotateSpeed = 0.5;
 
-    async function init() {
-        // 1. Tentar GPS REAL (Navegador)
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                p => sync(p.coords.latitude, p.coords.longitude),
-                async () => {
-                    // 2. Se falhar GPS, tenta IP (Backup)
-                    const res = await fetch('https://ipwho.is/');
-                    const d = await res.json();
-                    if(d.latitude && d.latitude !== 0) sync(d.latitude, d.longitude);
-                }
-            );
+    async function ligarRadar() {
+        try {
+            // Tenta obter localização (IP como primeira via rápida)
+            const res = await fetch('https://ipwho.is/');
+            const d = await res.json();
+            
+            // FILTRO CRÍTICO: Se a API falhar ou der África (0,0), não envia dados lixo
+            if (d.latitude && d.latitude !== 0) {
+                const myData = {
+                    id: myID,
+                    lat: d.latitude,
+                    lng: d.longitude,
+                    ts: Date.now()
+                };
+
+                // Publica no Firebase
+                myNode.set(myData);
+                // Remove automaticamente quando o ouvinte fecha a página
+                myNode.onDisconnect().remove();
+
+                document.getElementById('status-text').innerText = "SINAL ONLINE: " + (d.city || "OK");
+            } else {
+                document.getElementById('status-text').innerText = "A AGUARDAR LOCALIZAÇÃO...";
+            }
+
+            // Atualização contínua (Heartbeat)
+            setInterval(() => {
+                if (d.latitude) myNode.update({ ts: Date.now() });
+            }, 10000);
+
+            // Escuta em tempo real (O que vês aqui, todos vêem)
+            radarRef.on('value', snap => {
+                const now = Date.now();
+                const allData = Object.values(snap.val() || {}).filter(u => (now - u.ts < 30000));
+                
+                document.getElementById('live-counter').innerText = allData.length;
+                world.pointsData(allData);
+                world.htmlElementsData(allData);
+            });
+
+        } catch (e) {
+            document.getElementById('status-text').innerText = "ERRO DE LIGAÇÃO AO RADAR";
         }
-
-        // Heartbeat
-        setInterval(() => { if (activePos) myPointRef.update({ ts: Date.now() }); }, 5000);
-
-        // Radar Sync
-        radarRef.on('value', snap => {
-            const now = Date.now();
-            const all = Object.values(snap.val() || {}).filter(u => (now - u.ts < 20000) && (u.lat !== 0));
-            document.getElementById('live-counter').innerText = all.length;
-            world.pointsData(all);
-            world.htmlElementsData(all);
-        });
     }
 
-    window.onload = init;
+    window.onload = ligarRadar;
     window.onresize = () => { world.width(window.innerWidth); world.height(window.innerHeight); };
 </script>
 </body>
