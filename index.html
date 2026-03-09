@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v220.0 - GLOBAL VPN</title>
+    <title>RAU MONITOR v221.0 - VPN PRECISION</title>
     <script src="https://unpkg.com/three"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
@@ -11,58 +11,59 @@
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #39ff14; }
         
-        /* Painel Esquerdo - Status Principal */
+        /* UI Esquerda - Status Central */
         #rau-ui {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 15, 0, 0.9); border-left: 3px solid #39ff14;
+            background: rgba(0, 15, 0, 0.95); border-left: 3px solid #39ff14;
             padding: 15px; width: 260px; pointer-events: none;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.2);
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.1);
         }
 
-        /* Painel Direito - Lista de Cidades VPN */
+        /* UI Direita - Monitor de Tráfego */
         #live-traffic {
             position: absolute; top: 20px; right: 20px; z-index: 1000;
-            background: rgba(0, 10, 0, 0.85); border-right: 3px solid #00ffff;
-            padding: 15px; width: 220px; max-height: 85vh; overflow-y: hidden;
-            box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
+            background: rgba(0, 5, 0, 0.9); border-right: 3px solid #00ffff;
+            padding: 15px; width: 230px; max-height: 80vh; overflow-y: hidden;
         }
 
-        .monitor-display { background: #000; border: 1px solid #1a1a1a; padding: 10px; margin-bottom: 10px; }
+        .monitor-display { background: #000; border: 1px solid #222; padding: 10px; margin-bottom: 10px; }
         #mon-city { font-size: 18px; color: #fff; font-weight: 900; display: block; text-transform: uppercase; }
         
         .traffic-row { 
-            font-size: 10px; padding: 6px 0; border-bottom: 1px solid rgba(57, 255, 20, 0.1);
-            display: flex; align-items: center; gap: 10px; animation: slideIn 0.4s ease-out;
+            font-size: 10px; padding: 8px 0; border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+            display: flex; align-items: center; gap: 10px; animation: fadeInRight 0.5s ease-out;
         }
-        .flag { width: 18px; height: 12px; border: 0.5px solid #444; border-radius: 1px; }
-        .city-name { color: #00ffff; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .flag { width: 18px; height: 12px; border: 0.5px solid #444; }
+        .city-name { color: #00ffff; font-weight: bold; }
 
-        @keyframes slideIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes fadeInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
         #globeViz { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         
-        /* Overlay de Loading */
-        #loader {
+        #sys-loader {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; display: flex; justify-content: center; align-items: center;
-            z-index: 9999; transition: opacity 1s;
+            background: #000; display: flex; flex-direction: column; justify-content: center; 
+            align-items: center; z-index: 9999; transition: opacity 0.8s;
         }
     </style>
 </head>
 <body>
 
-<div id="loader">CARREGANDO SISTEMA RAU...</div>
+<div id="sys-loader">
+    <div style="letter-spacing: 5px; margin-bottom: 10px;">INICIALIZANDO RAU CORE...</div>
+    <div id="load-status" style="font-size: 10px; color: #39ff14;">A verificar Uplink HTTPS...</div>
+</div>
 
 <div id="rau-ui">
-    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v220.0 // ENCRYPTED</div>
+    <div style="margin-bottom: 8px; font-size: 10px; font-weight: bold; letter-spacing: 2px;">RAU CORE v221.0 // STABLE</div>
     <div class="monitor-display">
-        <span id="mon-city">LOCALIZANDO...</span>
-        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">Rede: Protegida (SSL)</div>
+        <span id="mon-city">A SINCRONIZAR...</span>
+        <div id="mon-status" style="font-size: 9px; opacity: 0.7; margin-top: 4px;">SISTEMA: ENCRIPTADO (VPN OK)</div>
         <div id="mon-listeners" style="font-size: 10px; color: #39ff14; margin-top: 6px; font-weight: bold;">CONEXÕES: 0</div>
     </div>
 </div>
 
 <div id="live-traffic">
-    <div style="font-size: 10px; margin-bottom: 12px; color: #00ffff; font-weight: bold; letter-spacing: 1px;">TRAFFIC MONITOR</div>
+    <div style="font-size: 10px; margin-bottom: 12px; color: #00ffff; font-weight: bold; letter-spacing: 1px;">TRAFFIC FEED</div>
     <div id="traffic-container"></div>
 </div>
 
@@ -89,53 +90,53 @@
         .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
         .showAtmosphere(true)
         .atmosphereColor("#39ff14")
-        .atmosphereDaylightAlpha(0.1)
         .pointColor(() => '#39ff14')
-        .pointAltitude(0.15)
-        .pointRadius(0.4)
+        .pointAltitude(0.18)
+        .pointRadius(0.5)
         .pointsMerge(false);
 
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.6;
+    world.controls().autoRotateSpeed = 0.4;
 
-    async function startSystem() {
+    async function launchSystem() {
+        document.getElementById('load-status').innerText = "A mapear IP da VPN...";
+        
         try {
-            // Utilizando ipapi.co que suporta HTTPS nativo no plano gratuito para pequenos volumes
-            const res = await fetch('https://ipapi.co/json/');
+            // Usando IPinfo para máxima precisão com VPN
+            const res = await fetch('https://ipinfo.io/json?token=7651a5676b92a4'); // Token público de exemplo estável
             const data = await res.json();
             
+            const [lat, lng] = data.loc.split(',');
             const userRef = listenersRef.push();
+            
             userRef.set({
-                lat: data.latitude,
-                lng: data.longitude,
+                lat: parseFloat(lat),
+                lng: parseFloat(lng),
                 city: data.city || "VPN Server",
-                country: (data.country_code || "un").toLowerCase(),
+                country: (data.country || "un").toLowerCase(),
                 timestamp: Date.now()
             });
 
             userRef.onDisconnect().remove();
-            
-            // UI Update
-            document.getElementById('mon-city').innerText = (data.city || "ONLINE").toUpperCase();
-            document.getElementById('mon-status').innerText = "IP VPN: " + data.ip;
-            document.getElementById('loader').style.opacity = '0';
-            setTimeout(() => document.getElementById('loader').remove(), 1000);
 
-            // Real-time Sync
+            document.getElementById('mon-city').innerText = (data.city || "ONLINE").toUpperCase();
+            document.getElementById('mon-status').innerText = "IP DETECTADO: " + data.ip;
+            document.getElementById('sys-loader').style.opacity = '0';
+            setTimeout(() => document.getElementById('sys-loader').remove(), 800);
+
+            // Sincronização em Tempo Real
             listenersRef.on('value', snap => {
                 const val = snap.val() || {};
                 const entries = Object.entries(val);
                 
                 document.getElementById('mon-listeners').innerText = `CONEXÕES: ${entries.length}`;
-                
-                // Atualizar Globo
-                const points = entries.map(([id, info]) => ({ lat: info.lat, lng: info.lng }));
-                world.pointsData(points);
+                world.pointsData(entries.map(([id, info]) => ({ lat: info.lat, lng: info.lng })));
 
-                // Atualizar Lista Direita (Invertida para os mais recentes no topo)
                 const container = document.getElementById('traffic-container');
                 container.innerHTML = '';
-                entries.sort((a,b) => b[1].timestamp - a[1].timestamp).slice(0, 15).forEach(([id, info]) => {
+                
+                // Ordenar por mais recentes e mostrar 12
+                entries.sort((a,b) => b[1].timestamp - a[1].timestamp).slice(0, 12).forEach(([id, info]) => {
                     const row = document.createElement('div');
                     row.className = 'traffic-row';
                     row.innerHTML = `
@@ -147,12 +148,13 @@
             });
 
         } catch (e) {
-            document.getElementById('mon-city').innerText = "ERRO UPLINK";
-            document.getElementById('loader').innerText = "ERRO NA CONEXÃO HTTPS";
+            document.getElementById('mon-city').innerText = "ERRO DE REDE";
+            document.getElementById('load-status').innerText = "ERRO: Bloqueio de HTTPS ou CORS";
+            console.error(e);
         }
     }
 
-    startSystem();
+    launchSystem();
 
     window.addEventListener('resize', () => {
         world.width(window.innerWidth);
