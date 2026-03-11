@@ -2,11 +2,10 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v15</title>
+    <title>RAU RADAR v15 - ABLY REALTIME</title>
     <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
         #globeViz { width: 100vw; height: 100vh; }
@@ -14,9 +13,9 @@
             position: absolute; top: 20px; left: 20px; z-index: 100;
             background: rgba(0, 20, 0, 0.9); border: 2px solid #39ff14;
             padding: 15px; color: #39ff14; pointer-events: none;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.3);
         }
         .count { font-size: 50px; font-weight: bold; }
-        /* O Marcador com Bandeira */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
             background: #39ff14; color: #000; padding: 5px 10px; border-radius: 4px;
@@ -27,28 +26,26 @@
         .d-rau { width: 14px; height: 14px; background: #fff; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 20px #39ff14; }
     </style>
 </head>
-<body>
+<body oncontextmenu="return false;">
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 2px;">RADAR EM DIRETO</div>
+    <div style="font-size: 10px; letter-spacing: 2px;">RADAR ABLY EM DIRETO</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff;">A SINTONIZAR...</div>
+    <div id="status" style="font-size: 11px; color: #fff;">SINTONIZANDO ABLY...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
-    const fbConfig = {
-        apiKey: "AIzaSyDv0Tf5j9I0FL4iB1voI97tlc3K1bwvm-g",
-        databaseURL: "https://radiodosamigosunidos-aadda-default-rtdb.europe-west1.firebasedatabase.app",
-        projectId: "radiodosamigosunidos-aadda"
-    };
-
-    firebase.initializeApp(fbConfig);
-    const db = firebase.database();
-    const radarRef = db.ref('RADAR_V15');
+    // CONFIGURAÇÃO ABLY (Utilizando a tua Key)
+    const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
+    const ably = new Ably.Realtime(ABLY_KEY);
+    const channel = ably.channels.get('radar-v15');
+    
     const myID = "U" + Math.random().toString(36).substr(2, 5);
+    let activeUsers = new Map();
 
+    // INICIALIZAÇÃO DO GLOBO (Estilo Dark com Marcadores RAU)
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
@@ -62,6 +59,7 @@
 
     async function init() {
         try {
+            // 1. Obter Localização via IP
             const res = await fetch('https://ipapi.co/json/');
             const data = await res.json();
             
@@ -74,28 +72,47 @@
                 ts: Date.now()
             };
 
-            // Escreve no Firebase
-            await radarRef.child(myID).set(myPos);
-            radarRef.child(myID).onDisconnect().remove();
+            // 2. Entrar na "Presence" do Ably (Quem está online)
+            channel.presence.enter(myPos);
 
-            document.getElementById('status').innerText = "LIGADO: " + myPos.city;
-            world.pointOfView({ lat: myPos.lat, lng: myPos.lng, altitude: 2 }, 2000);
+            // 3. Ouvir quem entra e quem sai
+            channel.presence.subscribe('enter', member => updateMember(member));
+            channel.presence.subscribe('present', member => updateMember(member));
+            channel.presence.subscribe('leave', member => removeMember(member));
 
-            // Ouve as atualizações
-            radarRef.on('value', snap => {
-                const users = snap.val() || {};
-                const now = Date.now();
-                const active = Object.values(users).filter(u => (now - u.ts < 60000));
-                document.getElementById('count').innerText = active.length;
-                world.htmlElementsData(active);
+            // Carregar quem já lá está
+            channel.presence.get((err, members) => {
+                members.forEach(member => updateMember(member));
             });
 
+            document.getElementById('status').innerText = "LIGADO AO RADAR: " + myPos.city;
+            world.pointOfView({ lat: myPos.lat, lng: myPos.lng, altitude: 2 }, 2000);
+
         } catch (e) {
-            document.getElementById('status').innerText = "ERRO DE LIGAÇÃO";
+            document.getElementById('status').innerText = "ERRO NA REDE ABLY";
         }
     }
 
-    setInterval(() => radarRef.child(myID).update({ ts: Date.now() }), 15000);
+    function updateMember(member) {
+        activeUsers.set(member.clientId || member.data.id, member.data);
+        renderGlobe();
+    }
+
+    function removeMember(member) {
+        activeUsers.delete(member.clientId || member.data.id);
+        renderGlobe();
+    }
+
+    function renderGlobe() {
+        const data = Array.from(activeUsers.values());
+        document.getElementById('count').innerText = data.length;
+        world.htmlElementsData(data);
+    }
+
+    // Rotação Automática
+    world.controls().autoRotate = true;
+    world.controls().autoRotateSpeed = 0.5;
+
     window.onload = init;
 </script>
 </body>
