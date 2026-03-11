@@ -2,53 +2,68 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v15 - ABLY REALTIME</title>
+    <title>RAU RADAR v15 - FINAL</title>
     <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         #globeViz { width: 100vw; height: 100vh; }
+        
+        /* Interface HUD Estilo Radar */
         .hud {
-            position: absolute; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0, 20, 0, 0.9); border: 2px solid #39ff14;
-            padding: 15px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 15px rgba(57, 255, 20, 0.3);
+            position: absolute; top: 30px; left: 30px; z-index: 100;
+            background: rgba(0, 20, 0, 0.8); border: 1px solid #39ff14;
+            padding: 20px; color: #39ff14; pointer-events: none;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.2);
+            border-radius: 4px;
         }
-        .count { font-size: 50px; font-weight: bold; }
-        .m-rau { display: flex; flex-direction: column; align-items: center; }
+        .count { font-size: 60px; font-weight: 900; line-height: 1; margin: 5px 0; }
+        
+        /* Marcadores RAU com Bandeiras */
+        .m-rau { display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 0 8px #39ff14); }
         .l-rau {
-            background: #39ff14; color: #000; padding: 5px 10px; border-radius: 4px;
-            font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 8px;
-            box-shadow: 0 0 15px #39ff14; white-space: nowrap; text-transform: uppercase;
+            background: #39ff14; color: #000; padding: 5px 12px; border-radius: 4px;
+            font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 8px;
+            white-space: nowrap; text-transform: uppercase;
         }
-        .l-rau img { width: 20px; height: auto; border: 1px solid #000; }
-        .d-rau { width: 14px; height: 14px; background: #fff; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 20px #39ff14; }
+        .l-rau img { width: 20px; height: auto; border: 1px solid #000; border-radius: 2px; }
+        .d-rau { 
+            width: 12px; height: 12px; background: #fff; border-radius: 50%; 
+            margin-top: 6px; border: 2px solid #39ff14;
+            animation: pulse 1.5s infinite; 
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(57, 255, 20, 0.7); }
+            70% { transform: scale(1.2); box-shadow: 0 0 0 10px rgba(57, 255, 20, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(57, 255, 20, 0); }
+        }
     </style>
 </head>
 <body oncontextmenu="return false;">
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 2px;">RADAR ABLY EM DIRETO</div>
+    <div style="font-size: 10px; letter-spacing: 4px; opacity: 0.7;">RAU RADAR SYSTEM v15</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff;">SINTONIZANDO ABLY...</div>
+    <div id="status" style="font-size: 11px; color: #fff;">INICIALIZANDO ABLY...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
-    // CONFIGURAÇÃO ABLY (Utilizando a tua Key)
+    // CREDENCIAIS ABLY
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const ably = new Ably.Realtime(ABLY_KEY);
-    const channel = ably.channels.get('radar-v15');
+    const CLIENT_ID = 'U-' + Math.random().toString(36).substr(2, 5);
     
-    const myID = "U" + Math.random().toString(36).substr(2, 5);
-    let activeUsers = new Map();
-
-    // INICIALIZAÇÃO DO GLOBO (Estilo Dark com Marcadores RAU)
+    // Inicialização do Globo
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+        .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
         .backgroundColor('#000000')
+        .showAtmosphere(true)
+        .atmosphereColor('#39ff14')
+        .atmosphereAltitude(0.15)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
@@ -57,63 +72,75 @@
             return el;
         });
 
-    async function init() {
+    const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: CLIENT_ID });
+    const channel = ably.channels.get('rau-live-radar');
+    let visitors = new Map();
+
+    async function initRadar() {
         try {
-            // 1. Obter Localização via IP
+            // Obter Geo-IP (Prioridade: https)
             const res = await fetch('https://ipapi.co/json/');
-            const data = await res.json();
+            const geo = await res.json();
             
-            const myPos = {
-                id: myID,
-                lat: parseFloat(data.latitude) || 0,
-                lng: parseFloat(data.longitude) || 0,
-                city: (data.city || "Sinal Ativo").toUpperCase(),
-                country: data.country_code || "PT",
-                ts: Date.now()
+            const myData = {
+                id: CLIENT_ID,
+                lat: geo.latitude || 38.7,
+                lng: geo.longitude || -9.1,
+                city: (geo.city || "Sinal Ativo").toUpperCase(),
+                country: geo.country_code || "PT"
             };
 
-            // 2. Entrar na "Presence" do Ably (Quem está online)
-            channel.presence.enter(myPos);
+            // Eventos de Conexão
+            ably.connection.on('connected', () => {
+                document.getElementById('status').innerText = "RADAR LIGADO: " + myData.city;
+                
+                // Entrar na Presença
+                channel.presence.enter(myData);
 
-            // 3. Ouvir quem entra e quem sai
-            channel.presence.subscribe('enter', member => updateMember(member));
-            channel.presence.subscribe('present', member => updateMember(member));
-            channel.presence.subscribe('leave', member => removeMember(member));
+                // Subscrever Entradas/Saídas
+                channel.presence.subscribe(['enter', 'present', 'update'], m => {
+                    visitors.set(m.clientId, m.data);
+                    refresh();
+                });
 
-            // Carregar quem já lá está
-            channel.presence.get((err, members) => {
-                members.forEach(member => updateMember(member));
+                channel.presence.subscribe('leave', m => {
+                    visitors.delete(m.clientId);
+                    refresh();
+                });
+
+                // Carregar lista inicial
+                channel.presence.get((err, members) => {
+                    if(!err) {
+                        members.forEach(m => visitors.set(m.clientId, m.data));
+                        refresh();
+                    }
+                });
             });
 
-            document.getElementById('status').innerText = "LIGADO AO RADAR: " + myPos.city;
-            world.pointOfView({ lat: myPos.lat, lng: myPos.lng, altitude: 2 }, 2000);
+            ably.connection.on('failed', () => {
+                document.getElementById('status').innerText = "ERRO: CHAVE ABLY INVÁLIDA";
+            });
+
+            // Zoom inicial no utilizador
+            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2 }, 2500);
 
         } catch (e) {
-            document.getElementById('status').innerText = "ERRO NA REDE ABLY";
+            document.getElementById('status').innerText = "ERRO DE REDE / GEO-IP";
         }
     }
 
-    function updateMember(member) {
-        activeUsers.set(member.clientId || member.data.id, member.data);
-        renderGlobe();
-    }
-
-    function removeMember(member) {
-        activeUsers.delete(member.clientId || member.data.id);
-        renderGlobe();
-    }
-
-    function renderGlobe() {
-        const data = Array.from(activeUsers.values());
+    function refresh() {
+        const data = Array.from(visitors.values());
         document.getElementById('count').innerText = data.length;
         world.htmlElementsData(data);
     }
 
-    // Rotação Automática
+    // Configurações de Movimento
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.5;
+    world.controls().autoRotateSpeed = 0.7;
+    world.controls().enableDamping = true;
 
-    window.onload = init;
+    window.onload = initRadar;
 </script>
 </body>
 </html>
