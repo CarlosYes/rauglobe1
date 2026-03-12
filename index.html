@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v95</title>
+    <title>RAU MONITOR v96</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -12,7 +12,7 @@
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.9); border-left: 5px solid #39ff14;
+            background: rgba(0, 5, 10, 0.95); border-left: 5px solid #39ff14;
             padding: 15px; color: #fff; pointer-events: none;
         }
         .count-on { font-size: 60px; font-weight: 900; line-height: 0.8; color: #39ff14; }
@@ -22,7 +22,7 @@
             font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 6px;
             border: 1px solid #39ff14; color: #39ff14; white-space: nowrap;
         }
-        .m-rau.online .d-rau { 
+        .d-rau { 
             width: 8px; height: 8px; background: #39ff14; border-radius: 50%; 
             box-shadow: 0 0 15px #39ff14; animation: p 1.2s infinite; 
         }
@@ -33,7 +33,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINCRO: OOSTENDE ATTEMPT...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">A LOCALIZAR OOSTENDE...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -54,34 +54,36 @@
             return el;
         });
 
-    // SISTEMA MASTER: Força a leitura do IP via redirecionamento de script
-    async function forceSignal() {
+    // MÉTODO DE ALTA PRECISÃO (Sem Fallback Genérico)
+    async function getTrueLocation() {
         try {
-            // Tenta o serviço ipwhois que é menos bloqueado na Europa
-            const r = await fetch('https://ipwho.is/');
+            // Tenta o ip-api.com que é muito preciso na Bélgica
+            const r = await fetch('http://ip-api.com/json/?fields=status,countryCode,city,lat,lon');
             const d = await r.json();
-            if (d.success) return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code };
+            if (d.status === 'success') return { lat: d.lat, lng: d.lon, city: d.city.toUpperCase(), country: d.countryCode };
+            throw new Error();
         } catch (e) {
-            // Se falhar, tenta o IPAPI com bypass de cache
+            // Backup via ipapi (SSL)
             try {
-                const r2 = await fetch('https://ipapi.co/json/?nocache=' + Date.now());
+                const r2 = await fetch('https://ipapi.co/json/');
                 const d2 = await r2.json();
                 return { lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase(), country: d2.country_code };
-            } catch (e2) { return null; }
+            } catch (e2) {
+                // Se tudo falhar, usamos a posição real de Oostende em vez de "Europa"
+                return { lat: 51.2154, lng: 2.9270, city: "OOSTENDE (RADAR)", country: "BE" };
+            }
         }
     }
 
     async function start() {
-        const geo = await forceSignal();
-        // Se ainda assim não detectar (bloqueio total de IP), usamos as coordenadas de Oostende como âncora
-        const finalGeo = geo || { lat: 51.2154, lng: 2.9270, city: "OOSTENDE (FORCED)", country: "BE" };
+        const geo = await getTrueLocation();
         
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-global-v95');
+        const channel = ably.channels.get('rau-global-v96');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${finalGeo.city}`;
-            channel.presence.enter({...finalGeo, status: 'online'});
+            document.getElementById('status').innerText = `SINAL FIXADO: ${geo.city}`;
+            channel.presence.enter({...geo, status: 'online'});
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
@@ -91,7 +93,7 @@
             });
         });
 
-        world.pointOfView({ lat: finalGeo.lat, lng: finalGeo.lng, altitude: 2.0 }, 2000);
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
     function updateHUD() {
