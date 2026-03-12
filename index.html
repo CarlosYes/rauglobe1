@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU GLOBE v70 - GLOBAL FOCUS</title>
+    <title>RAU GLOBE v71</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -12,9 +12,8 @@
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(255, 255, 255, 0.05); border-left: 3px solid #00f2ff;
+            background: rgba(0, 0, 0, 0.8); border-left: 3px solid #00f2ff;
             padding: 15px 25px; color: #fff; pointer-events: none;
-            backdrop-filter: blur(5px);
         }
         .count { font-size: 60px; font-weight: 300; color: #fff; line-height: 1; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
@@ -30,9 +29,9 @@
 <body>
 
 <div class="hud">
-    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.7;">Sinal Global Ativo</div>
+    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.7;">Sinal Ativo</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; margin-top: 5px; color: #00f2ff;">A monitorizar rede...</div>
+    <div id="status" style="font-size: 11px; margin-top: 5px; color: #00f2ff;">Iniciando sistema...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -41,51 +40,50 @@
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
     const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6);
 
-    const world = Globe()(document.getElementById('globeViz'))
-        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
-        .backgroundColor('#000000')
-        .showAtmosphere(true)
-        .atmosphereColor('#00f2ff')
-        .htmlElement(d => {
-            const el = document.createElement('div');
-            el.className = 'm-rau';
-            const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
-            el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
-            return el;
-        });
-
-    async function getNetworkData() {
+    // 1. FUNÇÃO DE LOCALIZAÇÃO PURA (Sem adivinhações)
+    async function getFastLoc() {
         try {
-            const res = await fetch('https://ipwho.is/');
+            // Usando ip-api (mais estável para evitar o loop de carregamento)
+            const res = await fetch('https://ipapi.co/json/');
             const d = await res.json();
             return {
                 lat: d.latitude,
                 lng: d.longitude,
-                city: (d.city || "Sinal Ativo").toUpperCase(),
+                city: (d.city || "Online").toUpperCase(),
                 country: (d.country_code || "").toLowerCase()
             };
         } catch (e) {
-            const res2 = await fetch('https://ipapi.co/json/');
+            // Se falhar, tenta uma alternativa rápida
+            const res2 = await fetch('https://ipwho.is/');
             const d2 = await res2.json();
             return { lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase(), country: d2.country_code.toLowerCase() };
         }
     }
 
-    async function init() {
-        const geo = await getNetworkData();
+    // 2. INICIALIZAÇÃO DO GLOBO
+    async function start() {
+        const geo = await getFastLoc();
+        document.getElementById('status').innerText = `Localizado: ${geo.city}`;
+
+        const world = Globe()(document.getElementById('globeViz'))
+            .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+            .backgroundColor('#000000')
+            .showAtmosphere(true)
+            .atmosphereColor('#00f2ff')
+            .htmlElement(d => {
+                const el = document.createElement('div');
+                el.className = 'm-rau';
+                const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
+                el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
+                return el;
+            });
+
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
         const channel = ably.channels.get('rau-live-radar');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `Ligado: ${geo.city}`;
             channel.presence.enter(geo);
-
-            channel.presence.subscribe('enter', (member) => {
-                // Foca automaticamente no novo utilizador que entrar
-                const newData = member.data;
-                world.pointOfView({ lat: newData.lat, lng: newData.lng, altitude: 2.0 }, 2000);
-            });
-
+            
             const sync = () => {
                 channel.presence.get((err, members) => {
                     if (!err) {
@@ -99,13 +97,11 @@
             sync();
         });
 
-        // Posição inicial do utilizador atual
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
+        world.controls().autoRotate = true;
     }
 
-    world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.5;
-    window.onload = init;
+    window.onload = start;
 </script>
 </body>
 </html>
