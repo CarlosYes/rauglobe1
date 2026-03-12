@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v42 - PHANTOM</title>
+    <title>RAU RADAR v43 - SATELLITE LINK</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -12,34 +12,32 @@
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.9); border: 2px solid #39ff14;
+            background: rgba(0, 20, 0, 0.9); border: 2px solid #39ff14;
             padding: 20px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 30px rgba(57, 255, 20, 0.4);
+            box-shadow: 0 0 40px rgba(57, 255, 20, 0.3); border-radius: 4px;
         }
-        .count { font-size: 80px; font-weight: 900; color: #fff; line-height: 0.8; }
-        
-        /* Estilo RevolverMaps */
+        .count { font-size: 85px; font-weight: 900; color: #fff; line-height: 0.8; letter-spacing: -2px; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #39ff14; color: #000; padding: 4px 10px; border-radius: 2px;
-            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 6px;
-            white-space: nowrap; border: 1px solid #fff; box-shadow: 0 5px 15px #000;
+            background: #39ff14; color: #000; padding: 4px 12px; border-radius: 2px;
+            font-size: 13px; font-weight: 900; display: flex; align-items: center; gap: 8px;
+            white-space: nowrap; border: 1px solid #fff; box-shadow: 0 5px 20px #000;
         }
-        .l-rau img { width: 20px; height: 13px; object-fit: cover; }
+        .l-rau img { width: 22px; height: 15px; object-fit: cover; }
         .d-rau { 
-            width: 12px; height: 12px; background: #fff; border-radius: 50%; 
+            width: 14px; height: 14px; background: #fff; border-radius: 50%; 
             margin-top: 5px; border: 2px solid #39ff14; 
-            animation: pulse 1.2s infinite ease-out; 
+            animation: pulse 1s infinite ease-out; 
         }
-        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4.5); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 4px; margin-bottom: 5px;">RAU RADAR • ONLINE</div>
+    <div style="font-size: 10px; letter-spacing: 4px; opacity: 0.8;">SATELLITE TRACKING ACTIVE</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px;">A LOCALIZAR...</div>
+    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px; font-family: monospace;">A SINTONIZAR...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -61,33 +59,45 @@
             return el;
         });
 
-    // SISTEMA PHANTOM: Usa JSONP para furar a tranca do browser
-    function getGeo() {
+    // SISTEMA DE BYPASS VIA SCRIPT INJECT
+    function probeLocation() {
         return new Promise((resolve) => {
             const script = document.createElement('script');
-            // Usando IP-API via JSONP (impossível de bloquear via CORS)
-            script.src = 'https://ipapi.co/jsonp/';
-            window.callback = (data) => {
+            // Canal de localização via JSONP (fura CORS)
+            script.src = 'https://ipinfo.io/?callback=geoCallback';
+            document.body.appendChild(script);
+
+            window.geoCallback = (data) => {
+                const loc = data.loc.split(',');
                 resolve({
-                    lat: data.latitude,
-                    lng: data.longitude,
+                    lat: parseFloat(loc[0]),
+                    lng: parseFloat(loc[1]),
                     city: data.city.toUpperCase(),
-                    country: data.country_code.toLowerCase()
+                    country: data.country.toLowerCase()
                 });
                 document.body.removeChild(script);
             };
-            document.body.appendChild(script);
-            
-            // Timeout de segurança
-            setTimeout(() => { if(!window.geoData) resolve(null); }, 5000);
+
+            setTimeout(() => resolve(null), 4000);
         });
     }
 
-    async function start() {
-        const geo = await getGeo();
+    async function startRadar() {
+        let geo = await probeLocation();
         
-        if (!geo || !geo.city) {
-            document.getElementById('status').innerText = "ERRO: SINAL BLOQUEADO";
+        // Segundo satélite de backup se o primeiro falhar
+        if (!geo) {
+            document.getElementById('status').innerText = "LINK 1 FALHOU. USANDO BACKUP...";
+            geo = await new Promise(r => {
+                const s = document.createElement('script');
+                s.src = 'https://ipapi.co/jsonp/';
+                window.callback = (d) => r({lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code.toLowerCase()});
+                document.body.appendChild(s);
+            });
+        }
+
+        if (!geo) {
+            document.getElementById('status').innerText = "ERRO DE SINAL CRÍTICO";
             return;
         }
 
@@ -95,7 +105,7 @@
         const channel = ably.channels.get('rau-live-radar');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `FIXADO: ${geo.city} [${geo.country.toUpperCase()}]`;
+            document.getElementById('status').innerText = `LOCALIZADO: ${geo.city}`;
             channel.presence.enter(geo);
 
             const sync = () => {
@@ -112,13 +122,12 @@
             sync();
         });
 
-        // Foca o globo na TUA posição real detetada
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2500);
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
-    window.onload = start;
+    window.onload = startRadar;
 </script>
 </body>
 </html>
