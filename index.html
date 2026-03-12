@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU REAL MONITOR</title>
+    <title>RAU TRAFFIC MONITOR v84</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -11,39 +11,57 @@
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         
+        /* HUD de Monitorização */
         .hud {
             position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(0, 5, 10, 0.9); border-left: 5px solid #00f2ff;
-            padding: 20px; color: #00f2ff; pointer-events: none;
-            box-shadow: 0 0 30px rgba(0, 242, 255, 0.2);
+            background: rgba(0, 5, 10, 0.9); border-left: 5px solid #fff;
+            padding: 20px; color: #fff; pointer-events: none;
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.1); border-radius: 2px;
         }
-        .count { font-size: 80px; font-weight: 900; color: #fff; line-height: 0.8; letter-spacing: -3px; }
+        .count { font-size: 80px; font-weight: 900; line-height: 0.8; letter-spacing: -3px; }
         
+        /* Legenda de Status */
+        .status-legenda { font-size: 10px; margin-top: 10px; display: flex; gap: 10px; font-family: monospace; }
+        .dot-green { color: #39ff14; }
+        .dot-red { color: #8b0000; }
+
+        /* Etiquetas do Globo */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #fff; color: #000; padding: 4px 10px; border-radius: 2px;
-            font-size: 12px; font-weight: 900; display: flex; align-items: center; gap: 6px;
-            white-space: nowrap; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            background: rgba(0, 0, 0, 0.8); padding: 3px 8px; border-radius: 2px;
+            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 5px;
+            white-space: nowrap; transition: all 0.3s ease;
         }
-        .l-rau img { width: 20px; height: 13px; object-fit: cover; }
+        /* Estilo da Legenda Quando Online */
+        .m-rau.online .l-rau { color: #39ff14; border: 1px solid #39ff14; }
+        /* Estilo da Legenda Quando Offline */
+        .m-rau.offline .l-rau { color: #8b0000; border: 1px solid #8b0000; opacity: 0.7; }
         
-        .d-rau { 
-            width: 12px; height: 12px; background: #fff; border-radius: 50%; 
-            margin-top: 5px; border: 2px solid #00f2ff; 
+        .l-rau img { width: 16px; height: 11px; object-fit: cover; }
+        
+        /* Ponto Base */
+        .d-rau { width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; transition: all 0.3s ease; }
+        
+        /* Ponto Online (Verde Pulsante) */
+        .m-rau.online .d-rau { 
+            background: #39ff14; box-shadow: 0 0 15px #39ff14; 
             animation: pulse 1.2s infinite ease-out; 
         }
-        @keyframes pulse { 
-            0% { transform: scale(1); opacity: 1; } 
-            100% { transform: scale(3.5); opacity: 0; } 
-        }
+        /* Ponto Offline (Vermelho Escuro Fixo) */
+        .m-rau.offline .d-rau { background: #8b0000; box-shadow: 0 0 5px #8b0000; animation: none; }
+
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(3); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 4px; opacity: 0.7;">REDE GLOBAL REAL</div>
+    <div style="font-size: 10px; letter-spacing: 4px; opacity: 0.7;">TRAFFIC MONITOR</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px; font-family: monospace;">A SINCRONIZAR SINAL...</div>
+    <div class="status-legenda">
+        <span class="dot-green">● ONLINE</span>
+        <span class="dot-red">● RECENTE (5m)</span>
+    </div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,73 +69,86 @@
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
     const SESSION_ID = 'REAL-' + Math.random().toString(36).substr(2, 7);
+    const OFFLINE_PERSIST_MS = 5 * 60 * 1000; // 5 Minutos
+    let visitorsMap = new Map();
 
-    // Início imediato do motor 3D
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
         .showAtmosphere(true)
-        .atmosphereColor('#00f2ff')
+        .atmosphereColor('#ffffff')
         .htmlElement(d => {
             const el = document.createElement('div');
-            el.className = 'm-rau';
+            // Aplica a classe online/offline com base no status do dado
+            el.className = `m-rau ${d.status}`; 
             const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
             el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.5;
-
     async function start() {
         let geo = null;
-        
-        // Tenta o serviço 1 (ipapi)
         try {
             const r = await fetch('https://ipapi.co/json/');
             const d = await r.json();
-            if(d.latitude) geo = { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code };
-        } catch(e) {}
+            if(d.latitude) geo = { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code, id: SESSION_ID, status: 'online' };
+        } catch(e) { return; }
 
-        // Se falhou, tenta o serviço 2 (ipwhois)
-        if (!geo) {
-            try {
-                const r = await fetch('https://ipwho.is/');
-                const d = await r.json();
-                if(d.success) geo = { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code };
-            } catch(e) {}
-        }
-
-        // Se tudo falhar, usamos uma coordenada base para não dar erro, mas marcamos como "Sinal Estimado"
-        if (!geo) {
-            geo = { lat: 51.2, lng: 2.9, city: "Oostende (Rede)", country: "be" };
-        }
-
-        // Ligação Ably
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('global-monitor-v81');
+        const channel = ably.channels.get('live-traffic-stream-v84');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
             channel.presence.enter(geo);
+            
+            // Sincronização inicial e atualizações (Online)
+            channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
+                if(m.data && m.data.lat) {
+                    visitorsMap.set(m.clientId || m.id, { ...m.data, status: 'online', timestamp: Date.now() });
+                    updateGlobe();
+                }
+            });
 
-            const sync = () => {
-                channel.presence.get((err, members) => {
-                    if (!err) {
-                        const active = members.map(m => m.data).filter(d => d && d.lat);
-                        document.getElementById('count').innerText = active.length;
-                        world.htmlElementsData(active);
-                    }
-                });
-            };
+            // Detecção de Saída (Muda para Vermelho Escuro)
+            channel.presence.subscribe('leave', (m) => {
+                const visitorId = m.clientId || m.id;
+                if (visitorsMap.has(visitorId)) {
+                    const data = visitorsMap.get(visitorId);
+                    // Mantém os dados, mas muda o status e atualiza o tempo
+                    visitorsMap.set(visitorId, { ...data, status: 'offline', timestamp: Date.now() });
+                    updateGlobe();
+                }
+            });
 
-            channel.presence.subscribe(['enter', 'leave', 'present', 'update'], sync);
-            sync();
+            // Limpeza automática de pontos vermelhos antigos
+            setInterval(cleanOldOfflineVisitors, 10000);
         });
 
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
+        if(geo) world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
     }
 
+    function cleanOldOfflineVisitors() {
+        const now = Date.now();
+        let changed = false;
+        for (let [id, data] of visitorsMap) {
+            // Só remove se for 'offline' E tiver passado o tempo
+            if (data.status === 'offline' && (now - data.timestamp > OFFLINE_PERSIST_MS)) {
+                visitorsMap.delete(id);
+                changed = true;
+            }
+        }
+        if (changed) updateGlobe();
+    }
+
+    function updateGlobe() {
+        const data = Array.from(visitorsMap.values());
+        // Contador mostra apenas os Online
+        const onlineCount = data.filter(v => v.status === 'online').length;
+        document.getElementById('count').innerText = onlineCount;
+        world.htmlElementsData(data);
+    }
+
+    world.controls().autoRotate = true;
+    world.controls().autoRotateSpeed = 0.6;
     window.onload = start;
 </script>
 </body>
