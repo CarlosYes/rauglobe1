@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v36 - COUNT FIX</title>
+    <title>RAU RADAR v37 - CLOUDFLARE SYNC</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -12,11 +12,11 @@
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.9); border: 2px solid #39ff14;
+            background: rgba(0, 10, 0, 0.9); border: 2px solid #39ff14;
             padding: 20px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 20px #39ff14;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
         }
-        .count { font-size: 80px; font-weight: 900; color: #fff; line-height: 0.8; margin: 10px 0; }
+        .count { font-size: 70px; font-weight: 900; color: #fff; line-height: 0.8; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
             background: #39ff14; color: #000; padding: 4px 10px; border-radius: 2px;
@@ -31,16 +31,15 @@
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 3px;">LIVE RADAR NODES</div>
+    <div style="font-size: 10px; letter-spacing: 3px;">RAU RADAR • SYSTEM OK</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff;">A RASTREAR...</div>
+    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px;">A SINTONIZAR...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    // ID de sessão único para garantir que tu contas como 1
     const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 9);
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -55,66 +54,64 @@
             return el;
         });
 
-    async function init() {
+    async function getLoc() {
         try {
-            // Rastreio sem permissão (IP-API)
-            const res = await fetch('https://ipapi.co/json/');
-            const geo = await res.json();
+            // Método Ultra-Seguro: Cloudflare Trace + IPWhois Fallback
+            const cfRes = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
+            const cfText = await cfRes.text();
+            const ip = cfText.split('\n').find(l => l.startsWith('ip=')).split('=')[1];
             
-            if (!geo.city) throw new Error();
-
-            const myData = {
-                id: SESSION_ID,
-                lat: geo.latitude,
-                lng: geo.longitude,
-                city: geo.city.toUpperCase(),
-                country: geo.country_code
+            const geoRes = await fetch(`https://ipwho.is/${ip}`);
+            const d = await geoRes.json();
+            
+            return {
+                lat: d.latitude,
+                lng: d.longitude,
+                city: d.city.toUpperCase(),
+                country: d.country_code
             };
-
-            // Conexão Ably com CLIENT_ID explícito
-            const ably = new Ably.Realtime({ 
-                key: ABLY_KEY, 
-                clientId: SESSION_ID,
-                echoMessages: false 
-            });
-
-            const channel = ably.channels.get('rau-live-radar');
-
-            ably.connection.on('connected', () => {
-                document.getElementById('status').innerText = "RADAR ONLINE: " + myData.city;
-                
-                // Força a entrada no canal de presença
-                channel.presence.enter(myData, (err) => {
-                    if(err) console.error("Erro ao entrar:", err);
-                    updateCount();
-                });
-
-                // Atualização em tempo real
-                const updateCount = () => {
-                    channel.presence.get((err, members) => {
-                        if(!err) {
-                            const active = members.map(m => m.data).filter(d => d && d.lat);
-                            document.getElementById('count').innerText = active.length;
-                            world.htmlElementsData(active);
-                        }
-                    });
-                };
-
-                channel.presence.subscribe(['enter', 'leave', 'present', 'update'], updateCount);
-            });
-
-            world.pointOfView({ lat: geo.latitude, lng: geo.longitude, altitude: 2.0 }, 2000);
-
         } catch (e) {
-            document.getElementById('status').innerText = "ERRO DE RASTREIO";
-            // Tenta de novo se falhar
-            setTimeout(init, 5000);
+            // Se falhar, tenta o IP-API mas sem o "S" (HTTP) para evitar bloqueios de certificados
+            const res = await fetch('https://ipapi.co/json/');
+            const d = await res.json();
+            return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code };
         }
     }
 
+    async function start() {
+        const geo = await getLoc();
+        if (!geo) { 
+            document.getElementById('status').innerText = "ERRO: ACESSO BLOQUEADO"; 
+            return; 
+        }
+
+        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
+        const channel = ably.channels.get('rau-live-radar');
+
+        ably.connection.on('connected', () => {
+            document.getElementById('status').innerText = `LOCALIZADO: ${geo.city}`;
+            channel.presence.enter(geo);
+
+            const sync = () => {
+                channel.presence.get((err, members) => {
+                    if (!err) {
+                        const active = members.map(m => m.data).filter(d => d && d.lat);
+                        document.getElementById('count').innerText = active.length;
+                        world.htmlElementsData(active);
+                    }
+                });
+            };
+
+            channel.presence.subscribe(['enter', 'leave', 'present', 'update'], sync);
+            sync();
+        });
+
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
+    }
+
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 1.5;
-    window.onload = init;
+    world.controls().autoRotateSpeed = 0.5;
+    window.onload = start;
 </script>
 </body>
 </html>
