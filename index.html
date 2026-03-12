@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v56 - TUNNEL</title>
+    <title>RAU RADAR v57 - SATELLITE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -12,9 +12,9 @@
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.95); border: 2px solid #39ff14;
+            background: rgba(0, 0, 0, 0.9); border: 2px solid #39ff14;
             padding: 20px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 35px #39ff1466; border-radius: 4px;
+            box-shadow: 0 0 35px #39ff1488; border-radius: 4px;
         }
         .count { font-size: 80px; font-weight: 900; color: #fff; line-height: 0.8; letter-spacing: -5px; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
@@ -24,23 +24,23 @@
             white-space: nowrap; border: 1px solid #fff;
         }
         .l-rau img { width: 20px; height: 13px; object-fit: cover; }
-        .d-rau { width: 12px; height: 12px; background: #fff; border-radius: 50%; margin-top: 5px; border: 2px solid #39ff14; animation: p 0.6s infinite alternate; }
-        @keyframes p { from { transform: scale(1); opacity: 1; } to { transform: scale(3.5); opacity: 0; } }
+        .d-rau { width: 12px; height: 12px; background: #fff; border-radius: 50%; margin-top: 5px; border: 2px solid #39ff14; animation: p 0.8s infinite alternate; }
+        @keyframes p { from { transform: scale(1); opacity: 1; } to { transform: scale(3); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 5px;">RAU TUNNEL v56</div>
+    <div style="font-size: 10px; letter-spacing: 5px;">RAU-SATELLITE-v57</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px; font-family: monospace;">A CRIAR TÚNEL...</div>
+    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px; font-family: monospace;">A ESTABELECER LINK...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'TUN-' + Math.random().toString(36).substr(2, 7);
+    const SESSION_ID = 'SAT-' + Math.random().toString(36).substr(2, 6);
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -55,38 +55,47 @@
             return el;
         });
 
-    async function getSafeLoc() {
+    // SISTEMA DE BYPASS VIA CLOUDFLARE
+    async function getSatelliteLoc() {
         try {
-            // Tentativa via Cloudflare (mais difícil de bloquear)
-            const response = await fetch('https://cloudflare.com/cdn-cgi/trace');
-            const data = await response.text();
-            const ip = data.split('\n').find(l => l.startsWith('ip=')).split('=')[1];
+            // Passo 1: Obter o IP e coordenadas básicas via Cloudflare (Imbloqueável)
+            const cf = await fetch('https://1.1.1.1/cdn-cgi/trace').then(r => r.text());
+            const ip = cf.split('\n').find(l => l.startsWith('ip=')).split('=')[1];
             
-            const locRes = await fetch(`https://ipapi.co/${ip}/json/`);
-            const d = await locRes.json();
-            return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code.toLowerCase() };
+            // Passo 2: Usar o IP para obter dados detalhados via JSONP (fura firewalls)
+            return new Promise((resolve) => {
+                const s = document.createElement('script');
+                const cb = 'rau_' + Date.now();
+                s.src = `https://ipwho.is/${ip}?callback=${cb}`;
+                window[cb] = (d) => {
+                    resolve({
+                        lat: d.latitude || 38.7,
+                        lng: d.longitude || -9.1,
+                        city: (d.city || d.region || "ONLINE").toUpperCase(),
+                        country: (d.country_code || "pt").toLowerCase()
+                    });
+                    delete window[cb];
+                    document.body.removeChild(s);
+                };
+                document.body.appendChild(s);
+            });
         } catch (e) {
-            // PLANO DE EMERGÊNCIA: Se tudo falhar, gera um ponto funcional para não travar o radar
-            return { lat: 38.7, lng: -9.1, city: "SINAL REGENERADO", country: "pt" };
+            // Failsafe: Se a rede travar tudo, coloca em Portugal para o contador funcionar
+            return { lat: 38.7369, lng: -9.1427, city: "SINAL DE EMERGÊNCIA", country: "pt" };
         }
     }
 
-    async function init() {
-        const geo = await getSafeLoc();
+    async function launch() {
+        const geo = await getSatelliteLoc();
         
-        const ably = new Ably.Realtime({ 
-            key: ABLY_KEY, 
-            clientId: SESSION_ID,
-            transportParams: { heartbeatInterval: 5000 } // Mantém a ligação viva à força
-        });
-        
+        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
         const channel = ably.channels.get('rau-live-radar');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `TÚNEL ATIVO: ${geo.city}`;
+            document.getElementById('status').innerText = `LINK FIXADO: ${geo.city}`;
             channel.presence.enter(geo);
 
-            const update = () => {
+            const sync = () => {
                 channel.presence.get((err, members) => {
                     if (!err) {
                         const nodes = members.map(m => m.data).filter(x => x && x.lat);
@@ -95,8 +104,8 @@
                     }
                 });
             };
-            channel.presence.subscribe(['enter', 'leave', 'present', 'update'], update);
-            update();
+            channel.presence.subscribe(['enter', 'leave', 'present', 'update'], sync);
+            sync();
         });
 
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
@@ -104,7 +113,7 @@
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
-    window.onload = init;
+    window.onload = launch;
 </script>
 </body>
 </html>
