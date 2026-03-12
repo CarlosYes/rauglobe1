@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU GLOBE v69 - NETWORK TRACE</title>
+    <title>RAU GLOBE v70 - GLOBAL FOCUS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,16 +30,16 @@
 <body>
 
 <div class="hud">
-    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.7;">Rastreio de Rede</div>
+    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.7;">Sinal Global Ativo</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; margin-top: 5px; color: #00f2ff;">A traçar rota física...</div>
+    <div id="status" style="font-size: 11px; margin-top: 5px; color: #00f2ff;">A monitorizar rede...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'TRACE-' + Math.random().toString(36).substr(2, 6);
+    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6);
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -54,22 +54,17 @@
             return el;
         });
 
-    async function getNetworkTrace() {
+    async function getNetworkData() {
         try {
-            // Usamos o ipwho.is que é mais preciso para redes europeias (Bélgica/Holanda)
             const res = await fetch('https://ipwho.is/');
             const d = await res.json();
-            
-            if (!d.success) throw new Error();
-
             return {
                 lat: d.latitude,
                 lng: d.longitude,
-                city: d.city.toUpperCase(),
-                country: d.country_code.toLowerCase()
+                city: (d.city || "Sinal Ativo").toUpperCase(),
+                country: (d.country_code || "").toLowerCase()
             };
         } catch (e) {
-            // Se tudo falhar, ele tenta a última API disponível
             const res2 = await fetch('https://ipapi.co/json/');
             const d2 = await res2.json();
             return { lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase(), country: d2.country_code.toLowerCase() };
@@ -77,14 +72,19 @@
     }
 
     async function init() {
-        const geo = await getNetworkTrace();
-        
+        const geo = await getNetworkData();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
         const channel = ably.channels.get('rau-live-radar');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `Ponto de Rede: ${geo.city}`;
+            document.getElementById('status').innerText = `Ligado: ${geo.city}`;
             channel.presence.enter(geo);
+
+            channel.presence.subscribe('enter', (member) => {
+                // Foca automaticamente no novo utilizador que entrar
+                const newData = member.data;
+                world.pointOfView({ lat: newData.lat, lng: newData.lng, altitude: 2.0 }, 2000);
+            });
 
             const sync = () => {
                 channel.presence.get((err, members) => {
@@ -99,10 +99,12 @@
             sync();
         });
 
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 1.8 }, 2000);
+        // Posição inicial do utilizador atual
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
     world.controls().autoRotate = true;
+    world.controls().autoRotateSpeed = 0.5;
     window.onload = init;
 </script>
 </body>
