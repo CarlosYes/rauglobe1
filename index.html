@@ -2,127 +2,112 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU GLOBAL v88</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RAU GLOBAL v89</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
-        
         .hud {
-            position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(0, 5, 10, 0.9); border-left: 5px solid #39ff14;
-            padding: 20px; color: #fff; pointer-events: none;
-            box-shadow: 0 0 30px rgba(57, 255, 20, 0.2); border-radius: 2px;
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: rgba(0, 10, 20, 0.9); border-left: 5px solid #39ff14;
+            padding: 15px; color: #fff; pointer-events: none; border-radius: 0 4px 4px 0;
         }
-        .count-online { font-size: 70px; font-weight: 900; line-height: 0.8; color: #39ff14; }
-        .count-total { font-size: 18px; margin-top: 10px; opacity: 0.8; letter-spacing: 1px; }
-
+        .count-on { font-size: 60px; font-weight: 900; line-height: 0.8; color: #39ff14; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0, 0, 0, 0.8); padding: 3px 8px; border-radius: 2px;
-            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 5px;
-            white-space: nowrap; transition: all 0.3s ease;
+            background: rgba(0,0,0,0.85); padding: 3px 8px; border-radius: 2px;
+            font-size: 10px; font-weight: 900; display: flex; align-items: center; gap: 5px;
         }
         .m-rau.online .l-rau { color: #39ff14; border: 1px solid #39ff14; }
-        .m-rau.offline .l-rau { color: #8b0000; border: 1px solid #8b0000; opacity: 0.7; }
-        
-        .l-rau img { width: 16px; height: 11px; object-fit: cover; }
-        .d-rau { width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; }
-        
-        .m-rau.online .d-rau { background: #39ff14; box-shadow: 0 0 15px #39ff14; animation: pulse 1.2s infinite ease-out; }
-        .m-rau.offline .d-rau { background: #8b0000; box-shadow: 0 0 5px #8b0000; }
-
-        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(3); opacity: 0; } }
+        .m-rau.offline .l-rau { color: #8b0000; border: 1px solid #8b0000; opacity: 0.6; }
+        .l-rau img { width: 14px; height: 10px; }
+        .d-rau { width: 6px; height: 6px; border-radius: 50%; margin-top: 2px; }
+        .m-rau.online .d-rau { background: #39ff14; box-shadow: 0 0 10px #39ff14; animation: p 1.2s infinite; }
+        .m-rau.offline .d-rau { background: #8b0000; }
+        @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(3.5); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 4px; opacity: 0.7; color: #39ff14;">SINAIS ATIVOS</div>
-    <div id="onlineCount" class="count-online">0</div>
-    <div id="totalCount" class="count-total">TOTAL NO GLOBO: 0</div>
-    <div id="status" style="font-size: 9px; margin-top: 10px; font-family: monospace; color: #39ff14;">A ESTABELECER LIGAÇÃO...</div>
+    <div style="font-size: 9px; letter-spacing: 2px; color: #39ff14;">SINAIS ATIVOS</div>
+    <div id="onCount" class="count-on">0</div>
+    <div id="totCount" style="font-size: 11px; margin-top: 5px; opacity: 0.8;">TOTAL: 0</div>
+    <div id="status" style="font-size: 9px; margin-top: 8px; font-family: monospace; color: #39ff14;">INICIANDO BYPASS...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 7);
-    const PERSIST_MS = 5 * 60 * 1000;
-    let visitorsMap = new Map();
+    const SESSION_ID = 'UID-' + Math.random().toString(36).substr(2, 7);
+    const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
-        .showAtmosphere(true)
-        .atmosphereColor('#39ff14')
+        .showAtmosphere(true).atmosphereColor('#39ff14')
         .htmlElement(d => {
             const el = document.createElement('div');
-            el.className = `m-rau ${d.status}`; 
-            const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
+            el.className = `m-rau ${d.status}`;
+            const flag = d.country ? `<img src="https://flagcdn.com/w20/${d.country.toLowerCase()}.png">` : '';
             el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    // SISTEMA DE MULTI-LOCALIZAÇÃO (Anti-Bloqueio)
-    async function getSafeLocation() {
-        const endpoints = [
-            'https://ipapi.co/json/',
-            'https://ipwho.is/',
-            'https://api.ipify.org?format=json' // Backup extremo
-        ];
+    // MÉTODO JSONP: Contorna bloqueios de navegador telemóvel
+    function forceGetLocation() {
+        return new Promise((resolve) => {
+            const script = document.createElement('script');
+            // Usamos o callback 'callback' que o ipapi.co aceita para JSONP
+            script.src = 'https://ipapi.co/jsonp/?callback=processLoc';
+            document.body.appendChild(script);
 
-        for (let url of endpoints) {
-            try {
-                const r = await fetch(url);
-                const d = await r.json();
-                // Normaliza os dados conforme o serviço que responder
-                const lat = d.latitude || d.lat;
-                const lng = d.longitude || d.lon;
-                if (lat && lng) return {
-                    lat: parseFloat(lat),
-                    lng: parseFloat(lng),
-                    city: (d.city || "VISITANTE").toUpperCase(),
-                    country: (d.country_code || d.country_code_iso3 || "").toLowerCase()
-                };
-            } catch (e) { console.warn("Fonte falhou, tentando próxima..."); }
-        }
-        return null;
+            window.processLoc = (d) => {
+                resolve({
+                    lat: d.latitude,
+                    lng: d.longitude,
+                    city: d.city.toUpperCase(),
+                    country: d.country_code.toLowerCase()
+                });
+                delete window.processLoc;
+                document.body.removeChild(script);
+            };
+            setTimeout(() => resolve(null), 5000);
+        });
     }
 
     async function start() {
-        const geo = await getSafeLocation();
-        if (!geo) {
-            document.getElementById('status').innerText = "SINAL RESTRITO - TENTE DADOS MÓVEIS";
+        const geo = await forceGetLocation();
+        if(!geo) {
+            document.getElementById('status').innerText = "ERRO DE LIGAÇÃO (REDE RESTRITA)";
             return;
         }
 
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('global-traffic-v88');
+        const channel = ably.channels.get('rau-final-v89');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL FIXADO: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
             channel.presence.enter({...geo, status: 'online'});
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
-                    visitorsMap.set(m.clientId || m.id, { ...m.data, status: 'online', ts: Date.now() });
-                    update();
+                    visitors.set(m.clientId || m.id, { ...m.data, status: 'online', ts: Date.now() });
+                    render();
                 }
             });
 
             channel.presence.subscribe('leave', (m) => {
                 const id = m.clientId || m.id;
-                if (visitorsMap.has(id)) {
-                    visitorsMap.set(id, { ...visitorsMap.get(id), status: 'offline', ts: Date.now() });
-                    update();
+                if (visitors.has(id)) {
+                    visitors.set(id, { ...visitors.get(id), status: 'offline', ts: Date.now() });
+                    render();
                 }
             });
-
             setInterval(clean, 10000);
         });
 
@@ -131,22 +116,21 @@
 
     function clean() {
         const now = Date.now();
-        let changed = false;
-        for (let [id, data] of visitorsMap) {
-            if (data.status === 'offline' && (now - data.ts > PERSIST_MS)) {
-                visitorsMap.delete(id);
-                changed = true;
+        let up = false;
+        for (let [id, d] of visitors) {
+            if (d.status === 'offline' && (now - d.ts > 300000)) {
+                visitors.delete(id);
+                up = true;
             }
         }
-        if (changed) update();
+        if (up) render();
     }
 
-    function update() {
-        const data = Array.from(visitorsMap.values());
-        const onlineCount = data.filter(v => v.status === 'online').length;
-        document.getElementById('onlineCount').innerText = onlineCount;
-        document.getElementById('totalCount').innerText = `TOTAL NO GLOBO: ${data.length}`;
-        world.htmlElementsData(data);
+    function render() {
+        const arr = Array.from(visitors.values());
+        document.getElementById('onCount').innerText = arr.filter(v => v.status === 'online').length;
+        document.getElementById('totCount').innerText = `TOTAL: ${arr.length}`;
+        world.htmlElementsData(arr);
     }
 
     world.controls().autoRotate = true;
