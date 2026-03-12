@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU REAL GLOBE</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://unpkg.com/globe.gl"></script>
+    <title>RAU GLOBAL</title>
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/globe.gl@2.26.0/dist/globe.gl.min.js"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
-        #globeViz { width: 100vw; height: 100vh; }
+        #globeViz { width: 100vw; height: 100vh; background: #000; }
         .label {
             background: #fff; color: #000; padding: 2px 6px;
-            font-family: Arial, sans-serif; font-size: 11px; font-weight: bold;
+            font-family: sans-serif; font-size: 11px; font-weight: bold;
             border-radius: 2px; transform: translateY(-15px);
         }
-        .dot { width: 6px; height: 6px; background: #00f2ff; border-radius: 50%; box-shadow: 0 0 10px #00f2ff; }
+        .dot { width: 8px; height: 8px; background: #00f2ff; border-radius: 50%; box-shadow: 0 0 10px #00f2ff; }
     </style>
 </head>
 <body>
@@ -24,24 +24,15 @@
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'UID-' + Math.random().toString(36).substr(2, 5);
+    const SESSION_ID = 'REAL-' + Math.random().toString(36).substr(2, 5);
 
     async function init() {
-        // Captura direta de geovisita real
-        let geo = { lat: 0, lng: 0, city: "A carregar..." };
-        try {
-            const res = await fetch('https://ipwho.is/');
-            const d = await res.json();
-            geo = { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() };
-        } catch(e) {
-            const res2 = await fetch('https://ipapi.co/json/');
-            const d2 = await res2.json();
-            geo = { lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase() };
-        }
-
+        // 1. Iniciar o Globo imediatamente para evitar ecrã preto
         const world = Globe()(document.getElementById('globeViz'))
             .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
             .backgroundColor('#000000')
+            .showAtmosphere(true)
+            .atmosphereColor('#00f2ff')
             .htmlElement(d => {
                 const el = document.createElement('div');
                 el.style.display = 'flex';
@@ -51,8 +42,24 @@
                 return el;
             });
 
+        world.controls().autoRotate = true;
+        world.controls().autoRotateSpeed = 0.5;
+
+        // 2. Tentar obter localização real
+        let geo = { lat: 51.2, lng: 2.9, city: "A LER REDE..." }; // Fallback para a tua zona se falhar
+        try {
+            const res = await fetch('https://ipwho.is/');
+            const d = await res.json();
+            if(d.success) {
+                geo = { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() };
+            }
+        } catch(e) {
+            console.log("Erro de rede, a usar fallback.");
+        }
+
+        // 3. Ligar ao sistema de geovisitas reais
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('live-visits');
+        const channel = ably.channels.get('real-global-visits');
 
         ably.connection.on('connected', () => {
             channel.presence.enter(geo);
@@ -68,12 +75,12 @@
             sync();
         });
 
-        // Âncora imediata no ponto detetado
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.5 }, 500);
-        world.controls().autoRotate = true;
+        // 4. Ancorar a câmara no sinal real
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.5 }, 1000);
     }
 
-    init();
+    // Executa apenas quando as bibliotecas estiverem prontas
+    window.onload = init;
 </script>
 </body>
 </html>
