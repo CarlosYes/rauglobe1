@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v41 - BREAKER</title>
+    <title>RAU RADAR v42 - PHANTOM</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -11,29 +11,35 @@
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
-            position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 10, 0, 0.95); border: 2px solid #39ff14;
+            position: absolute; top: 25px; left: 25px; z-index: 1000;
+            background: rgba(0, 0, 0, 0.9); border: 2px solid #39ff14;
             padding: 20px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 30px rgba(57, 255, 20, 0.5);
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.4);
         }
-        .count { font-size: 85px; font-weight: 900; color: #fff; line-height: 0.8; }
+        .count { font-size: 80px; font-weight: 900; color: #fff; line-height: 0.8; }
+        
+        /* Estilo RevolverMaps */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #39ff14; color: #000; padding: 5px 12px; border-radius: 2px;
-            font-size: 13px; font-weight: 900; display: flex; align-items: center; gap: 8px;
+            background: #39ff14; color: #000; padding: 4px 10px; border-radius: 2px;
+            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 6px;
             white-space: nowrap; border: 1px solid #fff; box-shadow: 0 5px 15px #000;
         }
-        .l-rau img { width: 22px; height: 15px; object-fit: cover; }
-        .d-rau { width: 14px; height: 14px; background: #fff; border-radius: 50%; margin-top: 5px; border: 2px solid #39ff14; animation: p 0.8s infinite alternate; }
-        @keyframes p { from { transform: scale(1); opacity: 1; } to { transform: scale(3.5); opacity: 0; } }
+        .l-rau img { width: 20px; height: 13px; object-fit: cover; }
+        .d-rau { 
+            width: 12px; height: 12px; background: #fff; border-radius: 50%; 
+            margin-top: 5px; border: 2px solid #39ff14; 
+            animation: pulse 1.2s infinite ease-out; 
+        }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 4px; margin-bottom: 5px;">RAU RADAR • DEEP SCAN</div>
+    <div style="font-size: 10px; letter-spacing: 4px; margin-bottom: 5px;">RAU RADAR • ONLINE</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px; font-family: monospace;">INICIANDO BYPASS...</div>
+    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px;">A LOCALIZAR...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -55,41 +61,41 @@
             return el;
         });
 
-    async function forceTrace() {
-        try {
-            // Fura a tranca via Cloudflare (impossível de bloquear)
-            const cf = await fetch('https://www.cloudflare.com/cdn-cgi/trace').then(r => r.text());
-            const ip = cf.split('\n').find(l => l.startsWith('ip=')).split('=')[1];
-            
-            // Com o IP na mão, buscamos os detalhes sem que o browser suspeite
-            const res = await fetch(`https://ipwho.is/${ip}`);
-            const d = await res.json();
-            
-            if (!d.success) throw "Erro IP";
-
-            return {
-                lat: d.latitude,
-                lng: d.longitude,
-                city: d.city.toUpperCase(),
-                country: d.country_code
+    // SISTEMA PHANTOM: Usa JSONP para furar a tranca do browser
+    function getGeo() {
+        return new Promise((resolve) => {
+            const script = document.createElement('script');
+            // Usando IP-API via JSONP (impossível de bloquear via CORS)
+            script.src = 'https://ipapi.co/jsonp/';
+            window.callback = (data) => {
+                resolve({
+                    lat: data.latitude,
+                    lng: data.longitude,
+                    city: data.city.toUpperCase(),
+                    country: data.country_code.toLowerCase()
+                });
+                document.body.removeChild(script);
             };
-        } catch (e) {
-            // Último recurso se a Cloudflare falhar (improvável)
-            const res = await fetch('https://ipapi.co/json/');
-            const d = await res.json();
-            return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code };
-        }
+            document.body.appendChild(script);
+            
+            // Timeout de segurança
+            setTimeout(() => { if(!window.geoData) resolve(null); }, 5000);
+        });
     }
 
-    async function run() {
-        const geo = await forceTrace();
-        if (!geo) { document.getElementById('status').innerText = "SISTEMA BLOQUEADO"; return; }
+    async function start() {
+        const geo = await getGeo();
+        
+        if (!geo || !geo.city) {
+            document.getElementById('status').innerText = "ERRO: SINAL BLOQUEADO";
+            return;
+        }
 
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
         const channel = ably.channels.get('rau-live-radar');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `ALVO FIXADO: ${geo.city}`;
+            document.getElementById('status').innerText = `FIXADO: ${geo.city} [${geo.country.toUpperCase()}]`;
             channel.presence.enter(geo);
 
             const sync = () => {
@@ -106,12 +112,13 @@
             sync();
         });
 
+        // Foca o globo na TUA posição real detetada
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
-    window.onload = run;
+    window.onload = start;
 </script>
 </body>
 </html>
