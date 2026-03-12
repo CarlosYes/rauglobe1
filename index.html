@@ -3,51 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v29 - LIVE CITY & FLAG</title>
+    <title>RAU RADAR v30</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
-        
-        /* Interface HUD */
         .hud {
-            position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.9); border-left: 5px solid #39ff14;
+            position: absolute; top: 25px; left: 25px; z-index: 1000;
+            background: rgba(0, 20, 0, 0.9); border: 2px solid #39ff14;
             padding: 20px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 30px rgba(57, 255, 20, 0.3);
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.5);
         }
-        .count { font-size: 70px; font-weight: 900; color: #fff; line-height: 0.9; }
-        .label { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 5px; color: #39ff14; }
-
-        /* Marcadores no Globo */
+        .count { font-size: 75px; font-weight: 900; color: #fff; line-height: 0.8; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
             background: #39ff14; color: #000; padding: 4px 12px; border-radius: 2px;
             font-size: 12px; font-weight: 900; display: flex; align-items: center; gap: 8px;
-            white-space: nowrap; box-shadow: 0 5px 20px rgba(0,0,0,0.8);
-            border: 1px solid #fff;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.8); border: 1px solid #fff;
         }
-        .l-rau img { width: 20px; height: 14px; object-fit: cover; box-shadow: 0 0 2px #000; }
-        .d-rau { 
-            width: 12px; height: 12px; background: #fff; border-radius: 50%; 
-            margin-top: 5px; border: 2px solid #39ff14; 
-            animation: radar-pulse 1.2s infinite ease-out; 
-        }
-
-        @keyframes radar-pulse {
-            0% { transform: scale(1); opacity: 1; }
-            100% { transform: scale(3.5); opacity: 0; }
-        }
+        .l-rau img { width: 22px; height: 15px; object-fit: cover; }
+        .d-rau { width: 14px; height: 14px; background: #fff; border-radius: 50%; margin-top: 5px; border: 2px solid #39ff14; animation: p 1s infinite; }
+        @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div class="label">RAU RADAR • ACTIVE NODES</div>
+    <div style="font-size: 10px; letter-spacing: 4px;">RAU RADAR SYSTEM v30</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 12px; color: #fff; margin-top: 10px; font-weight: bold;">A RASTREAR SINAL...</div>
+    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px;">SINCRONIZANDO NODOS...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -57,96 +43,70 @@
     const CLIENT_ID = 'NODE-' + Math.random().toString(36).substr(2, 9);
 
     const world = Globe()(document.getElementById('globeViz'))
-        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor('#39ff14')
-        .atmosphereAltitude(0.15)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
-            const flagUrl = `https://flagcdn.com/w40/${d.country.toLowerCase()}.png`;
-            el.innerHTML = `
-                <div class="l-rau">
-                    <img src="${flagUrl}" onerror="this.style.display='none'">
-                    <span>${d.city}</span>
-                </div>
-                <div class="d-rau"></div>
-            `;
+            el.innerHTML = `<div class="l-rau"><img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png"><span>${d.city}</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    async function fetchLocation() {
-        // Tenta 3 serviços diferentes para garantir que não há "Erro de Rastreio"
-        const services = [
-            'https://ipwho.is/',
-            'https://ipapi.co/json/',
-            'https://extreme-ip-lookup.com/json/'
-        ];
-
-        for (let url of services) {
-            try {
-                const res = await fetch(url);
-                const data = await res.json();
-                
-                // Normalização dos dados para diferentes APIs
-                const lat = data.latitude || data.lat;
-                const lng = data.longitude || data.lon;
-                const city = data.city;
-                const country = data.country_code || data.countryCode;
-
-                if (lat && lng && city) {
-                    return { lat, lng, city: city.toUpperCase(), country: country.toUpperCase() };
-                }
-            } catch (e) {
-                console.warn(`Serviço ${url} falhou, a tentar o próximo...`);
+    async function getLoc() {
+        try {
+            // MÉTODO 1: CLOUDFLARE (IMPOSSÍVEL DE BLOQUEAR)
+            const cf = await fetch('https://www.cloudflare.com/cdn-cgi/trace').then(r => r.text());
+            const ip = cf.split('\n').find(l => l.startsWith('ip=')).split('=')[1];
+            
+            // MÉTODO 2: IPWHOIS (ALTA PRECISÃO)
+            const res = await fetch(`https://ipwho.is/${ip}`);
+            const d = await res.json();
+            
+            if (d.success) {
+                return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code };
             }
+        } catch (e) {
+            // MÉTODO 3: FALLBACK IP-API
+            const res = await fetch('https://ipapi.co/json/');
+            const d = await res.json();
+            return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code };
         }
-        return null;
     }
 
-    async function startRadar() {
-        const geo = await fetchLocation();
-        
-        if (!geo) {
-            document.getElementById('status').innerText = "ERRO: BLOQUEIO DE REDE";
-            return;
-        }
+    async function start() {
+        const geo = await getLoc();
+        if (!geo) { document.getElementById('status').innerText = "ERRO DE CONEXÃO FATAL"; return; }
 
         const myData = { id: CLIENT_ID, ...geo };
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: CLIENT_ID });
         const channel = ably.channels.get('rau-live-radar');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL FIXADO: ${geo.city} [${geo.country}]`;
+            document.getElementById('status').innerText = `RADAR ATIVO: ${geo.city} [${geo.country}]`;
             channel.presence.enter(myData);
 
-            const updateMap = () => {
+            const update = () => {
                 channel.presence.get((err, members) => {
                     if (!err) {
-                        const activeUsers = members.map(m => m.data).filter(d => d && d.lat);
-                        document.getElementById('count').innerText = activeUsers.length;
-                        world.htmlElementsData(activeUsers);
+                        const active = members.map(m => m.data).filter(d => d && d.lat);
+                        document.getElementById('count').innerText = active.length;
+                        world.htmlElementsData(active);
                     }
                 });
             };
 
-            channel.presence.subscribe(['enter', 'leave', 'update', 'present'], updateMap);
-            updateMap();
+            channel.presence.subscribe(['enter', 'leave', 'update', 'present'], update);
+            update();
         });
 
-        // Foca o globo na tua cidade
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
-    window.onload = startRadar;
-
-    window.onresize = () => {
-        world.width(window.innerWidth);
-        world.height(window.innerHeight);
-    };
+    window.onload = start;
 </script>
 </body>
 </html>
