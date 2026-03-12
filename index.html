@@ -3,85 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v23 - STEALTH</title>
+    <title>RAU RADAR v24</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 20, 0, 0.9); border: 2px solid #39ff14;
             padding: 15px 25px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 25px rgba(57, 255, 20, 0.4);
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
         }
         .count { font-size: 60px; font-weight: 900; color: #fff; line-height: 1; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #39ff14; color: #000; padding: 4px 10px; border-radius: 2px;
-            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 6px;
-            white-space: nowrap; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            background: #39ff14; color: #000; padding: 3px 8px; border-radius: 2px;
+            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 5px;
+            white-space: nowrap;
         }
-        .l-rau img { width: 18px; height: 12px; object-fit: cover; }
-        .d-rau { 
-            width: 10px; height: 10px; background: #fff; border-radius: 50%; 
-            margin-top: 5px; border: 2px solid #39ff14; animation: pulse 1s infinite alternate; 
-        }
-        @keyframes pulse { from { transform: scale(1); opacity: 0.8; } to { transform: scale(2); opacity: 0; } }
+        .l-rau img { width: 16px; height: 11px; object-fit: cover; }
+        .d-rau { width: 10px; height: 10px; background: #fff; border-radius: 50%; margin-top: 4px; border: 2px solid #39ff14; animation: p 1.5s infinite; }
+        @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(3); opacity: 0; } }
     </style>
 </head>
-<body oncontextmenu="return false;">
+<body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 4px; margin-bottom: 5px;">RAU RADAR STEALTH v23</div>
+    <div style="font-size: 10px; letter-spacing: 2px;">RAU LIVE NODES</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff; margin-top: 5px;">RASTREIO ATIVO...</div>
+    <div id="status" style="font-size: 10px; color: #fff; opacity: 0.7;">INICIALIZANDO...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'S-' + Math.random().toString(36).substr(2, 7);
+    const CLIENT_ID = 'U-' + Math.random().toString(36).substr(2, 8);
 
     const world = Globe()(document.getElementById('globeViz'))
-        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor('#39ff14')
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
-            const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
-            el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
+            el.innerHTML = `<div class="l-rau"><img src="https://flagcdn.com/w20/${d.country.toLowerCase()}.png"><span>${d.city}</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    async function init() {
+    async function start() {
         try {
-            // Serviço IPWHOIS - Muito mais preciso que ipapi e sem pop-ups
-            const res = await fetch('https://ipwho.is/');
-            const geo = await res.json();
-            
-            if(!geo.success) throw new Error();
+            // IP-API é o serviço mais rápido para detectar a tua zona sem pedir permissão
+            const geo = await fetch('https://ipapi.co/json/').then(r => r.json());
+            const myData = { id: CLIENT_ID, lat: geo.latitude, lng: geo.longitude, city: (geo.city || "Ativo").toUpperCase(), country: geo.country_code || "PT" };
 
-            const myData = {
-                id: SESSION_ID,
-                lat: geo.latitude,
-                lng: geo.longitude,
-                city: (geo.city || "Alvo Ativo").toUpperCase(),
-                country: geo.country_code || "PT"
-            };
-
-            const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
+            const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: CLIENT_ID });
             const channel = ably.channels.get('rau-live-radar');
 
             ably.connection.on('connected', () => {
                 document.getElementById('status').innerText = "SINAL FIXADO: " + myData.city;
                 channel.presence.enter(myData);
 
-                const update = () => {
+                const refresh = () => {
                     channel.presence.get((err, members) => {
                         if(!err) {
                             const active = members.map(m => m.data).filter(d => d && d.lat);
@@ -91,21 +77,17 @@
                     });
                 };
 
-                channel.presence.subscribe(['enter', 'leave', 'update', 'present'], update);
-                update();
+                channel.presence.subscribe(['enter', 'leave', 'update', 'present'], refresh);
+                refresh();
             });
 
-            // Foca na tua posição sem perguntar nada
             world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.0 }, 2000);
-
-        } catch (e) {
-            document.getElementById('status').innerText = "ERRO DE RASTREIO";
-        }
+        } catch (e) { document.getElementById('status').innerText = "ERRO DE REDE"; }
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
-    window.onload = init;
+    window.onload = start;
 </script>
 </body>
 </html>
