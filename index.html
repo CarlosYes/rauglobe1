@@ -3,24 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU GLOBE v72</title>
+    <title>RAU GLOBE v73</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
-        #globeViz { width: 100vw; height: 100vh; position: absolute; }
+        #globeViz { width: 100vw; height: 100vh; position: absolute; visibility: hidden; }
         .hud {
             position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.85); border-left: 3px solid #00f2ff;
+            background: rgba(0, 0, 0, 0.9); border-left: 3px solid #00f2ff;
             padding: 15px 25px; color: #fff; pointer-events: none;
-            box-shadow: 0 0 20px rgba(0, 242, 255, 0.2);
+        }
+        #loader {
+            position: absolute; width: 100%; height: 100%; display: flex;
+            justify-content: center; align-items: center; color: #00f2ff;
+            font-size: 14px; letter-spacing: 3px; text-transform: uppercase;
         }
         .count { font-size: 60px; font-weight: 300; color: #fff; line-height: 1; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #00f2ff; color: #000; padding: 4px 10px; font-size: 12px; 
-            font-weight: 700; display: flex; align-items: center; gap: 6px; white-space: nowrap;
+            background: #00f2ff; color: #000; padding: 4px 10px; border-radius: 0px;
+            font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px;
+            white-space: nowrap;
         }
         .l-rau img { width: 20px; height: 13px; object-fit: cover; }
         .d-rau { width: 10px; height: 10px; background: #fff; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 15px #00f2ff; }
@@ -28,10 +33,12 @@
 </head>
 <body>
 
-<div class="hud">
+<div id="loader">A estabelecer ligação real...</div>
+
+<div class="hud" id="hud" style="display: none;">
     <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.7;">Sinal Ativo</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; margin-top: 5px; color: #00f2ff;">A fixar âncora de rede...</div>
+    <div id="status" style="font-size: 11px; margin-top: 5px; color: #00f2ff;">Aguardando...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -39,9 +46,8 @@
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
     const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6);
-    let world;
 
-    async function getLoc() {
+    async function getRealData() {
         try {
             const res = await fetch('https://ipwho.is/');
             const d = await res.json();
@@ -50,15 +56,25 @@
         } catch (e) {
             const res2 = await fetch('https://ipapi.co/json/');
             const d2 = await res2.json();
-            return { lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase(), country: d2.country_code.toLowerCase() };
+            return { lat: d2.latitude, lng: d2.longitude, city: (d2.city || "Online").toUpperCase(), country: (d2.country_code || "").toLowerCase() };
         }
     }
 
-    async function init() {
-        const geo = await getLoc();
-        document.getElementById('status').innerText = `Sinal Fixado: ${geo.city}`;
+    async function start() {
+        const geo = await getRealData();
+        
+        // Só avança se tivermos coordenadas válidas para evitar que o globo "fuja"
+        if (!geo.lat || !geo.lng) {
+            document.getElementById('loader').innerText = "Erro: Falha no sinal de rede.";
+            return;
+        }
 
-        world = Globe()(document.getElementById('globeViz'))
+        document.getElementById('loader').style.display = 'none';
+        document.getElementById('hud').style.display = 'block';
+        document.getElementById('globeViz').style.visibility = 'visible';
+        document.getElementById('status').innerText = `Ligado: ${geo.city}`;
+
+        const world = Globe()(document.getElementById('globeViz'))
             .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
             .backgroundColor('#000000')
             .showAtmosphere(true)
@@ -76,7 +92,6 @@
 
         ably.connection.on('connected', () => {
             channel.presence.enter(geo);
-            
             const sync = () => {
                 channel.presence.get((err, members) => {
                     if (!err) {
@@ -90,16 +105,11 @@
             sync();
         });
 
-        // Só move a câmara quando tivermos as coordenadas reais confirmadas
-        if (geo.lat && geo.lng) {
-            world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
-        }
-        
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 });
         world.controls().autoRotate = true;
-        world.controls().autoRotateSpeed = 0.5;
     }
 
-    window.onload = init;
+    window.onload = start;
 </script>
 </body>
 </html>
