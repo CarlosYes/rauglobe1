@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v58 - REAL TRACK</title>
+    <title>RAU RADAR v59 - GLOBAL REAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -31,9 +31,9 @@
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 5px;">RAU REAL TRACKER</div>
+    <div style="font-size: 10px; letter-spacing: 5px;">RAU GLOBAL TRACKER</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px; font-family: monospace;">SINTONIA FINA...</div>
+    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px; font-family: monospace;">A LOCALIZAR ALVO REAL...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -55,49 +55,45 @@
             return el;
         });
 
-    // MÉTODO DE ALTA PRECISÃO POR IP-API (O mais real sem GPS)
-    function getRealLoc() {
-        return new Promise((resolve) => {
-            const script = document.createElement('script');
-            // Usando o endpoint de alta precisão da ip-api
-            script.src = `https://demo.ip-api.com/json/?callback=realRau&fields=66846719&_=${Date.now()}`;
+    // SISTEMA DE VARRIMENTO GLOBAL
+    async function getGlobalLoc() {
+        try {
+            // Tenta obter coordenadas reais sem cache do navegador
+            const res = await fetch(`https://ipapi.co/json/?_=${Date.now()}`);
+            const d = await res.json();
             
-            window.realRau = (d) => {
-                resolve({
-                    lat: d.lat,
-                    lng: d.lon,
-                    city: (d.city || d.regionName || "LOCALIZADO").toUpperCase(),
-                    country: d.countryCode.toLowerCase()
-                });
-                delete window.realRau;
-                document.body.removeChild(script);
-            };
-
-            document.body.appendChild(script);
-            // Se o demo falhar, usa o pro
-            setTimeout(() => {
-                const s2 = document.createElement('script');
-                s2.src = `https://ip-api.com/json/?callback=backupRau`;
-                window.backupRau = (d) => resolve({lat: d.lat, lng: d.lon, city: d.city.toUpperCase(), country: d.countryCode.toLowerCase()});
-                document.body.appendChild(s2);
-            }, 4000);
-        });
+            if (d && d.latitude) {
+                return {
+                    lat: d.latitude,
+                    lng: d.longitude,
+                    city: (d.city || d.region || "REAL-TIME").toUpperCase(),
+                    country: (d.country_code || "UN").toLowerCase()
+                };
+            }
+            throw new Error('IP fail');
+        } catch (e) {
+            // Backup via Cloudflare (detecta o centro de dados mais próximo de ti no mundo)
+            const cf = await fetch('https://www.cloudflare.com/cdn-cgi/trace').then(r => r.text());
+            const loc = cf.split('\n').find(l => l.startsWith('loc=')).split('=')[1];
+            // Se falhar, coloca no centro do mundo para forçar o sistema a ligar
+            return { lat: 0, lng: 0, city: "COORDENADA ZERO", country: loc.toLowerCase() };
+        }
     }
 
     async function init() {
-        const geo = await getRealLoc();
+        const geo = await getGlobalLoc();
         
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
         const channel = ably.channels.get('rau-live-radar');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
+            document.getElementById('status').innerText = `LOCALIZADO: ${geo.city}`;
             channel.presence.enter(geo);
 
             const update = () => {
                 channel.presence.get((err, members) => {
                     if (!err) {
-                        const nodes = members.map(m => m.data).filter(x => x && x.lat);
+                        const nodes = members.map(m => m.data).filter(x => x && x.lat !== undefined);
                         document.getElementById('count').innerText = nodes.length;
                         world.htmlElementsData(nodes);
                     }
@@ -107,6 +103,7 @@
             update();
         });
 
+        // Foca na tua posição real com zoom
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
