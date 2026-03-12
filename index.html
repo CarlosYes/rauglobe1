@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU GLOBE v68 - THE TRUTH</title>
+    <title>RAU GLOBE v69 - NETWORK TRACE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -12,40 +12,40 @@
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(255, 255, 255, 0.05); border-left: 3px solid #39ff14;
+            background: rgba(255, 255, 255, 0.05); border-left: 3px solid #00f2ff;
             padding: 15px 25px; color: #fff; pointer-events: none;
             backdrop-filter: blur(5px);
         }
         .count { font-size: 60px; font-weight: 300; color: #fff; line-height: 1; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #39ff14; color: #000; padding: 4px 10px; border-radius: 0px;
+            background: #00f2ff; color: #000; padding: 4px 10px; border-radius: 0px;
             font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px;
             white-space: nowrap;
         }
         .l-rau img { width: 20px; height: 13px; object-fit: cover; }
-        .d-rau { width: 10px; height: 10px; background: #fff; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 15px #39ff14; }
+        .d-rau { width: 10px; height: 10px; background: #fff; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 15px #00f2ff; }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.7;">Coordenadas Reais</div>
+    <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.7;">Rastreio de Rede</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; margin-top: 5px; color: #39ff14;">Aguardando permissão de hardware...</div>
+    <div id="status" style="font-size: 11px; margin-top: 5px; color: #00f2ff;">A traçar rota física...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'REAL-' + Math.random().toString(36).substr(2, 6);
+    const SESSION_ID = 'TRACE-' + Math.random().toString(36).substr(2, 6);
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
         .showAtmosphere(true)
-        .atmosphereColor('#39ff14')
+        .atmosphereColor('#00f2ff')
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
@@ -54,60 +54,52 @@
             return el;
         });
 
-    function getHardwareLocation() {
-        return new Promise((resolve, reject) => {
-            if (!navigator.geolocation) {
-                reject("Geolocalização não suportada.");
-            }
+    async function getNetworkTrace() {
+        try {
+            // Usamos o ipwho.is que é mais preciso para redes europeias (Bélgica/Holanda)
+            const res = await fetch('https://ipwho.is/');
+            const d = await res.json();
+            
+            if (!d.success) throw new Error();
 
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                const lat = pos.coords.latitude;
-                const lng = pos.coords.longitude;
-
-                // Agora pedimos ao mapa o nome da cidade com base nas coordenadas REAIS do teu GPS
-                try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
-                    const d = await res.json();
-                    const cityName = d.address.city || d.address.town || d.address.village || "PONTO REAL";
-                    resolve({ lat, lng, city: cityName.toUpperCase(), country: d.address.country_code });
-                } catch (e) {
-                    resolve({ lat, lng, city: "COORDENADA GPS", country: "" });
-                }
-            }, (err) => {
-                document.getElementById('status').innerText = "Permissão negada ou sinal perdido.";
-                reject(err);
-            }, { enableHighAccuracy: true });
-        });
+            return {
+                lat: d.latitude,
+                lng: d.longitude,
+                city: d.city.toUpperCase(),
+                country: d.country_code.toLowerCase()
+            };
+        } catch (e) {
+            // Se tudo falhar, ele tenta a última API disponível
+            const res2 = await fetch('https://ipapi.co/json/');
+            const d2 = await res2.json();
+            return { lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase(), country: d2.country_code.toLowerCase() };
+        }
     }
 
     async function init() {
-        try {
-            const geo = await getHardwareLocation();
-            
-            const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-            const channel = ably.channels.get('rau-live-radar');
+        const geo = await getNetworkTrace();
+        
+        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
+        const channel = ably.channels.get('rau-live-radar');
 
-            ably.connection.on('connected', () => {
-                document.getElementById('status').innerText = `Sinal: ${geo.city}`;
-                channel.presence.enter(geo);
+        ably.connection.on('connected', () => {
+            document.getElementById('status').innerText = `Ponto de Rede: ${geo.city}`;
+            channel.presence.enter(geo);
 
-                const sync = () => {
-                    channel.presence.get((err, members) => {
-                        if (!err) {
-                            const active = members.map(m => m.data).filter(x => x && x.lat);
-                            document.getElementById('count').innerText = active.length;
-                            world.htmlElementsData(active);
-                        }
-                    });
-                };
-                channel.presence.subscribe(['enter', 'leave', 'present', 'update'], sync);
-                sync();
-            });
+            const sync = () => {
+                channel.presence.get((err, members) => {
+                    if (!err) {
+                        const active = members.map(m => m.data).filter(x => x && x.lat);
+                        document.getElementById('count').innerText = active.length;
+                        world.htmlElementsData(active);
+                    }
+                });
+            };
+            channel.presence.subscribe(['enter', 'leave', 'present', 'update'], sync);
+            sync();
+        });
 
-            world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 1.2 }, 2000);
-        } catch (e) {
-            console.error(e);
-        }
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 1.8 }, 2000);
     }
 
     world.controls().autoRotate = true;
