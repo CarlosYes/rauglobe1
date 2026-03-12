@@ -3,27 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v27 - TOTAL TRACK</title>
+    <title>RAU RADAR v28 - TOTAL ACCURACY</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 0, 0, 0.9); border: 2px solid #39ff14;
             padding: 15px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 20px #39ff14;
+            box-shadow: 0 0 20px #39ff14; border-radius: 4px;
         }
         .count { font-size: 65px; font-weight: 900; color: #fff; line-height: 1; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #39ff14; color: #000; padding: 4px 10px; border-radius: 2px;
+            background: #39ff14; color: #000; padding: 4px 10px; border-radius: 3px;
             font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 6px;
             white-space: nowrap; box-shadow: 0 5px 15px rgba(0,0,0,0.8);
         }
-        .l-rau img { width: 18px; height: 12px; object-fit: cover; border: 1px solid #000; }
+        .l-rau img { width: 18px; height: 12px; object-fit: cover; }
         .d-rau { width: 12px; height: 12px; background: #fff; border-radius: 50%; margin-top: 5px; border: 2px solid #39ff14; animation: p 0.8s infinite alternate; }
         @keyframes p { from { transform: scale(1); } to { transform: scale(1.8); } }
     </style>
@@ -31,16 +31,16 @@
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 2px;">LIVE VISITOR TRACKER</div>
+    <div style="font-size: 10px; letter-spacing: 2px; font-weight: bold;">NODE LOCATOR LIVE</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff; margin-top: 5px;">RASTREANDO...</div>
+    <div id="status" style="font-size: 11px; color: #fff; margin-top: 5px;">A SINTONIZAR...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const CLIENT_ID = 'NODE-' + Math.random().toString(36).substr(2, 9);
+    const CLIENT_ID = 'R-' + Math.random().toString(36).substr(2, 9);
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -50,56 +50,72 @@
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
-            // Puxa a bandeira direto do FlagCDN usando o código do país
             const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
             el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    async function init() {
+    async function getTrueLocation() {
+        // Tenta o serviço mais robusto (IPWHOIS)
         try {
-            // Requisição direta ao IP-API (Sem intermediários que bloqueiam)
-            const res = await fetch('https://ipapi.co/json/');
-            const geo = await res.json();
-            
-            // Se não houver cidade, o sistema para aqui para não mostrar dados falsos
-            if(!geo.city) throw new Error("Falha no Rastreio");
+            const response = await fetch('https://ipwho.is/');
+            const data = await response.json();
+            if(data.success) {
+                return {
+                    lat: data.latitude,
+                    lng: data.longitude,
+                    city: data.city.toUpperCase(),
+                    country: data.country_code
+                };
+            }
+        } catch (e) {}
 
-            const myData = {
-                id: CLIENT_ID,
-                lat: geo.latitude,
-                lng: geo.longitude,
-                city: geo.city.toUpperCase(),
-                country: geo.country_code
+        // Fallback para IP-API mas sem Lisboa fixa
+        try {
+            const response = await fetch('https://ipapi.co/json/');
+            const data = await response.json();
+            return {
+                lat: data.latitude,
+                lng: data.longitude,
+                city: data.city ? data.city.toUpperCase() : "DESCONHECIDO",
+                country: data.country_code
+            };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function init() {
+        const geo = await getTrueLocation();
+        
+        if(!geo) {
+            document.getElementById('status').innerText = "ERRO DE RASTREIO";
+            return;
+        }
+
+        const myData = { id: CLIENT_ID, ...geo };
+        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: CLIENT_ID });
+        const channel = ably.channels.get('rau-live-radar');
+
+        ably.connection.on('connected', () => {
+            document.getElementById('status').innerText = `LOCALIZADO: ${geo.city}`;
+            channel.presence.enter(myData);
+
+            const refresh = () => {
+                channel.presence.get((err, members) => {
+                    if(!err) {
+                        const active = members.map(m => m.data).filter(d => d && d.lat);
+                        document.getElementById('count').innerText = active.length;
+                        world.htmlElementsData(active);
+                    }
+                });
             };
 
-            const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: CLIENT_ID });
-            const channel = ably.channels.get('rau-live-radar');
+            channel.presence.subscribe(['enter', 'leave', 'update', 'present'], refresh);
+            refresh();
+        });
 
-            ably.connection.on('connected', () => {
-                document.getElementById('status').innerText = `SINAL: ${myData.city} [${myData.country}]`;
-                channel.presence.enter(myData);
-
-                const refresh = () => {
-                    channel.presence.get((err, members) => {
-                        if(!err) {
-                            const active = members.map(m => m.data).filter(d => d && d.lat);
-                            document.getElementById('count').innerText = active.length;
-                            world.htmlElementsData(active);
-                        }
-                    });
-                };
-
-                channel.presence.subscribe(['enter', 'leave', 'update', 'present'], refresh);
-                refresh();
-            });
-
-            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.0 }, 2000);
-
-        } catch (e) {
-            document.getElementById('status').innerText = "SINAL INTERROMPIDO";
-            console.error(e);
-        }
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
     world.controls().autoRotate = true;
