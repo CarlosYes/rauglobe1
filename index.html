@@ -3,66 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v17 - ENTERPRISE SECURITY</title>
+    <title>RAU RADAR v18 - FIX</title>
     <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; }
-        #globeViz { width: 100vw; height: 100vh; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; width: 100vw; height: 100vh; }
         
-        /* HUD Minimalista e Seguro */
+        /* Garante que o container ocupe o ecrã todo */
+        #globeViz { 
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%; 
+            height: 100%; 
+            z-index: 1;
+        }
+        
+        /* Interface HUD */
         .hud {
-            position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(0, 30, 0, 0.9); border: 1px solid #39ff14;
-            padding: 15px 25px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 30px rgba(57, 255, 20, 0.2); border-radius: 2px;
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: rgba(0, 40, 0, 0.85); border-left: 4px solid #39ff14;
+            padding: 20px; color: #39ff14; pointer-events: none;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.2);
         }
-        .count { font-size: 55px; font-weight: 900; line-height: 1; margin: 5px 0; color: #fff; }
-        
-        /* Marcadores Estilo RevolverMaps */
-        .m-rau { display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+        .count { font-size: 60px; font-weight: 900; line-height: 1; color: #fff; text-shadow: 0 0 10px #39ff14; }
+        .status-text { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; }
+
+        /* Marcadores */
+        .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #39ff14; color: #000; padding: 2px 8px; border-radius: 3px;
+            background: #39ff14; color: #000; padding: 3px 10px; border-radius: 2px;
             font-size: 11px; font-weight: 800; display: flex; align-items: center; gap: 6px;
-            white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            white-space: nowrap; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
-        .l-rau img { width: 16px; height: 11px; border-radius: 1px; object-fit: cover; }
+        .l-rau img { width: 16px; height: 11px; object-fit: cover; border: 1px solid #000; }
         .d-rau { 
-            width: 10px; height: 10px; background: #fff; border-radius: 50%; 
-            margin-top: 3px; border: 2px solid #39ff14; animation: pulse 2s infinite; 
+            width: 12px; height: 12px; background: #fff; border-radius: 50%; 
+            margin-top: 4px; border: 2px solid #39ff14; animation: pulse 1.5s infinite ease-out; 
         }
 
         @keyframes pulse {
-            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(57, 255, 20, 0.7); }
-            70% { transform: scale(2); box-shadow: 0 0 0 15px rgba(57, 255, 20, 0); }
-            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(57, 255, 20, 0); }
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(2.5); opacity: 0; }
         }
     </style>
 </head>
-<body oncontextmenu="return false;" onselectstart="return false;">
+<body oncontextmenu="return false;">
 
 <div class="hud">
-    <div style="font-size: 9px; letter-spacing: 3px; opacity: 0.8;">ENCRYPTION ACTIVE // LIVE RADAR</div>
+    <div class="status-text">RAU RADAR SYSTEM v18</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; font-weight: bold; color: #fff;">SINCRONIZANDO...</div>
+    <div id="status" style="font-size: 11px; color: #fff; margin-top: 5px;">A RASTREAR...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
-    // Configurações Globais
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const CLIENT_ID = 'NODE-' + Math.random().toString(36).substr(2, 7);
+    const CLIENT_ID = 'NODE-' + Math.random().toString(36).substr(2, 6);
 
-    // Inicializa o Globo
+    // Inicialização forçada do Globo
     const world = Globe()(document.getElementById('globeViz'))
-        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
-        .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+        .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
         .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor('#39ff14')
-        .atmosphereAltitude(0.15)
+        .atmosphereAltitude(0.2)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
@@ -71,28 +80,24 @@
             return el;
         });
 
-    async function fetchGeo() {
-        // Tenta Cloudflare (Seguro & Rápido)
-        try {
-            const cf = await fetch('https://www.cloudflare.com/cdn-cgi/trace').then(r => r.text());
-            const ip = cf.split('\n').find(l => l.startsWith('ip=')).split('=')[1];
-            // Usa o IP para buscar a localização exata sem bloqueio de CORS
-            const res = await fetch(`https://ipapi.co/${ip}/json/`);
-            return await res.json();
-        } catch (e) {
-            // Backup imediato
-            const res = await fetch('https://ipapi.co/json/');
-            return await res.json();
-        }
-    }
-
     async function init() {
         try {
-            const geo = await fetchGeo();
+            // Geolocation usando serviço estável com fallback
+            let geo;
+            try {
+                const res = await fetch('https://ipapi.co/json/');
+                geo = await res.json();
+            } catch(e) {
+                // Fallback se o ipapi falhar
+                const res = await fetch('https://ip-api.com/json/');
+                const data = await res.json();
+                geo = { latitude: data.lat, longitude: data.lon, city: data.city, country_code: data.countryCode };
+            }
+
             const myData = {
                 id: CLIENT_ID,
-                lat: geo.latitude || 0,
-                lng: geo.longitude || 0,
+                lat: geo.latitude || 38.7,
+                lng: geo.longitude || -9.1,
                 city: (geo.city || "Sinal Ativo").toUpperCase(),
                 country: geo.country_code || "PT"
             };
@@ -102,43 +107,50 @@
             let visitors = new Map();
 
             ably.connection.on('connected', () => {
-                document.getElementById('status').innerText = `CONEXÃO SEGURA: ${myData.city}`;
+                document.getElementById('status').innerText = `RADAR ON: ${myData.city}`;
                 channel.presence.enter(myData);
 
                 channel.presence.subscribe(['enter', 'present', 'update'], m => {
                     visitors.set(m.clientId, m.data);
-                    refresh();
+                    render();
                 });
 
                 channel.presence.subscribe('leave', m => {
                     visitors.delete(m.clientId);
-                    refresh();
+                    render();
                 });
 
                 channel.presence.get((err, members) => {
                     if(!err) {
                         members.forEach(m => visitors.set(m.clientId, m.data));
-                        refresh();
+                        render();
                     }
                 });
             });
 
-            function refresh() {
+            function render() {
                 const data = Array.from(visitors.values());
                 document.getElementById('count').innerText = data.length;
                 world.htmlElementsData(data);
             }
 
-            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.5 }, 2000);
+            // Centraliza no utilizador
+            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.2 }, 2000);
 
         } catch (err) {
-            document.getElementById('status').innerText = "ERRO CRÍTICO DE REDE";
+            document.getElementById('status').innerText = "ERRO NA REDE DE DADOS";
         }
     }
 
+    // Configurações de Rotação
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.6;
-    world.controls().enableDamping = true;
+    world.controls().autoRotateSpeed = 0.5;
+    
+    // Corrige redimensionamento
+    window.addEventListener('resize', () => {
+        world.width(window.innerWidth);
+        world.height(window.innerHeight);
+    });
 
     window.onload = init;
 </script>
