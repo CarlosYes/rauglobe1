@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v62 - STEALTH</title>
+    <title>RAU RADAR v64 - TRUE NORTH</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -31,16 +31,16 @@
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 5px;">RAU STEALTH RELAY</div>
+    <div style="font-size: 10px; letter-spacing: 5px;">RAU TRUE NORTH v64</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px; font-family: monospace;">A FORÇAR LINK...</div>
+    <div id="status" style="font-size: 11px; color: #fff; margin-top: 10px; font-family: monospace;">A SOLICITAR COORDENADAS REAIS...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'ST-' + Math.random().toString(36).substr(2, 6);
+    const SESSION_ID = 'REAL-' + Math.random().toString(36).substr(2, 6);
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -55,48 +55,48 @@
             return el;
         });
 
-    // MÉTODO STEALTH: Usa JSONP com timeout agressivo para forçar a saída do loop
-    function getStealthLoc() {
+    function getHardwareLoc() {
         return new Promise((resolve) => {
-            const timeout = setTimeout(() => {
-                // FALLBACK: Se a rede bloquear tudo, assume o IP da Cloudflare
-                resolve({ lat: 51.2, lng: 3.2, city: "BÉLGICA (REDE)", country: "be" });
-            }, 5000);
-
-            const s = document.createElement('script');
-            const cb = 'rau_' + Date.now();
-            s.src = `https://ipapi.co/jsonp/?callback=${cb}`;
-            
-            window[cb] = (d) => {
-                clearTimeout(timeout);
-                resolve({
-                    lat: d.latitude, lng: d.longitude,
-                    city: (d.city || "ONLINE").toUpperCase(),
-                    country: (d.country_code || "be").toLowerCase()
-                });
-                document.body.removeChild(s);
-                delete window[cb];
-            };
-            document.body.appendChild(s);
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(async (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    // Obtém o nome da cidade real via coordenadas (Reverse Geocoding)
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+                        const d = await res.json();
+                        const city = (d.address.city || d.address.town || d.address.village || "LOCALIZADO").toUpperCase();
+                        resolve({ lat, lng, city, country: d.address.country_code });
+                    } catch (e) {
+                        resolve({ lat, lng, city: "COORDENADA REAL", country: "be" });
+                    }
+                }, async () => {
+                    // Fallback se o utilizador negar ou falhar o hardware
+                    const r = await fetch('https://ipapi.co/json/');
+                    const d = await r.json();
+                    resolve({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code.toLowerCase() });
+                }, { enableHighAccuracy: true });
+            }
         });
     }
 
     async function launch() {
-        const geo = await getStealthLoc();
+        const geo = await getHardwareLoc();
         
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
         const channel = ably.channels.get('rau-live-radar');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `LINK ESTÁVEL: ${geo.city}`;
+            document.getElementById('status').innerText = `POSIÇÃO FIXADA: ${geo.city}`;
             channel.presence.enter(geo);
 
             const sync = () => {
                 channel.presence.get((err, members) => {
                     if (!err) {
-                        const nodes = members.map(m => m.data).filter(x => x && x.lat);
-                        document.getElementById('count').innerText = nodes.length;
-                        world.htmlElementsData(nodes);
+                        const active = members.map(m => m.data).filter(x => x && x.lat);
+                        document.getElementById('count').innerText = active.length;
+                        world.htmlElementsData(active);
                     }
                 });
             };
@@ -104,7 +104,7 @@
             sync();
         });
 
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 1.6 }, 2000);
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 1.2 }, 2000);
     }
 
     world.controls().autoRotate = true;
