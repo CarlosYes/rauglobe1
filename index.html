@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU TRAFFIC MONITOR v84</title>
+    <title>RAU GLOBAL v88</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -11,44 +11,29 @@
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         
-        /* HUD de Monitorização */
         .hud {
             position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(0, 5, 10, 0.9); border-left: 5px solid #fff;
+            background: rgba(0, 5, 10, 0.9); border-left: 5px solid #39ff14;
             padding: 20px; color: #fff; pointer-events: none;
-            box-shadow: 0 0 30px rgba(255, 255, 255, 0.1); border-radius: 2px;
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.2); border-radius: 2px;
         }
-        .count { font-size: 80px; font-weight: 900; line-height: 0.8; letter-spacing: -3px; }
-        
-        /* Legenda de Status */
-        .status-legenda { font-size: 10px; margin-top: 10px; display: flex; gap: 10px; font-family: monospace; }
-        .dot-green { color: #39ff14; }
-        .dot-red { color: #8b0000; }
+        .count-online { font-size: 70px; font-weight: 900; line-height: 0.8; color: #39ff14; }
+        .count-total { font-size: 18px; margin-top: 10px; opacity: 0.8; letter-spacing: 1px; }
 
-        /* Etiquetas do Globo */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
             background: rgba(0, 0, 0, 0.8); padding: 3px 8px; border-radius: 2px;
             font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 5px;
             white-space: nowrap; transition: all 0.3s ease;
         }
-        /* Estilo da Legenda Quando Online */
         .m-rau.online .l-rau { color: #39ff14; border: 1px solid #39ff14; }
-        /* Estilo da Legenda Quando Offline */
         .m-rau.offline .l-rau { color: #8b0000; border: 1px solid #8b0000; opacity: 0.7; }
         
         .l-rau img { width: 16px; height: 11px; object-fit: cover; }
+        .d-rau { width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; }
         
-        /* Ponto Base */
-        .d-rau { width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; transition: all 0.3s ease; }
-        
-        /* Ponto Online (Verde Pulsante) */
-        .m-rau.online .d-rau { 
-            background: #39ff14; box-shadow: 0 0 15px #39ff14; 
-            animation: pulse 1.2s infinite ease-out; 
-        }
-        /* Ponto Offline (Vermelho Escuro Fixo) */
-        .m-rau.offline .d-rau { background: #8b0000; box-shadow: 0 0 5px #8b0000; animation: none; }
+        .m-rau.online .d-rau { background: #39ff14; box-shadow: 0 0 15px #39ff14; animation: pulse 1.2s infinite ease-out; }
+        .m-rau.offline .d-rau { background: #8b0000; box-shadow: 0 0 5px #8b0000; }
 
         @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(3); opacity: 0; } }
     </style>
@@ -56,99 +41,115 @@
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 4px; opacity: 0.7;">TRAFFIC MONITOR</div>
-    <div id="count" class="count">0</div>
-    <div class="status-legenda">
-        <span class="dot-green">● ONLINE</span>
-        <span class="dot-red">● RECENTE (5m)</span>
-    </div>
+    <div style="font-size: 10px; letter-spacing: 4px; opacity: 0.7; color: #39ff14;">SINAIS ATIVOS</div>
+    <div id="onlineCount" class="count-online">0</div>
+    <div id="totalCount" class="count-total">TOTAL NO GLOBO: 0</div>
+    <div id="status" style="font-size: 9px; margin-top: 10px; font-family: monospace; color: #39ff14;">A ESTABELECER LIGAÇÃO...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'REAL-' + Math.random().toString(36).substr(2, 7);
-    const OFFLINE_PERSIST_MS = 5 * 60 * 1000; // 5 Minutos
+    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 7);
+    const PERSIST_MS = 5 * 60 * 1000;
     let visitorsMap = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
         .showAtmosphere(true)
-        .atmosphereColor('#ffffff')
+        .atmosphereColor('#39ff14')
         .htmlElement(d => {
             const el = document.createElement('div');
-            // Aplica a classe online/offline com base no status do dado
             el.className = `m-rau ${d.status}`; 
             const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
             el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    async function start() {
-        let geo = null;
-        try {
-            const r = await fetch('https://ipapi.co/json/');
-            const d = await r.json();
-            if(d.latitude) geo = { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code, id: SESSION_ID, status: 'online' };
-        } catch(e) { return; }
+    // SISTEMA DE MULTI-LOCALIZAÇÃO (Anti-Bloqueio)
+    async function getSafeLocation() {
+        const endpoints = [
+            'https://ipapi.co/json/',
+            'https://ipwho.is/',
+            'https://api.ipify.org?format=json' // Backup extremo
+        ];
 
-        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('live-traffic-stream-v84');
-
-        ably.connection.on('connected', () => {
-            channel.presence.enter(geo);
-            
-            // Sincronização inicial e atualizações (Online)
-            channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
-                if(m.data && m.data.lat) {
-                    visitorsMap.set(m.clientId || m.id, { ...m.data, status: 'online', timestamp: Date.now() });
-                    updateGlobe();
-                }
-            });
-
-            // Detecção de Saída (Muda para Vermelho Escuro)
-            channel.presence.subscribe('leave', (m) => {
-                const visitorId = m.clientId || m.id;
-                if (visitorsMap.has(visitorId)) {
-                    const data = visitorsMap.get(visitorId);
-                    // Mantém os dados, mas muda o status e atualiza o tempo
-                    visitorsMap.set(visitorId, { ...data, status: 'offline', timestamp: Date.now() });
-                    updateGlobe();
-                }
-            });
-
-            // Limpeza automática de pontos vermelhos antigos
-            setInterval(cleanOldOfflineVisitors, 10000);
-        });
-
-        if(geo) world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
+        for (let url of endpoints) {
+            try {
+                const r = await fetch(url);
+                const d = await r.json();
+                // Normaliza os dados conforme o serviço que responder
+                const lat = d.latitude || d.lat;
+                const lng = d.longitude || d.lon;
+                if (lat && lng) return {
+                    lat: parseFloat(lat),
+                    lng: parseFloat(lng),
+                    city: (d.city || "VISITANTE").toUpperCase(),
+                    country: (d.country_code || d.country_code_iso3 || "").toLowerCase()
+                };
+            } catch (e) { console.warn("Fonte falhou, tentando próxima..."); }
+        }
+        return null;
     }
 
-    function cleanOldOfflineVisitors() {
+    async function start() {
+        const geo = await getSafeLocation();
+        if (!geo) {
+            document.getElementById('status').innerText = "SINAL RESTRITO - TENTE DADOS MÓVEIS";
+            return;
+        }
+
+        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
+        const channel = ably.channels.get('global-traffic-v88');
+
+        ably.connection.on('connected', () => {
+            document.getElementById('status').innerText = `SINAL FIXADO: ${geo.city}`;
+            channel.presence.enter({...geo, status: 'online'});
+            
+            channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
+                if(m.data && m.data.lat) {
+                    visitorsMap.set(m.clientId || m.id, { ...m.data, status: 'online', ts: Date.now() });
+                    update();
+                }
+            });
+
+            channel.presence.subscribe('leave', (m) => {
+                const id = m.clientId || m.id;
+                if (visitorsMap.has(id)) {
+                    visitorsMap.set(id, { ...visitorsMap.get(id), status: 'offline', ts: Date.now() });
+                    update();
+                }
+            });
+
+            setInterval(clean, 10000);
+        });
+
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
+    }
+
+    function clean() {
         const now = Date.now();
         let changed = false;
         for (let [id, data] of visitorsMap) {
-            // Só remove se for 'offline' E tiver passado o tempo
-            if (data.status === 'offline' && (now - data.timestamp > OFFLINE_PERSIST_MS)) {
+            if (data.status === 'offline' && (now - data.ts > PERSIST_MS)) {
                 visitorsMap.delete(id);
                 changed = true;
             }
         }
-        if (changed) updateGlobe();
+        if (changed) update();
     }
 
-    function updateGlobe() {
+    function update() {
         const data = Array.from(visitorsMap.values());
-        // Contador mostra apenas os Online
         const onlineCount = data.filter(v => v.status === 'online').length;
-        document.getElementById('count').innerText = onlineCount;
+        document.getElementById('onlineCount').innerText = onlineCount;
+        document.getElementById('totalCount').innerText = `TOTAL NO GLOBO: ${data.length}`;
         world.htmlElementsData(data);
     }
 
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.6;
     window.onload = start;
 </script>
 </body>
