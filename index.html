@@ -3,118 +3,133 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v34 - REVOLVER STYLE</title>
+    <title>RAU RADAR v35 - FIXED GLOBE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', Courier, monospace; }
-        #globeViz { width: 100vw; height: 100vh; position: absolute; }
+        * { margin: 0; padding: 0; }
+        body { background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; width: 100vw; height: 100vh; }
+        
+        /* Contentor fixo para o globo não "fugir" */
+        #globe-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: block;
+        }
+
         .hud {
-            position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.9); border: 1px solid #39ff14;
+            position: absolute; top: 20px; left: 20px; z-index: 9999;
+            background: rgba(0, 20, 0, 0.9); border: 2px solid #39ff14;
             padding: 15px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.5);
         }
         .count { font-size: 60px; font-weight: 900; color: #fff; line-height: 1; }
+        
+        /* Marcadores */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0, 255, 0, 0.8); color: #000; padding: 2px 8px; border-radius: 2px;
-            font-size: 11px; font-weight: bold; display: flex; align-items: center; gap: 5px;
+            background: #39ff14; color: #000; padding: 3px 10px; border-radius: 2px;
+            font-size: 11px; font-weight: bold; display: flex; align-items: center; gap: 6px;
             white-space: nowrap; border: 1px solid #fff;
         }
-        .l-rau img { width: 18px; height: 12px; }
-        .d-rau { width: 8px; height: 8px; background: #fff; border-radius: 50%; margin-top: 3px; border: 2px solid #39ff14; box-shadow: 0 0 10px #39ff14; }
+        .l-rau img { width: 18px; height: 12px; object-fit: cover; }
+        .d-rau { width: 10px; height: 10px; background: #fff; border-radius: 50%; margin-top: 4px; border: 2px solid #39ff14; animation: p 1s infinite; }
+        @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(3); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div style="font-size: 9px; letter-spacing: 2px;">LIVE TRAFFIC MONITOR</div>
+    <div style="font-size: 10px; letter-spacing: 2px;">GLOBAL NODE TRACKER</div>
     <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 10px; color: #39ff14;">INITIATING...</div>
+    <div id="status" style="font-size: 10px; color: #fff; margin-top: 5px;">ESTABILIZANDO...</div>
 </div>
 
-<div id="globeViz"></div>
+<div id="globe-container"></div>
 
 <script>
-    // Configurações
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6);
+    const ID = 'RAU-' + Math.random().toString(36).substr(2, 5);
 
-    const world = Globe()(document.getElementById('globeViz'))
-        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+    // Inicialização forçada do Globo
+    const world = Globe()(document.getElementById('globe-container'))
+        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+        .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
         .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor('#39ff14')
+        .atmosphereAltitude(0.15)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
-            const flag = d.country ? `<img src="https://flagcdn.com/w20/${d.country.toLowerCase()}.png">` : '';
+            const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
             el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    async function startRadar() {
+    async function startSystem() {
         try {
-            // Rastreio via IP-API (JSON) - O mais próximo da lógica do RevolverMaps
-            const res = await fetch('https://ipapi.co/json/');
+            // Rastreio prioritário
+            const res = await fetch('https://ipwho.is/');
             const geo = await res.json();
             
-            if (!geo.city) throw new Error("Geo Failure");
+            if (!geo.success) throw new Error("Offline");
 
             const myData = {
-                id: SESSION_ID,
+                id: ID,
                 lat: geo.latitude,
                 lng: geo.longitude,
                 city: geo.city.toUpperCase(),
                 country: geo.country_code
             };
 
-            // Ably com política de reconexão agressiva
-            const ably = new Ably.Realtime({ 
-                key: ABLY_KEY, 
-                clientId: SESSION_ID,
-                closeOnUnload: true
-            });
-
+            const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: ID });
             const channel = ably.channels.get('rau-live-radar');
 
             ably.connection.on('connected', () => {
-                document.getElementById('status').innerText = "LIVE: " + myData.city;
+                document.getElementById('status').innerText = `SINAL: ${myData.city} [${myData.country}]`;
                 channel.presence.enter(myData);
 
-                const update = () => {
+                const sync = () => {
                     channel.presence.get((err, members) => {
                         if (!err) {
-                            const active = members.map(m => m.data).filter(d => d && d.lat);
-                            document.getElementById('count').innerText = active.length;
-                            world.htmlElementsData(active);
+                            const nodes = members.map(m => m.data).filter(d => d && d.lat);
+                            document.getElementById('count').innerText = nodes.length;
+                            world.htmlElementsData(nodes);
                         }
                     });
                 };
 
-                channel.presence.subscribe(['enter', 'leave', 'present', 'update'], update);
-                update();
+                channel.presence.subscribe(['enter', 'leave', 'present', 'update'], sync);
+                sync();
             });
 
-            // Se o Ably demorar a responder, ele tenta reconectar sozinho
-            ably.connection.on('disconnected', () => {
-                document.getElementById('status').innerText = "RECONNECTING...";
-            });
-
-            world.pointOfView({ lat: geo.latitude, lng: geo.longitude, altitude: 2.0 }, 2000);
+            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.0 }, 2000);
 
         } catch (e) {
-            // Se falhar, tenta novamente em 2 segundos (Loop Infinito até funcionar)
-            document.getElementById('status').innerText = "RETRYING SEARCH...";
-            setTimeout(startRadar, 2000);
+            document.getElementById('status').innerText = "A REPETIR BUSCA...";
+            setTimeout(startSystem, 3000);
         }
     }
 
+    // Garante que o globo ocupa o ecrã todo
+    function resize() {
+        world.width(window.innerWidth);
+        world.height(window.innerHeight);
+    }
+    window.addEventListener('resize', resize);
+    
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.5;
-    window.onload = startRadar;
+    world.controls().autoRotateSpeed = 0.6;
+    
+    window.onload = () => {
+        resize();
+        startSystem();
+    };
 </script>
 </body>
 </html>
