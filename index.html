@@ -2,75 +2,94 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU RADAR v15 - FINAL</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAU RADAR v15 - REAL-TIME OPERATIONAL</title>
     <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
         #globeViz { width: 100vw; height: 100vh; }
         
-        /* Interface HUD Estilo Radar */
+        /* HUD Estilo Militar/Radar */
         .hud {
             position: absolute; top: 30px; left: 30px; z-index: 100;
-            background: rgba(0, 20, 0, 0.8); border: 1px solid #39ff14;
+            background: rgba(0, 20, 0, 0.85); border-left: 5px solid #39ff14;
             padding: 20px; color: #39ff14; pointer-events: none;
-            box-shadow: 0 0 20px rgba(57, 255, 20, 0.2);
-            border-radius: 4px;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.1);
+            border-radius: 0 4px 4px 0;
         }
-        .count { font-size: 60px; font-weight: 900; line-height: 1; margin: 5px 0; }
+        .count-container { display: flex; align-items: baseline; gap: 10px; }
+        .count { font-size: 72px; font-weight: 900; line-height: 1; color: #fff; text-shadow: 0 0 15px #39ff14; }
+        .label { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; opacity: 0.8; }
         
-        /* Marcadores RAU com Bandeiras */
-        .m-rau { display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 0 8px #39ff14); }
+        /* Marcadores Dinâmicos */
+        .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #39ff14; color: #000; padding: 5px 12px; border-radius: 4px;
-            font-size: 12px; font-weight: bold; display: flex; align-items: center; gap: 8px;
-            white-space: nowrap; text-transform: uppercase;
+            background: rgba(57, 255, 20, 0.9); color: #000; 
+            padding: 4px 10px; border-radius: 3px;
+            font-size: 11px; font-weight: 800; display: flex; 
+            align-items: center; gap: 6px; white-space: nowrap;
+            box-shadow: 0 0 10px rgba(57, 255, 20, 0.5);
         }
-        .l-rau img { width: 20px; height: auto; border: 1px solid #000; border-radius: 2px; }
+        .l-rau img { width: 16px; height: 11px; object-fit: cover; border: 1px solid #000; }
         .d-rau { 
-            width: 12px; height: 12px; background: #fff; border-radius: 50%; 
-            margin-top: 6px; border: 2px solid #39ff14;
-            animation: pulse 1.5s infinite; 
+            width: 10px; height: 10px; background: #fff; border-radius: 50%; 
+            margin-top: 4px; border: 2px solid #39ff14;
+            animation: pulse 1.5s infinite ease-in-out; 
         }
 
         @keyframes pulse {
-            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(57, 255, 20, 0.7); }
-            70% { transform: scale(1.2); box-shadow: 0 0 0 10px rgba(57, 255, 20, 0); }
-            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(57, 255, 20, 0); }
+            0% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(57, 255, 20, 0.7); }
+            70% { transform: scale(1.5); opacity: 0.5; box-shadow: 0 0 0 15px rgba(57, 255, 20, 0); }
+            100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(57, 255, 20, 0); }
         }
+
+        /* Proteção Básica */
+        #globeViz canvas { outline: none; -webkit-tap-highlight-color: transparent; }
     </style>
 </head>
-<body oncontextmenu="return false;">
+<body oncontextmenu="return false;" onselectstart="return false;">
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 4px; opacity: 0.7;">RAU RADAR SYSTEM v15</div>
-    <div id="count" class="count">0</div>
-    <div id="status" style="font-size: 11px; color: #fff;">INICIALIZANDO ABLY...</div>
+    <div class="label">Sistema de Monitoramento RAU</div>
+    <div class="count-container">
+        <div id="count" class="count">0</div>
+        <div class="label">Usuários Ativos</div>
+    </div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; color: #aaa;">SINCRONIZANDO SATÉLITES...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
-    // CREDENCIAIS ABLY
+    // Configurações Ably (Chave que você forneceu)
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const CLIENT_ID = 'U-' + Math.random().toString(36).substr(2, 5);
+    const CLIENT_ID = 'UID-' + Math.random().toString(36).substring(2, 9);
     
-    // Inicialização do Globo
+    // Inicialização do Globo com performance otimizada
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
         .backgroundColor('#000000')
         .showAtmosphere(true)
         .atmosphereColor('#39ff14')
-        .atmosphereAltitude(0.15)
+        .atmosphereAltitude(0.2)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
-            const flag = d.country ? `<img src="https://flagcdn.com/w40/${d.country.toLowerCase()}.png">` : '';
-            el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
+            const flagCode = d.country ? d.country.toLowerCase() : 'un';
+            el.innerHTML = `
+                <div class="l-rau">
+                    <img src="https://flagcdn.com/w40/${flagCode}.png" onerror="this.style.display='none'">
+                    <span>${d.city}</span>
+                </div>
+                <div class="d-rau"></div>
+            `;
             return el;
-        });
+        })
+        .htmlLat(d => d.lat)
+        .htmlLng(d => d.lng);
 
     const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: CLIENT_ID });
     const channel = ably.channels.get('rau-live-radar');
@@ -78,69 +97,73 @@
 
     async function initRadar() {
         try {
-            // Obter Geo-IP (Prioridade: https)
-            const res = await fetch('https://ipapi.co/json/');
-            const geo = await res.json();
+            // Captura de Geolocalização (IP-API é rápida e gratuita para demos)
+            const response = await fetch('https://ipapi.co/json/');
+            const geo = await response.json();
             
             const myData = {
                 id: CLIENT_ID,
-                lat: geo.latitude || 38.7,
-                lng: geo.longitude || -9.1,
-                city: (geo.city || "Sinal Ativo").toUpperCase(),
-                country: geo.country_code || "PT"
+                lat: geo.latitude || 0,
+                lng: geo.longitude || 0,
+                city: (geo.city || "Desconhecido").toUpperCase(),
+                country: geo.country_code || "UN"
             };
 
-            // Eventos de Conexão
             ably.connection.on('connected', () => {
-                document.getElementById('status').innerText = "RADAR LIGADO: " + myData.city;
+                document.getElementById('status').innerText = `LOCALIZADO: ${myData.city} [${myData.country}]`;
                 
-                // Entrar na Presença
+                // Entra na rede de presença
                 channel.presence.enter(myData);
 
-                // Subscrever Entradas/Saídas
-                channel.presence.subscribe(['enter', 'present', 'update'], m => {
-                    visitors.set(m.clientId, m.data);
-                    refresh();
+                // Escuta quem entra e quem já está
+                channel.presence.subscribe(['enter', 'present', 'update'], member => {
+                    visitors.set(member.clientId, member.data);
+                    updateDisplay();
                 });
 
-                channel.presence.subscribe('leave', m => {
-                    visitors.delete(m.clientId);
-                    refresh();
+                // Escuta quem sai
+                channel.presence.subscribe('leave', member => {
+                    visitors.delete(member.clientId);
+                    updateDisplay();
                 });
 
-                // Carregar lista inicial
+                // Sincronização inicial forçada
                 channel.presence.get((err, members) => {
-                    if(!err) {
+                    if (!err) {
                         members.forEach(m => visitors.set(m.clientId, m.data));
-                        refresh();
+                        updateDisplay();
                     }
                 });
             });
 
-            ably.connection.on('failed', () => {
-                document.getElementById('status').innerText = "ERRO: CHAVE ABLY INVÁLIDA";
-            });
+            // Zoom suave para a localização do usuário
+            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.5 }, 3000);
 
-            // Zoom inicial no utilizador
-            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2 }, 2500);
-
-        } catch (e) {
-            document.getElementById('status').innerText = "ERRO DE REDE / GEO-IP";
+        } catch (err) {
+            console.error("Erro na inicialização:", err);
+            document.getElementById('status').innerText = "ERRO DE CONEXÃO GEOGRÁFICA";
         }
     }
 
-    function refresh() {
-        const data = Array.from(visitors.values());
-        document.getElementById('count').innerText = data.length;
-        world.htmlElementsData(data);
+    function updateDisplay() {
+        const dataArray = Array.from(visitors.values());
+        document.getElementById('count').innerText = dataArray.length;
+        world.htmlElementsData(dataArray);
     }
 
-    // Configurações de Movimento
+    // Controles de Câmera
     world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.7;
+    world.controls().autoRotateSpeed = 0.5;
     world.controls().enableDamping = true;
 
     window.onload = initRadar;
+
+    // Redimensionamento automático
+    window.addEventListener('resize', () => {
+        world.width(window.innerWidth);
+        world.height(window.innerHeight);
+    });
 </script>
+
 </body>
 </html>
