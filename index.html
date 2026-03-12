@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v94</title>
+    <title>RAU MONITOR v95</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -18,29 +18,29 @@
         .count-on { font-size: 60px; font-weight: 900; line-height: 0.8; color: #39ff14; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0,0,0,0.9); padding: 4px 10px; border-radius: 3px;
+            background: rgba(0,0,0,0.95); padding: 4px 10px; border-radius: 3px;
             font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 6px;
             border: 1px solid #39ff14; color: #39ff14; white-space: nowrap;
         }
-        .m-rau.offline .l-rau { color: #8b0000; border-color: #8b0000; opacity: 0.6; }
-        .d-rau { width: 7px; height: 7px; border-radius: 50%; margin-top: 3px; }
-        .m-rau.online .d-rau { background: #39ff14; box-shadow: 0 0 15px #39ff14; animation: pulse 1.2s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(3.5); opacity: 0; } }
+        .m-rau.online .d-rau { 
+            width: 8px; height: 8px; background: #39ff14; border-radius: 50%; 
+            box-shadow: 0 0 15px #39ff14; animation: p 1.2s infinite; 
+        }
+        @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="totalCount" style="font-size: 12px; margin-top: 5px; opacity: 0.8;">SINAIS NO GLOBO: 0</div>
-    <div id="status" style="font-size: 9px; margin-top: 10px; font-family: monospace; color: #39ff14;">A FORÇAR SINAL...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINCRO: OOSTENDE ATTEMPT...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 7);
+    const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 5);
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -54,64 +54,49 @@
             return el;
         });
 
-    // MÉTODO CASCATA: Tenta 3 serviços diferentes para nunca dar erro
-    async function getFastGeo() {
-        const methods = [
-            () => fetch('https://ipwho.is/').then(r => r.json()).then(d => ({lat: d.latitude, lng: d.longitude, city: d.city, country: d.country_code})),
-            () => fetch('https://ipapi.co/json/').then(r => r.json()).then(d => ({lat: d.latitude, lng: d.longitude, city: d.city, country: d.country_code})),
-            () => fetch('https://extreme-ip-lookup.com/json/').then(r => r.json()).then(d => ({lat: parseFloat(d.lat), lng: parseFloat(d.lon), city: d.city, country: d.countryCode}))
-        ];
-
-        for (let method of methods) {
+    // SISTEMA MASTER: Força a leitura do IP via redirecionamento de script
+    async function forceSignal() {
+        try {
+            // Tenta o serviço ipwhois que é menos bloqueado na Europa
+            const r = await fetch('https://ipwho.is/');
+            const d = await r.json();
+            if (d.success) return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code };
+        } catch (e) {
+            // Se falhar, tenta o IPAPI com bypass de cache
             try {
-                const res = await method();
-                if (res.lat) return res;
-            } catch (e) { console.log("Tentando próximo método..."); }
+                const r2 = await fetch('https://ipapi.co/json/?nocache=' + Date.now());
+                const d2 = await r2.json();
+                return { lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase(), country: d2.country_code };
+            } catch (e2) { return null; }
         }
-        return null;
     }
 
     async function start() {
-        const geo = await getFastGeo();
-        if (!geo) {
-            // Se tudo falhar, usa um local genérico para a app não morrer
-            const fallback = { lat: 51.2194, lng: 4.4025, city: "EUROPA (SINAL FRACO)", country: "BE" };
-            initAbly(fallback);
-        } else {
-            initAbly(geo);
-        }
-    }
-
-    function initAbly(geo) {
+        const geo = await forceSignal();
+        // Se ainda assim não detectar (bloqueio total de IP), usamos as coordenadas de Oostende como âncora
+        const finalGeo = geo || { lat: 51.2154, lng: 2.9270, city: "OOSTENDE (FORCED)", country: "BE" };
+        
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-stream-v94');
+        const channel = ably.channels.get('rau-global-v95');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city.toUpperCase()}`;
-            channel.presence.enter({...geo, status: 'online'});
+            document.getElementById('status').innerText = `SINAL: ${finalGeo.city}`;
+            channel.presence.enter({...finalGeo, status: 'online'});
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
-                    visitors.set(m.clientId || m.id, { ...m.data, status: 'online', ts: Date.now() });
-                    render();
-                }
-            });
-
-            channel.presence.subscribe('leave', (m) => {
-                const id = m.clientId || m.id;
-                if (visitors.has(id)) {
-                    visitors.set(id, { ...visitors.get(id), status: 'offline', ts: Date.now() });
-                    render();
+                    visitors.set(m.clientId || m.id, { ...m.data, status: 'online' });
+                    updateHUD();
                 }
             });
         });
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
+
+        world.pointOfView({ lat: finalGeo.lat, lng: finalGeo.lng, altitude: 2.0 }, 2000);
     }
 
-    function render() {
+    function updateHUD() {
         const arr = Array.from(visitors.values());
-        document.getElementById('onlineCount').innerText = arr.filter(v => v.status === 'online').length;
-        document.getElementById('totalCount').innerText = `SINAIS NO GLOBO: ${arr.length}`;
+        document.getElementById('onlineCount').innerText = arr.length;
         world.htmlElementsData(arr);
     }
 
