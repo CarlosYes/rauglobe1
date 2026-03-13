@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v118 - SINAL REAL</title>
+    <title>RAU MONITOR v119</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -12,18 +12,18 @@
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 5, 10, 0.9); border-left: 5px solid #39ff14;
-            padding: 15px; color: #fff; pointer-events: none;
+            background: rgba(0, 0, 0, 0.9); border-left: 5px solid #39ff14;
+            padding: 20px; color: #fff; pointer-events: none;
         }
-        .count-on { font-size: 60px; font-weight: 900; line-height: 0.8; color: #39ff14; }
-        .status-msg { font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14; text-transform: uppercase; }
+        .count-on { font-size: 70px; font-weight: 900; line-height: 0.8; color: #39ff14; }
+        .status-msg { font-size: 11px; margin-top: 10px; font-family: monospace; color: #39ff14; text-transform: uppercase; }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0,0,0,0.9); padding: 4px 10px; border-radius: 2px;
-            font-size: 11px; font-weight: 900; border: 1px solid #39ff14; color: #39ff14; 
-            white-space: nowrap;
+            background: #000; padding: 5px 12px; border-radius: 2px;
+            font-size: 12px; font-weight: 900; border: 1.5px solid #39ff14; color: #39ff14; 
+            white-space: nowrap; box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
         }
-        .d-rau { width: 8px; height: 8px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 15px #39ff14; animation: pulse 1.2s infinite; }
+        .d-rau { width: 12px; height: 12px; background: #39ff14; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 20px #39ff14; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
 </head>
@@ -31,7 +31,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" class="status-msg">Sincronizando Hardware...</div>
+    <div id="status" class="status-msg">Injetando Protocolo...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,48 +51,47 @@
             return el;
         });
 
-    // SISTEMA DE DESCOBERTA HÍBRIDO (SEM BLOQUEIO)
-    async function getDiscovery() {
+    // MÉTODO DE INJEÇÃO DIRETA (JSONP) - Ignora Bloqueios
+    function getHardwareLocation() {
         return new Promise((resolve) => {
-            let found = false;
+            const script = document.createElement('script');
+            script.src = 'https://extreme-ip-lookup.com/json/?callback=finalGeo';
+            document.body.appendChild(script);
 
-            // 1. Tentativa via IP Geolocation Direta (Mais rápido)
-            fetch('https://ipapi.co/json/').then(r => r.json()).then(d => {
-                if (!found) {
-                    found = true;
-                    resolve({ lat: d.latitude, lng: d.longitude, city: (d.city || "SINAL ATIVO").toUpperCase() });
-                }
-            }).catch(() => {
-                // 2. Backup via IPWhois se o primeiro falhar
-                fetch('https://ipwho.is/').then(r => r.json()).then(d => {
-                    if (!found) {
-                        found = true;
-                        resolve({ lat: d.latitude, lng: d.longitude, city: (d.city || "SINAL ATIVO").toUpperCase() });
-                    }
-                });
-            });
-
-            // 3. Segurança Máxima (Timeout)
+            window.finalGeo = function(data) {
+                const res = {
+                    lat: parseFloat(data.lat),
+                    lng: parseFloat(data.lon),
+                    city: (data.city || "SINAL ATIVO").toUpperCase()
+                };
+                document.body.removeChild(script);
+                resolve(res);
+            };
+            
+            // Fallback rápido se o serviço de injeção falhar
             setTimeout(() => {
-                if (!found) {
-                    found = true;
-                    resolve({ lat: 0, lng: 0, city: "SINAL GLOBAL" });
+                if (!window.geoActive) {
+                    fetch('https://ipwho.is/').then(r => r.json()).then(d => {
+                        resolve({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() });
+                    });
                 }
-            }, 5000);
+            }, 3000);
         });
     }
 
     async function start() {
-        const geo = await getDiscovery();
+        const geo = await getHardwareLocation();
+        window.geoActive = true;
+        
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-realtime-v118');
+        const channel = ably.channels.get('rau-core-v119');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
-                if(m.data && m.data.lat !== undefined) {
+                if(m.data && m.data.lat) {
                     visitors.set(m.clientId, m.data);
                     sync();
                 }
@@ -104,7 +103,7 @@
             });
         });
 
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.5 }, 2000);
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
     function sync() {
