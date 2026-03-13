@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v170</title>
+    <title>RAU MONITOR v171</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">A TENTAR DETEÇÃO REAL...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: TÚNEL DE SEGURANÇA ATIVO...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -52,13 +52,13 @@
         });
 
     function start() {
-        // Injeção de script para ignorar bloqueio de rede local (CORS/VPN)
+        // Injeção de script (JSONP) para ignorar bloqueio de rede local
         const script = document.createElement('script');
-        script.src = 'https://ipapi.co/jsonp/?callback=initRau';
+        script.src = 'https://ipapi.co/jsonp/?callback=activateRau';
         document.body.appendChild(script);
     }
 
-    window.initRau = (d) => {
+    window.activateRau = (d) => {
         const geo = { 
             lat: parseFloat(d.latitude), 
             lng: parseFloat(d.longitude), 
@@ -66,15 +66,16 @@
             country: d.country_code 
         };
 
-        // Motor camuflado para redes restritas
+        // FORÇA BRUTA: Desativa protocolos binários e usa apenas XHR Polling.
+        // Isto faz com que o sinal pareça tráfego de site comum, furando o bloqueio da tua operadora.
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
             useBinaryProtocol: false, 
-            transports: ['xhr_polling'] // Único protocolo que passa por firewalls domésticos
+            transports: ['xhr_polling'] 
         });
 
-        const channel = ably.channels.get('rau-monitor-v170');
+        const channel = ably.channels.get('rau-pure-discovery');
 
         ably.connection.on('connected', () => {
             document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
