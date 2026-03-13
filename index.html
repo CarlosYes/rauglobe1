@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v169 - PURE SINAL</title>
+    <title>RAU MONITOR v170</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -37,7 +37,7 @@
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 5);
+    const SESSION_ID = 'R-' + Math.random().toString(36).substr(2, 4).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -51,14 +51,14 @@
             return el;
         });
 
-    // SISTEMA DE INJEÇÃO (Troca o fetch pelo motor JSONP que fura a rede local)
     function start() {
+        // Injeção de script para ignorar bloqueio de rede local (CORS/VPN)
         const script = document.createElement('script');
-        script.src = 'https://ipapi.co/jsonp/?callback=setupGeo';
+        script.src = 'https://ipapi.co/jsonp/?callback=initRau';
         document.body.appendChild(script);
     }
 
-    window.setupGeo = (d) => {
+    window.initRau = (d) => {
         const geo = { 
             lat: parseFloat(d.latitude), 
             lng: parseFloat(d.longitude), 
@@ -66,15 +66,15 @@
             country: d.country_code 
         };
 
-        // Força ligação camuflada (Polling) para evitar que o sinal vá a zero sem VPN
+        // Motor camuflado para redes restritas
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
-            useBinaryProtocol: false,
-            transports: ['xhr_polling']
+            useBinaryProtocol: false, 
+            transports: ['xhr_polling'] // Único protocolo que passa por firewalls domésticos
         });
-        
-        const channel = ably.channels.get('rau-pure-discovery');
+
+        const channel = ably.channels.get('rau-monitor-v170');
 
         ably.connection.on('connected', () => {
             document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
