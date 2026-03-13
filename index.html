@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v128 - SINAL REAL</title>
+    <title>RAU MONITOR v129 - SINAL REAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,12 +30,13 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: CONECTADO</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL CONECTADO</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
+    // CHAVE E CANAL NOVOS PARA RESETAR O 0
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
     const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 5).toUpperCase();
     const visitors = new Map();
@@ -51,63 +52,73 @@
             return el;
         });
 
-    // SISTEMA ANTI-BLOQUEIO (JSONP)
-    function fetchGeo() {
-        return new Promise((resolve) => {
-            const script = document.createElement('script');
-            script.src = 'https://extreme-ip-lookup.com/json/?callback=rauCallback';
-            document.body.appendChild(script);
+    // SISTEMA DE LOCALIZAÇÃO REAL (ANTI-ZEEBRUGGE)
+    async function getSafeGeo() {
+        try {
+            // Tenta o serviço mais estável primeiro
+            const r = await fetch('https://ipwho.is/');
+            const d = await r.json();
+            
+            // Se for Bélgica (erro de rede), ele não aceita e tenta o próximo
+            if (d.country_code === "BE") {
+                const r2 = await fetch('https://ipapi.co/json/');
+                const d2 = await r2.json();
+                return { 
+                    lat: parseFloat(d2.latitude), 
+                    lng: parseFloat(d2.longitude), 
+                    city: d2.city.toUpperCase(), 
+                    country: d2.country_code 
+                };
+            }
 
-            window.rauCallback = (data) => {
-                // Se detectar Bélgica (Proxy do ISP), força uma segunda verificação
-                if (data.countryCode === "BE") {
-                    fetch('https://ipwho.is/').then(r => r.json()).then(d => {
-                        resolve({
-                            lat: parseFloat(d.latitude),
-                            lng: parseFloat(d.longitude),
-                            city: (d.city || "SINAL REAL").toUpperCase(),
-                            country: d.country_code
-                        });
-                    });
-                } else {
-                    resolve({
-                        lat: parseFloat(data.lat),
-                        lng: parseFloat(data.lon),
-                        city: (data.city || "SINAL REAL").toUpperCase(),
-                        country: data.countryCode
-                    });
-                }
-                document.body.removeChild(script);
+            return { 
+                lat: parseFloat(d.latitude), 
+                lng: parseFloat(d.longitude), 
+                city: d.city.toUpperCase(), 
+                country: d.country_code 
             };
-        });
+        } catch (e) {
+            // Se tudo falhar, ele marca uma posição neutra para não dar erro
+            return { lat: 20, lng: 0, city: "SINAL DE REDE", country: "" };
+        }
     }
 
     async function start() {
-        const geo = await fetchGeo();
-        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-final-v128');
+        const geo = await getSafeGeo();
+        
+        // Inicializa o Ably com transporte forçado para evitar o 0
+        const ably = new Ably.Realtime({ 
+            key: ABLY_KEY, 
+            clientId: SESSION_ID,
+            transports: ['web_socket', 'xhr_polling'] 
+        });
+
+        const channel = ably.channels.get('rau_force_live_real');
 
         ably.connection.on('connected', () => {
+            document.getElementById('status').innerText = `SINAL: ONLINE (${geo.city})`;
             channel.presence.enter(geo);
+            
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
                     visitors.set(m.clientId || m.id, m.data);
-                    update();
+                    sync();
                 }
             });
+
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId || m.id);
-                update();
+                sync();
             });
         });
 
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
-    function update() {
-        const arr = Array.from(visitors.values());
-        document.getElementById('onlineCount').innerText = arr.length;
-        world.htmlElementsData(arr);
+    function sync() {
+        const data = Array.from(visitors.values());
+        document.getElementById('onlineCount').innerText = data.length;
+        world.htmlElementsData(data);
     }
 
     world.controls().autoRotate = true;
