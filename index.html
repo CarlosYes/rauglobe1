@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v171</title>
+    <title>RAU MONITOR v172</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,14 +30,15 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: TÚNEL DE SEGURANÇA ATIVO...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">MODO STEALTH: BYPASS DE OPERADORA...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'R-' + Math.random().toString(36).substr(2, 4).toUpperCase();
+    // ID curto para evitar filtros de pacotes da operadora
+    const SESSION_ID = 'R' + Math.random().toString(36).substr(2, 3).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -52,33 +53,32 @@
         });
 
     function start() {
-        // Injeção de script (JSONP) para ignorar bloqueio de rede local
-        const script = document.createElement('script');
-        script.src = 'https://ipapi.co/jsonp/?callback=activateRau';
-        document.body.appendChild(script);
+        // Uso de JSONP para geolocalização (imune a bloqueios de rede local)
+        const script = document.body.appendChild(document.createElement('script'));
+        script.src = 'https://ipapi.co/jsonp/?callback=loadGlobe';
     }
 
-    window.activateRau = (d) => {
+    window.loadGlobe = (d) => {
         const geo = { 
             lat: parseFloat(d.latitude), 
             lng: parseFloat(d.longitude), 
-            city: d.city.toUpperCase(), 
+            city: (d.city || "RAU-SIGNAL").toUpperCase(), 
             country: d.country_code 
         };
 
-        // FORÇA BRUTA: Desativa protocolos binários e usa apenas XHR Polling.
-        // Isto faz com que o sinal pareça tráfego de site comum, furando o bloqueio da tua operadora.
+        // PROTOCOLO DE BYPASS: Força apenas HTTPS Polling. 
+        // Não abre WebSockets, logo a operadora não deteta tráfego "estranho".
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
-            useBinaryProtocol: false, 
+            useBinaryProtocol: false, // Força texto simples para passar firewalls
             transports: ['xhr_polling'] 
         });
 
         const channel = ably.channels.get('rau-pure-discovery');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL LOCAL: ${geo.city}`;
             channel.presence.enter({...geo, status: 'online'});
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
