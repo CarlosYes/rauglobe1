@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v131 - POSIÇÃO ABSOLUTA</title>
+    <title>RAU MONITOR v135 - ELITE PRECISION</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL FIXADO</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL DE ALTA PRECISÃO</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,40 +51,41 @@
             return el;
         });
 
-    // SISTEMA DE LOCALIZAÇÃO POR HARDWARE (Sem janelas de permissão se possível)
-    async function getFinalGeo() {
-        const providers = [
-            'https://ipwho.is/',
-            'https://ipapi.co/json/'
-        ];
-
-        for (let url of providers) {
-            try {
-                const r = await fetch(url);
-                const d = await r.json();
-                
-                const lat = parseFloat(d.latitude || d.lat);
-                const lng = parseFloat(d.longitude || d.lon);
-                const city = d.city || "SINAL REAL";
-                const country = (d.country_code || d.country || "").toUpperCase();
-
-                // FILTRO DE SEGURANÇA: Se não for onde tu estás (Bélgica ou erro 0,0), salta.
-                if (lat && lng && country !== "BE" && lat !== 0) {
-                    return { lat, lng, city: city.toUpperCase(), country: country };
-                }
-            } catch (e) { continue; }
+    async function getEliteGeo() {
+        // A base de dados do ipinfo.io é a mais respeitada por não usar nós de proxy genéricos
+        try {
+            const r = await fetch('https://ipinfo.io/json?token=6f796a39d89274'); // Token público estável
+            const d = await r.json();
+            
+            if (d.loc) {
+                const [lat, lng] = d.loc.split(',');
+                return {
+                    lat: parseFloat(lat),
+                    lng: parseFloat(lng),
+                    city: (d.city || "LOCAL").toUpperCase(),
+                    country: d.country
+                };
+            }
+        } catch (e) {
+            // Se o ipinfo falhar (limite), usamos o motor secundário de verificação
+            const r2 = await fetch('https://ipwho.is/');
+            const d2 = await r2.json();
+            return {
+                lat: parseFloat(d2.latitude),
+                lng: parseFloat(d2.longitude),
+                city: (d2.city || "SINAL REAL").toUpperCase(),
+                country: d2.country_code
+            };
         }
-        // Se a rede falhar, ele usa um fallback neutro para não quebrar o código
-        return { lat: 0.1, lng: 0.1, city: "VERIFICANDO REDE", country: "" };
     }
 
     async function start() {
-        const geo = await getFinalGeo();
+        const geo = await getEliteGeo();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-final-v131');
+        const channel = ably.channels.get('rau-elite-v1');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
+            document.getElementById('status').innerText = `LOCALIZADO: ${geo.city}`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
