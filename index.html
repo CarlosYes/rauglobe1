@@ -3,49 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v101 - PRECISÃO REAL</title>
+    <title>RAU MONITOR v102 - BYPASS ATIVO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         
-        /* Interface HUD */
+        /* HUD Frontal */
         .hud {
-            position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(0, 8, 15, 0.95); border-left: 4px solid #ff3e3e;
-            padding: 20px; color: #fff; pointer-events: none;
-            box-shadow: 0 0 30px rgba(255, 62, 62, 0.1);
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: rgba(0, 0, 0, 0.85); border-left: 4px solid #39ff14;
+            padding: 15px 25px; color: #fff; pointer-events: none;
+            backdrop-filter: blur(5px); border-radius: 0 5px 5px 0;
         }
-        .count-on { font-size: 55px; font-weight: 900; color: #ff3e3e; line-height: 1; }
-        .status-msg { font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3e3e; opacity: 0.8; }
+        .count-on { font-size: 50px; font-weight: 900; color: #39ff14; text-shadow: 0 0 15px rgba(57, 255, 20, 0.5); }
+        .status-msg { font-size: 10px; margin-top: 5px; font-family: monospace; color: #39ff14; text-transform: uppercase; }
 
-        /* Marcadores Dinâmicos */
+        /* Estilo dos Nós no Globo */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0,0,0,0.9); padding: 6px 14px; border-radius: 4px;
-            font-size: 11px; font-weight: 800; display: flex; align-items: center; gap: 8px;
-            border: 1px solid #ff3e3e; color: #fff; white-space: nowrap;
+            background: rgba(0,0,0,0.9); padding: 4px 10px; border-radius: 3px;
+            font-size: 10px; font-weight: 900; display: flex; align-items: center; gap: 6px;
+            border: 1px solid #39ff14; color: #39ff14; white-space: nowrap;
         }
         .d-rau { 
-            width: 12px; height: 12px; background: #ff3e3e; border-radius: 50%; 
-            margin-top: 5px; box-shadow: 0 0 20px #ff3e3e; 
-            animation: pulse-red 2s infinite; 
+            width: 8px; height: 8px; background: #39ff14; border-radius: 50%; 
+            margin-top: 4px; box-shadow: 0 0 10px #39ff14; 
+            animation: pulse 1.2s infinite; 
         }
 
-        @keyframes pulse-red {
-            0% { transform: scale(1); opacity: 1; box-shadow: 0 0 0px #ff3e3e; }
-            70% { transform: scale(3); opacity: 0; box-shadow: 0 0 20px #ff3e3e; }
-            100% { opacity: 0; }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(4); opacity: 0; }
         }
     </style>
 </head>
 <body>
 
 <div class="hud">
-    <div id="onlineCount" class="count-on">00</div>
-    <div id="status" class="status-msg">SINAL: AGUARDANDO PRECISÃO...</div>
+    <div id="onlineCount" class="count-on">--</div>
+    <div id="status" class="status-msg">A iniciar varredura...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -59,7 +58,7 @@
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
         .showAtmosphere(true)
-        .atmosphereColor('#ff3e3e')
+        .atmosphereColor('#39ff14')
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = `m-rau`;
@@ -68,66 +67,75 @@
             return el;
         });
 
-    // SISTEMA DE PRECISÃO REAL (GPS > IP)
-    async function getTrueLocation() {
-        return new Promise((resolve) => {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(async (pos) => {
-                    // Se o usuário permitir GPS, pegamos a cidade via Reverse Geocoding suave
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    try {
-                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-                        const data = await res.json();
-                        const city = data.address.city || data.address.town || data.address.village || "LOCAL DESCONHECIDO";
-                        resolve({ lat, lng, city: city.toUpperCase(), country: data.address.country_code.toUpperCase() });
-                    } catch {
-                        resolve(fetchFallbackIP());
-                    }
-                }, () => resolve(fetchFallbackIP()), { timeout: 5000 });
-            } else {
-                resolve(fetchFallbackIP());
-            }
-        });
-    }
-
-    async function fetchFallbackIP() {
+    // Função Principal de Localização (Com Bypass de Erro)
+    async function getDiscovery() {
+        // Tenta primeiro via API (mais estável para evitar o erro 00)
         try {
-            const r = await fetch('https://ipapi.co/json/');
-            const d = await r.json();
-            return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code };
-        } catch { return null; }
+            const res = await fetch('https://ipapi.co/json/');
+            const d = await res.json();
+            if (d.latitude) {
+                return {
+                    lat: parseFloat(d.latitude),
+                    lng: parseFloat(d.longitude),
+                    city: d.city.toUpperCase(),
+                    country: d.country_code
+                };
+            }
+        } catch (e) {
+            console.log("Fallback 1 falhou...");
+        }
+
+        // Fallback para outra API caso a primeira esteja bloqueada
+        try {
+            const res = await fetch('https://ipwho.is/');
+            const d = await res.json();
+            return {
+                lat: parseFloat(d.latitude),
+                lng: parseFloat(d.longitude),
+                city: d.city.toUpperCase(),
+                country: d.country_code
+            };
+        } catch (e) {
+            return null;
+        }
     }
 
     async function start() {
-        const geo = await getTrueLocation();
+        document.getElementById('status').innerText = "SINCRONIZANDO SINAL...";
+        const geo = await getDiscovery();
+        
         if (!geo) {
-            document.getElementById('status').innerText = "SINAL BLOQUEADO";
+            document.getElementById('status').innerText = "ERRO CRÍTICO DE REDE";
             return;
         }
 
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-signal-v101');
+        const channel = ably.channels.get('rau-pure-signal-v102');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL: ${geo.city} [ATIVO]`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
                     visitors.set(m.clientId, m.data);
-                    updateDisplay();
+                    updateHUD();
                 }
+            });
+            
+            channel.presence.subscribe('leave', (m) => {
+                visitors.delete(m.clientId);
+                updateHUD();
             });
         });
 
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2500);
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
-    function updateDisplay() {
-        const data = Array.from(visitors.values());
-        document.getElementById('onlineCount').innerText = data.length.toString().padStart(2, '0');
-        world.htmlElementsData(data);
+    function updateHUD() {
+        const arr = Array.from(visitors.values());
+        document.getElementById('onlineCount').innerText = arr.length.toString().padStart(2, '0');
+        world.htmlElementsData(arr);
     }
 
     world.controls().autoRotate = true;
