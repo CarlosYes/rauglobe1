@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v180</title>
+    <title>RAU MONITOR v181</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: PULSOS DE SEGURANÇA v180</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: REST-BYPASS v181</div>
 </div>
 
 <div id="globeViz"></div>
@@ -52,47 +52,46 @@
         });
 
     function start() {
-        // Injeção via script para o PC não bloquear o pedido de IP
         const s = document.createElement('script');
-        s.src = 'https://ipapi.co/jsonp/?callback=rauPulse';
+        s.src = 'https://ipapi.co/jsonp/?callback=setupRau';
         document.body.appendChild(s);
     }
 
-    window.rauPulse = (d) => {
+    window.setupRau = (d) => {
         const geo = { 
             lat: parseFloat(d.latitude), 
             lng: parseFloat(d.longitude), 
-            city: (d.city || "RAU-USER").toUpperCase(), 
+            city: (d.city || "RAU-SIGNAL").toUpperCase(), 
             country: d.country_code 
         };
 
-        // BYPASS DEFINITIVO: Desativa WebSockets e usa apenas pedidos HTTP curtos
-        // Isso impede que a operadora detete uma "sessão viva" e a corte.
-        const ably = new Ably.Realtime({ 
-            key: ABLY_KEY, 
-            clientId: SESSION_ID,
-            useBinaryProtocol: false,
-            transports: ['xhr_polling'],
-            disconnectedRetryTimeout: 1000 // Tenta reconectar em 1 segundo se cair
-        });
+        // MODO REST: Não abre socket. Faz pedidos HTTPS isolados.
+        // Isto é invisível para filtros de pacotes que procuram "ligações de chat".
+        const ably = new Ably.Rest({ key: ABLY_KEY });
+        const channel = ably.channels.get('rau-discovery-v181');
 
-        const channel = ably.channels.get('rau-discovery-v180');
-
-        ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `CONECTADO: ${geo.city}`;
-            channel.presence.enter({...geo, status: 'online'});
-            
-            channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
-                if(m.data && m.data.lat) {
-                    visitors.set(m.clientId || m.id, { ...m.data, status: 'online' });
-                    sync();
-                }
-            });
-            channel.presence.subscribe('leave', (m) => {
-                visitors.delete(m.clientId || m.id);
+        async function pulse() {
+            try {
+                // Entra na presença (via REST)
+                await channel.presence.enterClient(SESSION_ID, {...geo, status: 'online'});
+                
+                // Obtém a lista de quem está online
+                const resultPage = await channel.presence.get();
+                visitors.clear();
+                resultPage.items.forEach(m => {
+                    if(m.data && m.data.lat) {
+                        visitors.set(m.clientId || m.id, { ...m.data, status: 'online' });
+                    }
+                });
                 sync();
-            });
-        });
+            } catch (e) {
+                console.error("Falha no pulso de rede.");
+            }
+        }
+
+        // Envia um pulso a cada 10 segundos para manter o sinal vivo sem VPN
+        pulse();
+        setInterval(pulse, 10000);
 
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     };
