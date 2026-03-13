@@ -3,20 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v151 - PURE EDGE</title>
+    <title>RAU GLOBE v154 - ABSOLUTE FOCUS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
+        
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 5, 10, 0.95); border-left: 5px solid #39ff14;
             padding: 15px; color: #fff; pointer-events: none;
         }
         .count-on { font-size: 60px; font-weight: 900; line-height: 0.8; color: #39ff14; }
-        .m-rau { display: flex; flex-direction: column; align-items: center; }
+        
+        /* Marcadores */
+        .m-rau { display: flex; flex-direction: column; align-items: center; cursor: pointer; }
         .l-rau {
             background: rgba(0,0,0,0.95); padding: 4px 10px; border-radius: 3px;
             font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 6px;
@@ -24,15 +27,19 @@
         }
         .d-rau { width: 8px; height: 8px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 15px #39ff14; animation: p 1.2s infinite; }
         @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
+
+        /* Aviso de Calibração */
+        #debug { position: absolute; bottom: 10px; right: 10px; color: #39ff14; font-family: monospace; font-size: 9px; opacity: 0.5; }
     </style>
 </head>
 <body>
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: SINCRONIZANDO CANAL...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: LOCALIZAÇÃO 2026</div>
 </div>
 
+<div id="debug">RAU MONITOR | V154 | SENSOR DE HARDWARE ATIVO</div>
 <div id="globeViz"></div>
 
 <script>
@@ -40,6 +47,7 @@
     const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 5).toUpperCase();
     const visitors = new Map();
 
+    // Iniciar o Globo
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000').showAtmosphere(true)
@@ -51,31 +59,50 @@
             return el;
         });
 
+    // Função de Captura de Sinal Sem Mentiras
+    async function getTrueLocation() {
+        return new Promise((resolve) => {
+            // Se o browser permitir GPS/Wi-Fi, usamos a precisão de 5 metros
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        resolve({
+                            lat: pos.coords.latitude,
+                            lng: pos.coords.longitude,
+                            city: "SINAL PRECISO",
+                            country: ""
+                        });
+                    },
+                    async () => {
+                        // Se o utilizador negar ou falhar, usamos o túnel de IP como último recurso
+                        const res = await fetch('https://ipapi.co/json/').then(r => r.json());
+                        resolve({
+                            lat: res.latitude,
+                            lng: res.longitude,
+                            city: res.city.toUpperCase(),
+                            country: res.country_code
+                        });
+                    },
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            }
+        });
+    }
+
     async function start() {
+        const geo = await getTrueLocation();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-monitor-v151');
+        const channel = ably.channels.get('rau-final-globe');
 
         ably.connection.on('connected', () => {
-            // Usamos o motor do IP-API que permite JSONP (invisível ao bloqueio do GitHub)
-            const script = document.createElement('script');
-            script.src = 'https://ipapi.co/jsonp/?callback=processGeo';
-            document.body.appendChild(script);
-        });
-
-        window.processGeo = (data) => {
-            const myData = {
-                lat: data.latitude,
-                lng: data.longitude,
-                city: data.city.toUpperCase(),
-                country: data.country_code
-            };
-
-            document.getElementById('status').innerText = `SINAL ATIVO: ${myData.city}`;
-            channel.presence.enter(myData);
-            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.0 }, 2000);
+            document.getElementById('status').innerText = `CONECTADO: ${geo.city}`;
+            channel.presence.enter(geo);
+            
+            // Focar o globo na tua posição real
+            world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
 
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
-                if(m.data) {
+                if(m.data && m.data.lat) {
                     visitors.set(m.clientId || m.id, m.data);
                     sync();
                 }
@@ -84,7 +111,7 @@
                 visitors.delete(m.clientId || m.id);
                 sync();
             });
-        };
+        });
     }
 
     function sync() {
