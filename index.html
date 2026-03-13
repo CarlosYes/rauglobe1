@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v199</title>
+    <title>RAU MONITOR v200</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -29,7 +29,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: SINCRONIZANDO...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: LENDO IP...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -42,64 +42,47 @@
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
-            const flag = d.countryCode ? `<img src="https://flagcdn.com/w20/${d.countryCode.toLowerCase()}.png" style="width:14px">` : '';
-            el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
+            el.innerHTML = `<div class="l-rau"><span>SINAL ATIVO</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    // Função que recebe o sinal real do servidor
-    window.receberSinal = function(data) {
-        if (!data || data.status !== "success") {
-            document.getElementById('status').innerText = "SINAL: FALHA NO SERVIDOR";
-            return;
+    async function catchSignal() {
+        try {
+            // Usamos o serviço de trace da Cloudflare (Impossível de bloquear)
+            const response = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
+            const data = await response.text();
+            
+            // Extraímos o código do país que a Cloudflare já deteta automaticamente
+            const locLine = data.split('\n').find(line => line.startsWith('loc='));
+            const countryCode = locLine ? locLine.split('=')[1] : 'PT';
+
+            // Base de dados interna simplificada para não depender de APIs externas
+            const countryCoords = {
+                'PT': { lat: 39.3999, lng: -8.2245, city: 'PORTUGAL' },
+                'BR': { lat: -14.2350, lng: -51.9253, city: 'BRASIL' },
+                'FR': { lat: 46.2276, lng: 2.2137, city: 'FRANÇA' },
+                'CH': { lat: 46.8182, lng: 8.2275, city: 'SUÍÇA' }
+            };
+
+            const myLoc = countryCoords[countryCode] || countryCoords['PT'];
+
+            // O contador só muda de 0 para 1 AQUI
+            document.getElementById('onlineCount').innerText = "1";
+            document.getElementById('status').innerText = `SINAL: ${myLoc.city} (via CDN)`;
+            document.getElementById('status').style.color = "#39ff14";
+
+            world.htmlElementsData([myLoc]);
+            world.pointOfView({ lat: myLoc.lat, lng: myLoc.lng, altitude: 2.5 }, 2000);
+
+        } catch (err) {
+            document.getElementById('status').innerText = "ERRO: SEM RESPOSTA CDN";
         }
-
-        const p = {
-            lat: parseFloat(data.lat),
-            lng: parseFloat(data.lon),
-            city: (data.city || "SINAL LOCAL").toUpperCase(),
-            countryCode: data.countryCode
-        };
-
-        // O contador só muda de 0 para 1 aqui
-        document.getElementById('onlineCount').innerText = "1";
-        document.getElementById('status').innerText = `SINAL: ${p.city}`;
-        document.getElementById('status').style.color = "#39ff14";
-
-        world.htmlElementsData([p]);
-        world.pointOfView({ lat: p.lat, lng: p.lng, altitude: 2.0 }, 2000);
-    };
-
-    function boot() {
-        // Método Passivo: Injetamos o script que carrega os dados como se fosse uma imagem
-        const motor = document.createElement('script');
-        motor.src = 'https://extreme-ip-lookup.com/json/?callback=receberSinal';
-        
-        motor.onerror = () => {
-            // Se o primeiro motor falhar, tentamos o backup instantâneo
-            const backup = document.createElement('script');
-            backup.src = 'https://www.geoplugin.net/javascript.gp?callback=receberSinalGP';
-            document.body.appendChild(backup);
-        };
-
-        document.body.appendChild(motor);
     }
-
-    // Adaptador para o motor de backup
-    window.receberSinalGP = function(d) {
-        window.receberSinal({
-            status: "success",
-            lat: d.geoplugin_latitude,
-            lon: d.geoplugin_longitude,
-            city: d.geoplugin_city,
-            countryCode: d.geoplugin_countryCode
-        });
-    };
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    window.onload = boot;
+    window.onload = catchSignal;
 </script>
 </body>
 </html>
