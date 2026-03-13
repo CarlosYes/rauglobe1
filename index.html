@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU GLOBE v164</title>
+    <title>RAU GLOBE v165</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: TÚNEL DE DADOS ATIVO</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: PROTOCOLO DE BYPASS 2026</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,32 +51,33 @@
             return el;
         });
 
-    function init() {
+    function ignite() {
+        // Bypass de rede via JSONP dinâmico
         const script = document.createElement('script');
-        script.src = 'https://ipapi.co/jsonp/?callback=activate';
+        script.src = 'https://ipapi.co/jsonp/?callback=launch';
         document.body.appendChild(script);
     }
 
-    window.activate = (data) => {
+    window.launch = (data) => {
         const myGeo = {
             lat: data.latitude,
             lng: data.longitude,
-            city: (data.city || "RAU-SIGNAL").toUpperCase(),
+            city: (data.city || "SINAL").toUpperCase(),
             country: data.country_code
         };
 
-        // PROTOCOLO DE BYPASS: Força túnel HTTPS para evitar o bloqueio da operadora (0 sem VPN)
+        // Força o motor a usar apenas o porto 443 (HTTPS comum) para evitar o 0 sem VPN
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
-            useBinaryProtocol: false, 
-            transports: ['xhr_polling'] // O transporte mais resiliente contra filtros de rede
+            useBinaryProtocol: false,
+            transports: ['xhr_polling'] // Força o tráfego a parecer navegação web normal
         });
 
-        const channel = ably.channels.get('rau-monitor-v164');
+        const channel = ably.channels.get('rau-globe-v165');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${myGeo.city}`;
+            document.getElementById('status').innerText = `SINAL ATIVO: ${myGeo.city}`;
             channel.presence.enter(myGeo);
             world.pointOfView({ lat: myGeo.lat, lng: myGeo.lng, altitude: 2.2 }, 2000);
 
@@ -100,7 +101,7 @@
     }
 
     world.controls().autoRotate = true;
-    window.onload = init;
+    window.onload = ignite;
 </script>
 </body>
 </html>
