@@ -2,12 +2,15 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v230 - ULTIMATE TRACE</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAU MONITOR v231 - ULTIMATE TRACE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
+        
+        /* HUD Interface */
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 5, 10, 0.9); border-left: 5px solid #39ff14;
@@ -15,7 +18,7 @@
         }
         .count-on { font-size: 60px; font-weight: 900; line-height: 0.8; color: #39ff14; }
         
-        /* Estilo dos Marcadores */
+        /* Marcadores no Globo */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
             background: rgba(0,0,0,0.95); padding: 6px 14px; border-radius: 4px;
@@ -23,13 +26,12 @@
             white-space: nowrap; transition: all 0.5s;
         }
         
-        /* Cores Dinâmicas */
+        /* Status de Cores */
         .status-online { border: 1px solid #39ff14; color: #39ff14; }
         .status-offline { border: 1px solid #8b0000; color: #8b0000; opacity: 0.6; }
-
         .flag { width: 20px; height: 14px; object-fit: cover; border: 0.5px solid currentColor; }
         
-        /* Pontos e Animações */
+        /* Pontos (Dots) */
         .d-rau { width: 12px; height: 12px; border-radius: 50%; margin-top: 5px; }
         .dot-online { background: #39ff14; box-shadow: 0 0 15px #39ff14; animation: p 1.5s infinite; }
         .dot-offline { background: #8b0000; box-shadow: 0 0 5px #8b0000; }
@@ -41,13 +43,13 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status">SINAL: AGUARDANDO...</div>
+    <div id="status">SINAL: RASTREANDO...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
-    // Armazenamento global dos visitantes para o globo não "esquecer"
+    const WORKER_URL = 'https://globorau.carlos2022yes.workers.dev/';
     let allVisitors = [];
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -64,7 +66,7 @@
 
             el.innerHTML = `
                 <div class="l-rau ${statusClass}">
-                    <img src="https://flagcdn.com/w40/${countryCode}.png" class="flag">
+                    <img src="https://flagcdn.com/w40/${countryCode}.png" class="flag" onerror="this.src='https://flagcdn.com/w40/un.png'">
                     <span>${d.city}</span>
                 </div>
                 <div class="d-rau ${dotClass}"></div>
@@ -75,65 +77,68 @@
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = -0.8;
 
-    async function startTrace() {
+    async function updateMonitor() {
         try {
-            const response = await fetch('https://ipwho.is/');
-            const data = await response.json();
+            // Busca o histórico completo do seu Cloudflare Worker
+            const response = await fetch(WORKER_URL);
+            const history = await response.json();
 
-            if (data.success) {
-                renderNewPoint(data.latitude, data.longitude, data.city.toUpperCase(), data.country_code);
+            if (Array.isArray(history) && history.length > 0) {
+                const now = Date.now();
+                
+                // Mapeia os dados do banco KV para o Globo
+                allVisitors = history.map(v => ({
+                    lat: parseFloat(v.lat),
+                    lng: parseFloat(v.lon),
+                    city: v.city,
+                    countryCode: v.countryCode,
+                    // Se entrou nos últimos 10 minutos (600.000ms), fica VERDE
+                    active: (now - v.timestamp) < 600000, 
+                    id: v.timestamp
+                }));
+
+                renderUI();
+
+                // Foca a câmera no visitante mais recente (Sua posição)
+                const lastVisitor = allVisitors[allVisitors.length - 1];
+                world.pointOfView({ 
+                    lat: lastVisitor.lat, 
+                    lng: lastVisitor.lng, 
+                    altitude: 1.8 
+                }, 2000);
             }
         } catch (e) {
-            // Fallback para o seu worker do Cloudflare
-            const cfRes = await fetch('https://globorau.carlos2022yes.workers.dev/');
-            const cf = await cfRes.json();
-            renderNewPoint(cf.lat, cf.lon, cf.city.toUpperCase(), cf.countryCode);
+            console.error("Erro ao conectar com o Monitor:", e);
+            document.getElementById('status').innerText = "ERRO DE CONEXÃO";
         }
     }
 
-    function renderNewPoint(lat, lon, city, countryCode) {
-        // 1. Criar novo objeto de visitante ativo
-        const newVisitor = { 
-            lat: parseFloat(lat), 
-            lng: parseFloat(lon), 
-            city, 
-            countryCode, 
-            active: true,
-            id: Date.now() 
-        };
-
-        // 2. Adicionar à lista histórica
-        allVisitors.push(newVisitor);
-        
-        // 3. Simular que após 15 segundos ele "saiu" (fica vermelho escuro)
-        setTimeout(() => {
-            newVisitor.active = false;
-            updateDisplay();
-        }, 15000);
-
-        updateDisplay();
-        
-        // Focar a câmera no último sinal
-        world.pointOfView({ lat: parseFloat(lat), lng: parseFloat(lon), altitude: 1.8 }, 2000);
-    }
-
-    function updateDisplay() {
-        // Atualiza contador HUD (apenas os ativos)
+    function renderUI() {
+        // Conta apenas os que estão "online" (verdes)
         const onlineNow = allVisitors.filter(v => v.active).length;
         document.getElementById('onlineCount').innerText = onlineNow;
         
-        if(allVisitors.length > 0) {
-            document.getElementById('status').innerText = "SINAL: " + allVisitors[allVisitors.length -1].city;
+        if (allVisitors.length > 0) {
+            const lastCity = allVisitors[allVisitors.length - 1].city;
+            document.getElementById('status').innerText = "ÚLTIMO SINAL: " + lastCity;
         }
 
-        // Renderiza TODOS os pontos (Verdes e Vermelhos) no globo
+        // Atualiza os elementos no globo
         world.htmlElementsData(allVisitors);
     }
 
+    // Inicializa e atualiza a cada 30 segundos
     window.onload = () => {
-        startTrace();
-        // Simulação: Tenta buscar novos acessos periodicamente
-        setInterval(startTrace, 60000); 
+        updateMonitor();
+        setInterval(updateMonitor, 30000);
+    };
+
+    // Segurança contra inspeção básica
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    document.onkeydown = (e) => {
+        if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) {
+            return false;
+        }
     };
 </script>
 </body>
