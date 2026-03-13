@@ -29,7 +29,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status">SINAL: RASTREIO...</div>
+    <div id="status">SINAL: RASTREIO DE REDE...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -57,39 +57,37 @@
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = -1.3;
 
+    // A função que eu tinha estragado, agora corrigida para ler o teu banco de dados
     async function startTrace() {
         try {
-            // Agora lê diretamente do teu Worker que já tem o "casamento" feito
             const response = await fetch('https://globorau.carlos2022yes.workers.dev/');
-            const history = await response.json();
+            const data = await response.json();
 
-            if (Array.isArray(history) && history.length > 0) {
-                // Pega o último sinal registado (Lisboa)
-                const last = history[history.length - 1];
-                
-                // Mapeia os dados para o formato que o teu HTML precisa
-                const points = history.map(v => ({
-                    lat: v.lat,
-                    lng: v.lng,
-                    city: v.city,
-                    countryCode: v.country || v.countryCode // Aceita os dois formatos
+            if (Array.isArray(data) && data.length > 0) {
+                // Pega todos os pontos que estão guardados no "casamento"
+                const points = data.map(item => ({
+                    lat: parseFloat(item.lat),
+                    lng: parseFloat(item.lng),
+                    city: item.city,
+                    countryCode: item.country || item.countryCode
                 }));
 
+                const last = points[points.length - 1];
+                
                 document.getElementById('onlineCount').innerText = points.length;
                 document.getElementById('status').innerText = "SINAL: " + last.city;
-                
+
                 world.htmlElementsData(points);
                 world.pointOfView({ lat: last.lat, lng: last.lng, altitude: 1.8 }, 2500);
                 
                 setTimeout(() => { world.controls().autoRotateSpeed = -0.25; }, 2600);
             }
         } catch (e) {
-            document.getElementById('status').innerText = "ERRO DE CONEXÃO";
+            console.error("Erro no rastreio");
         }
     }
 
     window.onload = startTrace;
-    setInterval(startTrace, 15000); // Atualiza sem refrescar a página
 </script>
 </body>
 </html>
