@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v181</title>
+    <title>RAU MONITOR v182</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,14 +30,14 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: REST-BYPASS v181</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: INJEÇÃO v182...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'R' + Math.random().toString(36).substr(2, 4).toUpperCase();
+    const SESSION_ID = 'RAU' + Math.floor(Math.random() * 9999);
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -51,47 +51,47 @@
             return el;
         });
 
+    // MOTOR DE ARRANQUE: Injeção de script via GeoPlugin (Fura o bloqueio do IPAPI)
     function start() {
         const s = document.createElement('script');
-        s.src = 'https://ipapi.co/jsonp/?callback=setupRau';
+        s.src = 'https://www.geoplugin.net/javascript.gp?callback=rauIgnite';
         document.body.appendChild(s);
     }
 
-    window.setupRau = (d) => {
+    window.rauIgnite = (d) => {
         const geo = { 
-            lat: parseFloat(d.latitude), 
-            lng: parseFloat(d.longitude), 
-            city: (d.city || "RAU-SIGNAL").toUpperCase(), 
-            country: d.country_code 
+            lat: parseFloat(d.geoplugin_latitude), 
+            lng: parseFloat(d.geoplugin_longitude), 
+            city: (d.geoplugin_city || "SINAL").toUpperCase(), 
+            country: d.geoplugin_countryCode 
         };
 
-        // MODO REST: Não abre socket. Faz pedidos HTTPS isolados.
-        // Isto é invisível para filtros de pacotes que procuram "ligações de chat".
-        const ably = new Ably.Rest({ key: ABLY_KEY });
-        const channel = ably.channels.get('rau-discovery-v181');
+        // ABORTAMOS O WEBSOCKET: Usamos apenas COMET/JSONP
+        // Isto transforma a comunicação do Ably em carregamentos de "scripts" invisíveis
+        const ably = new Ably.Realtime({ 
+            key: ABLY_KEY, 
+            clientId: SESSION_ID,
+            useBinaryProtocol: false,
+            transports: ['jsonp', 'xhr_polling'] 
+        });
 
-        async function pulse() {
-            try {
-                // Entra na presença (via REST)
-                await channel.presence.enterClient(SESSION_ID, {...geo, status: 'online'});
-                
-                // Obtém a lista de quem está online
-                const resultPage = await channel.presence.get();
-                visitors.clear();
-                resultPage.items.forEach(m => {
-                    if(m.data && m.data.lat) {
-                        visitors.set(m.clientId || m.id, { ...m.data, status: 'online' });
-                    }
-                });
+        const channel = ably.channels.get('rau-discovery-v182');
+
+        ably.connection.on('connected', () => {
+            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
+            channel.presence.enter({...geo, status: 'online'});
+            
+            channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
+                if(m.data && m.data.lat) {
+                    visitors.set(m.clientId || m.id, { ...m.data, status: 'online' });
+                    sync();
+                }
+            });
+            channel.presence.subscribe('leave', (m) => {
+                visitors.delete(m.clientId || m.id);
                 sync();
-            } catch (e) {
-                console.error("Falha no pulso de rede.");
-            }
-        }
-
-        // Envia um pulso a cada 10 segundos para manter o sinal vivo sem VPN
-        pulse();
-        setInterval(pulse, 10000);
+            });
+        });
 
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     };
