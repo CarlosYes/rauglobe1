@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v111 - SINAL REAL</title>
+    <title>RAU MONITOR v112 - SINAL REAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINCRONIZANDO SINAL REAL...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">A VARRER SINAL...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -41,7 +41,7 @@
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
-        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000').showAtmosphere(true)
         .htmlElement(d => {
             const el = document.createElement('div');
@@ -51,41 +51,46 @@
             return el;
         });
 
-    // SISTEMA DE DETECÇÃO CORRIGIDO: Prioriza GPS para evitar Bruges
+    // SISTEMA DE DETECÇÃO HÍBRIDO (GPS com Timeout + IP Fallback)
     async function getDiscovery() {
         return new Promise((resolve) => {
-            // 1. Tenta GPS primeiro (É a única forma de ignorar o erro do provedor)
+            let resolved = false;
+
+            // 1. Tenta GPS primeiro
             if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(async (position) => {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
+                navigator.geolocation.getCurrentPosition(async (pos) => {
+                    if (resolved) return;
+                    resolved = true;
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
                     try {
-                        // Converte coordenadas em nome de cidade real
                         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
                         const data = await res.json();
-                        const city = data.address.city || data.address.town || data.address.village || "LOCALIZAÇÃO REAL";
+                        const city = data.address.city || data.address.town || data.address.village || "LOCAL REAL";
                         resolve({ lat, lng, city: city.toUpperCase(), country: data.address.country_code });
-                    } catch (e) {
+                    } catch {
                         resolve({ lat, lng, city: "SINAL GPS", country: "" });
                     }
-                }, async () => {
-                    // 2. Se o GPS falhar, tenta IP mas com filtro anti-cache
-                    const r = await fetch('https://ipapi.co/json/?nocache=' + Math.random());
-                    const d = await r.json();
-                    resolve({ lat: parseFloat(d.latitude), lng: parseFloat(d.longitude), city: d.city.toUpperCase(), country: d.country_code });
-                }, { timeout: 5000 });
+                }, () => {}, { timeout: 4000 });
             }
+
+            // 2. Fallback Automático para IP após 4.5 segundos se o GPS não responder
+            setTimeout(async () => {
+                if (resolved) return;
+                resolved = true;
+                try {
+                    const r = await fetch('https://ipwho.is/');
+                    const d = await r.json();
+                    resolve({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code });
+                } catch {
+                    resolve({ lat: 38.7, lng: -9.1, city: "LISBOA", country: "PT" });
+                }
+            }, 4500);
         });
     }
 
     async function start() {
         const geo = await getDiscovery();
-        
-        if (!geo) {
-            document.getElementById('status').innerText = "ERRO DE SINCRONIZAÇÃO";
-            return;
-        }
-
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
         const channel = ably.channels.get('rau-pure-discovery');
 
@@ -99,7 +104,6 @@
                     updateHUD();
                 }
             });
-
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId || m.id);
                 updateHUD();
