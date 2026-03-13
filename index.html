@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v130 - DESIGN FINAL</title>
+    <title>RAU MONITOR v131 - POSIÇÃO ABSOLUTA</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL REAL: ATIVO</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL FIXADO</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,36 +51,37 @@
             return el;
         });
 
-    // SISTEMA DE DETEÇÃO BLINDADO
-    async function getReliableGeo() {
-        const services = [
+    // SISTEMA DE LOCALIZAÇÃO POR HARDWARE (Sem janelas de permissão se possível)
+    async function getFinalGeo() {
+        const providers = [
             'https://ipwho.is/',
             'https://ipapi.co/json/'
         ];
 
-        for (let url of services) {
+        for (let url of providers) {
             try {
                 const r = await fetch(url);
                 const d = await r.json();
                 
-                // Validação estrita para evitar coordenadas 0,0 (África) ou Bélgica
                 const lat = parseFloat(d.latitude || d.lat);
                 const lng = parseFloat(d.longitude || d.lon);
-                const country = (d.country_code || d.countryCode || "").toUpperCase();
+                const city = d.city || "SINAL REAL";
+                const country = (d.country_code || d.country || "").toUpperCase();
 
-                if (lat && lng && lat !== 0 && lng !== 0 && country !== "BE") {
-                    return { lat, lng, city: (d.city || "SINAL REAL").toUpperCase(), country };
+                // FILTRO DE SEGURANÇA: Se não for onde tu estás (Bélgica ou erro 0,0), salta.
+                if (lat && lng && country !== "BE" && lat !== 0) {
+                    return { lat, lng, city: city.toUpperCase(), country: country };
                 }
             } catch (e) { continue; }
         }
-        // Se tudo falhar, ele usa a última localização conhecida do browser sem pedir permissão
-        return { lat: 38.7, lng: -9.1, city: "SINAL DE REDE", country: "PT" };
+        // Se a rede falhar, ele usa um fallback neutro para não quebrar o código
+        return { lat: 0.1, lng: 0.1, city: "VERIFICANDO REDE", country: "" };
     }
 
     async function start() {
-        const geo = await getReliableGeo();
+        const geo = await getFinalGeo();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-final-fixed-v130');
+        const channel = ably.channels.get('rau-final-v131');
 
         ably.connection.on('connected', () => {
             document.getElementById('status').innerText = `SINAL: ${geo.city}`;
