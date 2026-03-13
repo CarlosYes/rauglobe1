@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v185</title>
+    <title>RAU MONITOR v186</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -29,7 +29,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">1</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL DETETADO</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">A PROCURAR SINAL...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -47,44 +47,31 @@
             return el;
         });
 
-    // Esta é a função direta que o link que passaste utiliza
-    async function loadLocation() {
-        try {
-            // Usando o serviço mais estável para browsers de PC
-            const response = await fetch('https://ipapi.co/json/');
-            const data = await response.json();
-            
-            const myLocation = {
-                lat: parseFloat(data.latitude),
-                lng: parseFloat(data.longitude),
-                city: data.city.toUpperCase(),
-                country: data.country_code
-            };
+    // FUNÇÃO DE CALLBACK (Injetada via Script para evitar erros de CORS/Bloqueio)
+    window.setRauLocation = function(data) {
+        const myLocation = {
+            lat: parseFloat(data.latitude),
+            lng: parseFloat(data.longitude),
+            city: (data.city || "SINAL").toUpperCase(),
+            country: data.country_code
+        };
 
-            // Atualiza o HUD
-            document.getElementById('status').innerText = `LOCALIZADO: ${myLocation.city}`;
-            
-            // Coloca o ponto no globo
-            world.htmlElementsData([myLocation]);
-            
-            // Faz o zoom automático para a tua casa
-            world.pointOfView({ 
-                lat: myLocation.lat, 
-                lng: myLocation.lng, 
-                altitude: 1.8 
-            }, 2000);
+        document.getElementById('status').innerText = `SINAL: ${myLocation.city}`;
+        world.htmlElementsData([myLocation]);
+        world.pointOfView({ lat: myLocation.lat, lng: myLocation.lng, altitude: 2.0 }, 2000);
+    };
 
-        } catch (err) {
-            document.getElementById('status').innerText = "ERRO NA DETECÇÃO";
-            console.error(err);
-        }
+    function init() {
+        // Criamos o elemento script dinamicamente como o XatRadio faz
+        const script = document.createElement('script');
+        script.src = 'https://ipapi.co/jsonp/?callback=setRauLocation';
+        document.body.appendChild(script);
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    // Iniciar detecção
-    window.onload = loadLocation;
+    window.onload = init;
 </script>
 </body>
 </html>
