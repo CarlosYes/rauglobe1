@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v189</title>
+    <title>RAU MONITOR v191</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -29,7 +29,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">ESTADO: AGUARDANDO DADOS...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">ESTADO: RASTREANDO IP...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -47,39 +47,51 @@
             return el;
         });
 
-    // SISTEMA DE DETECÇÃO ALTERNATIVO (IP-API - Método Directo)
-    async function getGeo() {
-        try {
-            // Este serviço é muito usado em players por não ter bloqueios de CORS agressivos
-            const response = await fetch('https://demo.ip-api.com/json/?fields=66846719');
-            const data = await response.json();
-            
-            if (data && data.lat) {
-                const myLocation = {
-                    lat: data.lat,
-                    lng: data.lon,
-                    city: data.city.toUpperCase(),
-                    country: data.countryCode
-                };
+    // MÉTODO FLAG-COUNTER: Carregamento de recurso passivo
+    function track() {
+        const script = document.createElement('script');
+        // Usamos o endpoint JSONP que se comporta como o rastreador do FlagCounter
+        script.src = 'https://ipapi.co/jsonp/?callback=activateSignal';
+        
+        script.onerror = () => {
+            // Se o primeiro falhar, usamos o backup instantâneo (Geoplugin)
+            const backup = document.createElement('script');
+            backup.src = 'https://www.geoplugin.net/javascript.gp?callback=activateSignalGP';
+            document.body.appendChild(backup);
+        };
+        
+        document.body.appendChild(script);
+    }
 
-                // SÓ ATUALIZA SE DETETAR
-                document.getElementById('onlineCount').innerText = "1";
-                document.getElementById('status').innerText = `SINAL: ${myLocation.city}`;
-                document.getElementById('status').style.color = "#39ff14";
+    window.activateSignal = function(data) {
+        if(!data.latitude) return;
+        render(data.latitude, data.longitude, data.city, data.country_code);
+    };
 
-                world.htmlElementsData([myLocation]);
-                world.pointOfView({ lat: myLocation.lat, lng: myLocation.lng, altitude: 2.0 }, 2000);
-            }
-        } catch (err) {
-            document.getElementById('status').innerText = "ERRO: FALHA NA LIGAÇÃO";
-            console.error("Falha ao detetar IP:", err);
-        }
+    window.activateSignalGP = function(d) {
+        render(d.geoplugin_latitude, d.geoplugin_longitude, d.geoplugin_city, d.geoplugin_countryCode);
+    };
+
+    function render(lat, lng, city, country) {
+        const loc = {
+            lat: parseFloat(lat),
+            lng: parseFloat(lng),
+            city: city.toUpperCase(),
+            country: country
+        };
+
+        document.getElementById('onlineCount').innerText = "1";
+        document.getElementById('status').innerText = `SINAL: ${loc.city}`;
+        document.getElementById('status').style.color = "#39ff14";
+
+        world.htmlElementsData([loc]);
+        world.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 2.0 }, 2000);
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    window.onload = getGeo;
+    window.onload = track;
 </script>
 </body>
 </html>
