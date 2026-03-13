@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v138 - SINAL REAL</title>
+    <title>RAU MONITOR v139 - SINAL FORÇADO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">A SINCRONIZAR POSIÇÃO...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: A RECONECTAR...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,44 +51,47 @@
             return el;
         });
 
-    async function getTrueLocation() {
-        // Tenta IPinfo (Melhor base de dados de IP)
+    // SISTEMA DE BYPASS DE REDE
+    async function getForcedGeo() {
         try {
-            const r = await fetch('https://ipinfo.io/json?token=6f796a39d89274');
+            // Tenta o serviço mais "aberto" para evitar o erro de rede protegida
+            const r = await fetch('https://ipapi.co/json/');
             const d = await r.json();
-            if (d.loc && !d.loc.startsWith('0,0')) {
-                const [lat, lng] = d.loc.split(',');
-                return { lat: parseFloat(lat), lng: parseFloat(lng), city: d.city.toUpperCase(), country: d.country };
+            if (d.latitude && d.latitude !== 0) {
+                return {
+                    lat: parseFloat(d.latitude),
+                    lng: parseFloat(d.longitude),
+                    city: (d.city || "SINAL ATIVO").toUpperCase(),
+                    country: d.country_code
+                };
             }
         } catch (e) {}
 
-        // Se o IP falhar ou for impreciso, tenta o Hardware/Navegador
-        return new Promise((resolve) => {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(async (pos) => {
-                    resolve({ 
-                        lat: pos.coords.latitude, 
-                        lng: pos.coords.longitude, 
-                        city: "GPS LOCAL", 
-                        country: "" 
-                    });
-                }, () => {
-                    // Fallback final apenas para não quebrar o código
-                    resolve({ lat: 0, lng: 0, city: "REDE PROTEGIDA", country: "" });
-                });
-            } else {
-                resolve({ lat: 0, lng: 0, city: "SEM GPS", country: "" });
-            }
-        });
+        // Fallback imediato via IPWHOIS caso o primeiro falhe
+        const r2 = await fetch('https://ipwho.is/');
+        const d2 = await r2.json();
+        return {
+            lat: d2.latitude,
+            lng: d2.longitude,
+            city: (d2.city || "SINAL REAL").toUpperCase(),
+            country: d2.country_code
+        };
     }
 
     async function start() {
-        const geo = await getTrueLocation();
-        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-pure-live-v138');
+        const geo = await getForcedGeo();
+        
+        // Força a conexão Ably a ignorar protocolos bloqueados
+        const ably = new Ably.Realtime({ 
+            key: ABLY_KEY, 
+            clientId: SESSION_ID,
+            transports: ['web_socket'] 
+        });
+
+        const channel = ably.channels.get('rau-force-v139');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
+            document.getElementById('status').innerText = `ONLINE: ${geo.city}`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
