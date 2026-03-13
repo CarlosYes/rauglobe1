@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v177</title>
+    <title>RAU MONITOR v178</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,14 +30,14 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: DETECÇÃO NATIVA ATIVA...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: BYPASS DE REDE ATIVO...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'R-' + Math.random().toString(36).substr(2, 4).toUpperCase();
+    const SESSION_ID = 'R' + Math.random().toString(36).substr(2, 4).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -51,64 +51,58 @@
             return el;
         });
 
-    function init() {
-        // Se o browser suportar geo nativa (imune a bloqueios de rede)
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => connect({ lat: pos.coords.latitude, lng: pos.coords.longitude, city: "LOCALIZAÇÃO REAL", country: "" }),
-                () => fallback()
-            );
-        } else { fallback(); }
-    }
-
-    // Se a geo nativa for recusada, usa injeção de script (Bypass)
-    function fallback() {
+    // SISTEMA DE INJEÇÃO POR SCRIPT (Imune ao bloqueio de fetch da operadora)
+    function start() {
         const s = document.createElement('script');
-        s.src = 'https://ipapi.co/jsonp/?callback=extGeo';
+        s.src = 'https://ipapi.co/jsonp/?callback=rauDiscovery';
         document.body.appendChild(s);
     }
 
-    window.extGeo = (d) => {
-        connect({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code });
-    }
+    window.rauDiscovery = (d) => {
+        const geo = { 
+            lat: parseFloat(d.latitude), 
+            lng: parseFloat(d.longitude), 
+            city: (d.city || "SINAL").toUpperCase(), 
+            country: d.country_code 
+        };
 
-    function connect(geo) {
+        // Força ligação via HTTPS Polling (Simula navegação web comum para evitar o "0")
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
             useBinaryProtocol: false,
-            transports: ['xhr_polling'] // Túnel de segurança
+            transports: ['xhr_polling']
         });
 
-        const channel = ably.channels.get('rau-pure-discovery');
+        const channel = ably.channels.get('rau-discovery-v178');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
             channel.presence.enter({...geo, status: 'online'});
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
                     visitors.set(m.clientId || m.id, { ...m.data, status: 'online' });
-                    sync();
+                    updateHUD();
                 }
             });
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId || m.id);
-                sync();
+                updateHUD();
             });
         });
 
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
-    }
+    };
 
-    function sync() {
+    function updateHUD() {
         const data = Array.from(visitors.values());
         document.getElementById('onlineCount').innerText = data.length;
         world.htmlElementsData(data);
     }
 
     world.controls().autoRotate = true;
-    window.onload = init;
+    window.onload = start;
 </script>
 </body>
 </html>
