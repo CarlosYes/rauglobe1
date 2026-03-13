@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v109 - SINAL FORÇADO</title>
+    <title>RAU MONITOR v110 - SINAL REAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -13,51 +13,59 @@
         
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.9); border: 2px solid #ff3e3e;
-            padding: 20px; color: #ff3e3e; pointer-events: none;
+            background: rgba(0, 5, 10, 0.95); border-left: 5px solid #39ff14;
+            padding: 15px; color: #fff; pointer-events: none;
         }
-        .count-on { font-size: 60px; font-weight: 900; line-height: 1; text-shadow: 0 0 15px #ff3e3e; }
-        .status-msg { font-size: 11px; margin-top: 8px; font-family: monospace; font-weight: bold; background: #ff3e3e; color: #000; padding: 2px 5px; }
+        .count-on { font-size: 50px; font-weight: 900; color: #39ff14; line-height: 0.8; }
+        .status-msg { font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14; }
 
-        /* Marcador Real */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #ff3e3e; padding: 4px 12px; border-radius: 2px;
-            font-size: 11px; font-weight: 900; color: #fff; white-space: nowrap;
+            background: #000; padding: 4px 10px; border-radius: 3px;
+            font-size: 11px; font-weight: 900; border: 1px solid #39ff14; color: #39ff14; 
+            white-space: nowrap; box-shadow: 0 0 10px rgba(57, 255, 20, 0.5);
         }
-        .d-rau { width: 12px; height: 12px; background: #ff3e3e; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 20px #ff3e3e; animation: pulse 1.5s infinite; }
+        .d-rau { width: 10px; height: 10px; background: #39ff14; border-radius: 50%; margin-top: 4px; box-shadow: 0 0 15px #39ff14; animation: p 1.5s infinite; }
 
-        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
+        @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
 
-        /* Botão de Ajuste Manual se tudo falhar */
-        #manualBtn {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 1001; background: #ff3e3e; color: #fff; border: none;
-            padding: 15px 30px; font-weight: 900; cursor: pointer; border-radius: 5px;
-            display: none; box-shadow: 0 0 20px rgba(255, 62, 62, 0.5);
+        #setup-screen {
+            position: absolute; inset: 0; background: rgba(0,0,0,0.9);
+            z-index: 2000; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; color: #39ff14; text-align: center;
+            padding: 20px;
+        }
+        .btn {
+            background: #39ff14; color: #000; border: none; padding: 15px 30px;
+            font-weight: 900; cursor: pointer; margin-top: 20px; border-radius: 5px;
         }
     </style>
 </head>
 <body>
 
-<div class="hud">
-    <div id="onlineCount" class="count-on">--</div>
-    <div id="status" class="status-msg">RASTREAMENTO SATÉLITE...</div>
+<div id="setup-screen">
+    <h1>RAU MONITOR</h1>
+    <p>Para localização REAL, autorize o GPS<br>ou marque manualmente no mapa.</p>
+    <button class="btn" onclick="startWithGPS()">ATIVAR SINAL REAL (GPS)</button>
+    <button class="btn" style="background:transparent; border:1px solid #39ff14; color:#39ff14;" onclick="startManual()">MARCAR MANUALMENTE</button>
 </div>
 
-<button id="manualBtn" onclick="forceManual()">AJUSTAR POSIÇÃO MANUALMENTE</button>
+<div class="hud">
+    <div id="onlineCount" class="count-on">--</div>
+    <div id="status" class="status-msg">AGUARDANDO SINAL...</div>
+</div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6).toUpperCase();
-    let channel;
+    const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 5).toUpperCase();
     const visitors = new Map();
+    let channel;
 
     const world = Globe()(document.getElementById('globeViz'))
-        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
-        .backgroundColor('#000000').showAtmosphere(true).atmosphereColor('#ff3e3e')
+        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+        .backgroundColor('#000000').showAtmosphere(true)
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = `m-rau`;
@@ -65,76 +73,60 @@
             return el;
         });
 
-    // SISTEMA DE PRECISÃO ABSOLUTA
-    async function getTrueLocation() {
-        return new Promise((resolve) => {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(async (pos) => {
-                    const { latitude, longitude } = pos.coords;
-                    // REVERSE GEOCODING para pegar a cidade real pelo GPS
-                    try {
-                        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-                        const d = await r.json();
-                        const city = d.address.city || d.address.town || d.address.village || "LOCALIZAÇÃO REAL";
-                        resolve({ lat: latitude, lng: longitude, city: city.toUpperCase(), source: "GPS" });
-                    } catch {
-                        resolve({ lat: latitude, lng: longitude, city: "SINAL GPS", source: "GPS" });
-                    }
-                }, () => {
-                    // Se falhar, mostra o botão manual em vez de chutar Bruges
-                    document.getElementById('manualBtn').style.display = 'block';
-                    document.getElementById('status').innerText = "ERRO GPS: AGUARDANDO AJUSTE MANUAL";
-                }, { enableHighAccuracy: true, timeout: 8000 });
-            }
+    function startWithGPS() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(async (p) => {
+                const geo = { 
+                    lat: p.coords.latitude, 
+                    lng: p.coords.longitude, 
+                    city: "LOCALIZAÇÃO REAL" 
+                };
+                initMonitor(geo);
+            }, () => {
+                alert("GPS bloqueado. Use a marcação manual.");
+            }, { enableHighAccuracy: true });
+        }
+    }
+
+    function startManual() {
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('status').innerText = "CLIQUE NO MAPA PARA FIXAR SEU SINAL";
+        world.onGlobeClick(({ lat, lng }) => {
+            initMonitor({ lat, lng, city: "SINAL FIXADO" });
+            world.onGlobeClick(null);
         });
     }
 
-    async function init() {
-        const geo = await getTrueLocation();
-        if(geo) connect(geo);
-    }
-
-    function connect(geo) {
+    async function initMonitor(geo) {
+        document.getElementById('setup-screen').style.display = 'none';
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        channel = ably.channels.get('rau-signal-v109');
+        channel = ably.channels.get('rau-real-v110');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL FIXADO: ${geo.city} (${geo.source})`;
+            document.getElementById('status').innerText = `SINAL ATIVO: ${geo.city}`;
             channel.presence.enter(geo);
-            
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
                     visitors.set(m.clientId, m.data);
-                    updateNodes();
+                    updateHUD();
                 }
             });
+            channel.presence.subscribe('leave', (m) => {
+                visitors.delete(m.clientId);
+                updateHUD();
+            });
         });
+
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
-    function updateNodes() {
-        const data = Array.from(visitors.values());
-        document.getElementById('onlineCount').innerText = data.length.toString().padStart(2, '0');
-        world.htmlElementsData(data);
-    }
-
-    // AJUSTE MANUAL: Clique no globo para definir sua localização se o GPS falhar
-    function forceManual() {
-        document.getElementById('status').innerText = "CLIQUE NO GLOBO ONDE VOCÊ ESTÁ";
-        document.getElementById('manualBtn').innerText = "CLIQUE NO MAPA AGORA";
-        
-        world.onGlobeClick(({ lat, lng }) => {
-            const manualGeo = { lat, lng, city: "POSIÇÃO MANUAL", source: "USER" };
-            document.getElementById('manualBtn').style.display = 'none';
-            if(!channel) connect(manualGeo);
-            else channel.presence.update(manualGeo);
-            world.pointOfView({ lat, lng, altitude: 2.0 }, 1000);
-            world.onGlobeClick(null); // Desativa o clique após definir
-        });
+    function updateHUD() {
+        const arr = Array.from(visitors.values());
+        document.getElementById('onlineCount').innerText = arr.length.toString().padStart(2, '0');
+        world.htmlElementsData(arr);
     }
 
     world.controls().autoRotate = true;
-    window.onload = init;
 </script>
 </body>
 </html>
