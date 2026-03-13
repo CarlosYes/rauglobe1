@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v201</title>
+    <title>RAU MONITOR v202</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
-    <script src="https://www.google.com/jsapi"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
@@ -30,7 +29,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: SINCRONIZANDO VIA GOOGLE...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: À ESPERA DE RESPOSTA EXTERNA...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -43,19 +42,21 @@
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
-            el.innerHTML = `<div class="l-rau"><span>SINAL ATIVO</span></div><div class="d-rau"></div>`;
+            el.innerHTML = `<div class="l-rau"><span>SINAL DETETADO</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    function iniciar() {
-        // O Google jsapi já contém a localização do cliente no objeto google.loader.ClientLocation
-        if (window.google && google.loader && google.loader.ClientLocation) {
-            const loc = google.loader.ClientLocation;
-            
+    // Esta função será chamada pelo script externo do Geoplugin
+    function geoplugin_callback() {
+        const lat = geoplugin_latitude();
+        const lng = geoplugin_longitude();
+        const city = geoplugin_city();
+
+        if (lat && lng) {
             const meuPonto = {
-                lat: loc.latitude,
-                lng: loc.longitude,
-                city: loc.address.city.toUpperCase()
+                lat: parseFloat(lat),
+                lng: parseFloat(lng),
+                city: city.toUpperCase()
             };
 
             document.getElementById('onlineCount').innerText = "1";
@@ -64,17 +65,28 @@
 
             world.htmlElementsData([meuPonto]);
             world.pointOfView({ lat: meuPonto.lat, lng: meuPonto.lng, altitude: 2.0 }, 2000);
-        } else {
-            // Se o Google falhar, o status avisa mas não faz "batota"
-            document.getElementById('status').innerText = "SINAL: GOOGLE OFFLINE NO PC";
         }
+    }
+
+    function carregarMotor() {
+        // Injetamos o script como o XatRadio faz. É impossível de bloquear por CORS.
+        const script = document.createElement('script');
+        script.src = 'https://www.geoplugin.net/javascript.gp';
+        script.onload = () => {
+            // Após carregar o ficheiro, executamos a função de leitura
+            if (typeof geoplugin_latitude === 'function') {
+                geoplugin_callback();
+            } else {
+                document.getElementById('status').innerText = "ERRO: RESPOSTA BLOQUEADA";
+            }
+        };
+        document.body.appendChild(script);
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    // Tentamos carregar o loader e depois iniciar
-    window.onload = iniciar;
+    window.onload = carregarMotor;
 </script>
 </body>
 </html>
