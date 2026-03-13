@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v157 - ZERO GHOST CITY</title>
+    <title>RAU MONITOR v158 - ZERO CORS</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: RASTREIO DINÂMICO ATIVO</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: SINCRONIZAÇÃO TOTAL...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,41 +51,32 @@
             return el;
         });
 
-    async function getNetworkGeo() {
-        try {
-            // Este motor é o mais rápido em 2026 para evitar bloqueios de CORS
-            const r = await fetch('https://ipwho.is/');
-            const d = await r.json();
-            
-            if (d.success) {
-                return {
-                    lat: d.latitude,
-                    lng: d.longitude,
-                    city: d.city.toUpperCase(),
-                    country: d.country_code
-                };
-            }
-        } catch (e) {}
-        return null;
-    }
-
     async function start() {
-        const geo = await getNetworkGeo();
-        if (!geo) {
-            document.getElementById('status').innerText = "ERRO: SEM RESPOSTA DE REDE";
-            return;
-        }
-
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-final-sync');
+        const channel = ably.channels.get('rau-monitor-v158');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
-            channel.presence.enter(geo);
-            world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
-            
+            // O Ably fornece metadados da ligação. Vamos usá-los para evitar bloqueios de rede.
+            // Para forçar a localização sem "Lisboa", usamos um túnel JSONP (infalível contra CORS)
+            const script = document.createElement('script');
+            script.src = 'https://ipapi.co/jsonp/?callback=solve';
+            document.body.appendChild(script);
+        });
+
+        window.solve = (data) => {
+            const myData = {
+                lat: data.latitude,
+                lng: data.longitude,
+                city: (data.city || "SINAL ATIVO").toUpperCase(),
+                country: data.country_code
+            };
+
+            document.getElementById('status').innerText = `CONECTADO: ${myData.city}`;
+            channel.presence.enter(myData);
+            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.0 }, 2000);
+
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
-                if(m.data) {
+                if(m.data && m.data.lat) {
                     visitors.set(m.clientId || m.id, m.data);
                     sync();
                 }
@@ -94,7 +85,7 @@
                 visitors.delete(m.clientId || m.id);
                 sync();
             });
-        });
+        };
     }
 
     function sync() {
