@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v200</title>
+    <title>RAU MONITOR v201</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
+    <script src="https://www.google.com/jsapi"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
@@ -29,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: LENDO IP...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: SINCRONIZANDO VIA GOOGLE...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -46,43 +47,34 @@
             return el;
         });
 
-    async function catchSignal() {
-        try {
-            // Usamos o serviço de trace da Cloudflare (Impossível de bloquear)
-            const response = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
-            const data = await response.text();
+    function iniciar() {
+        // O Google jsapi já contém a localização do cliente no objeto google.loader.ClientLocation
+        if (window.google && google.loader && google.loader.ClientLocation) {
+            const loc = google.loader.ClientLocation;
             
-            // Extraímos o código do país que a Cloudflare já deteta automaticamente
-            const locLine = data.split('\n').find(line => line.startsWith('loc='));
-            const countryCode = locLine ? locLine.split('=')[1] : 'PT';
-
-            // Base de dados interna simplificada para não depender de APIs externas
-            const countryCoords = {
-                'PT': { lat: 39.3999, lng: -8.2245, city: 'PORTUGAL' },
-                'BR': { lat: -14.2350, lng: -51.9253, city: 'BRASIL' },
-                'FR': { lat: 46.2276, lng: 2.2137, city: 'FRANÇA' },
-                'CH': { lat: 46.8182, lng: 8.2275, city: 'SUÍÇA' }
+            const meuPonto = {
+                lat: loc.latitude,
+                lng: loc.longitude,
+                city: loc.address.city.toUpperCase()
             };
 
-            const myLoc = countryCoords[countryCode] || countryCoords['PT'];
-
-            // O contador só muda de 0 para 1 AQUI
             document.getElementById('onlineCount').innerText = "1";
-            document.getElementById('status').innerText = `SINAL: ${myLoc.city} (via CDN)`;
+            document.getElementById('status').innerText = `SINAL: ${meuPonto.city}`;
             document.getElementById('status').style.color = "#39ff14";
 
-            world.htmlElementsData([myLoc]);
-            world.pointOfView({ lat: myLoc.lat, lng: myLoc.lng, altitude: 2.5 }, 2000);
-
-        } catch (err) {
-            document.getElementById('status').innerText = "ERRO: SEM RESPOSTA CDN";
+            world.htmlElementsData([meuPonto]);
+            world.pointOfView({ lat: meuPonto.lat, lng: meuPonto.lng, altitude: 2.0 }, 2000);
+        } else {
+            // Se o Google falhar, o status avisa mas não faz "batota"
+            document.getElementById('status').innerText = "SINAL: GOOGLE OFFLINE NO PC";
         }
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    window.onload = catchSignal;
+    // Tentamos carregar o loader e depois iniciar
+    window.onload = iniciar;
 </script>
 </body>
 </html>
