@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v106 - PRECISÃO REAL</title>
+    <title>RAU MONITOR v107 - RADAR ATIVO</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -13,45 +13,39 @@
         
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 5, 10, 0.9); border-left: 5px solid #ff0055;
-            padding: 20px; color: #fff; pointer-events: none;
-            box-shadow: 0 0 20px rgba(255, 0, 85, 0.3);
+            background: rgba(0, 0, 0, 0.9); border: 2px solid #39ff14;
+            padding: 15px 25px; color: #39ff14; pointer-events: none;
         }
-        .count-on { font-size: 55px; font-weight: 900; color: #ff0055; line-height: 0.9; }
-        .status-msg { font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff0055; font-weight: bold; }
+        .count-on { font-size: 50px; font-weight: 900; line-height: 1; }
+        .status-msg { font-size: 10px; margin-top: 5px; font-family: monospace; color: #39ff14; }
 
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0,0,0,0.9); padding: 4px 12px; border-radius: 20px;
-            font-size: 11px; font-weight: 900; border: 1px solid #ff0055; color: #fff; 
-            white-space: nowrap; box-shadow: 0 0 10px #ff0055;
+            background: #39ff14; padding: 3px 10px; border-radius: 2px;
+            font-size: 10px; font-weight: 900; color: #000; white-space: nowrap;
         }
-        .d-rau { 
-            width: 10px; height: 10px; background: #ff0055; border-radius: 50%; 
-            margin-top: 5px; box-shadow: 0 0 15px #ff0055; 
-            animation: pulse-red 1.5s infinite; 
-        }
+        .d-rau { width: 8px; height: 8px; background: #39ff14; border-radius: 50%; margin-top: 4px; animation: pulse 1s infinite; }
 
-        @keyframes pulse-red { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
     <div id="onlineCount" class="count-on">--</div>
-    <div id="status" class="status-msg">A CALIBRAR COORDENADAS...</div>
+    <div id="status" class="status-msg">RASTREAMENTO...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 5).toUpperCase();
+    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
-        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
-        .backgroundColor('#000000').showAtmosphere(true).atmosphereColor('#ff0055')
+        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+        .backgroundColor('#000000').showAtmosphere(true).atmosphereColor('#39ff14')
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = `m-rau`;
@@ -59,67 +53,56 @@
             return el;
         });
 
-    // SISTEMA DE PRECISÃO: GPS > IP
-    function getHighPrecisionLocation() {
+    async function getDiscovery() {
+        // Tenta GPS REAL primeiro
         return new Promise((resolve) => {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(async (pos) => {
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    
-                    // Converte coordenadas em nome de cidade real via OpenStreetMap (Grátis)
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(async (p) => {
+                    const lat = p.coords.latitude;
+                    const lng = p.coords.longitude;
                     try {
                         const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
                         const d = await r.json();
-                        const city = d.address.city || d.address.town || d.address.village || "LOCAL REAL";
-                        resolve({ lat, lng, city: city.toUpperCase() });
-                    } catch {
-                        resolve({ lat, lng, city: "COORDENADA GPS" });
-                    }
+                        const city = d.address.city || d.address.town || "LOCAL REAL";
+                        resolve({ lat, lng, city: city.toUpperCase(), mode: 'PRECISO' });
+                    } catch { resolve({ lat, lng, city: "GPS ATIVO", mode: 'COORDENADA' }); }
                 }, async () => {
-                    // Se o GPS falhar ou for negado, volta para o IP (mas tenta um provedor diferente)
-                    const r = await fetch('https://ipapi.co/json/');
-                    const d = await r.json();
-                    resolve({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() });
-                }, { enableHighAccuracy: true, timeout: 5000 });
+                    // Fallback se GPS falhar: Tenta IP (ipwho.is é bom para evitar Bruges)
+                    try {
+                        const r = await fetch('https://ipwho.is/');
+                        const d = await r.json();
+                        resolve({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), mode: 'IP-SCAN' });
+                    } catch {
+                        // Se TUDO falhar: Sinal Regenerado
+                        resolve({ lat: 38.7, lng: -9.1, city: "SINAL REGENERADO", mode: 'EMERGÊNCIA' });
+                    }
+                }, { timeout: 4000 });
             }
         });
     }
 
-    async function start() {
-        const geo = await getHighPrecisionLocation();
-        
+    async function init() {
+        const geo = await getDiscovery();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-final-precision');
+        const channel = ably.channels.get('monitor-rau-core');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL LOCALIZADO: ${geo.city}`;
+            document.getElementById('status').innerText = `MODO: ${geo.mode} | CIDADE: ${geo.city}`;
             channel.presence.enter(geo);
-            
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
                     visitors.set(m.clientId, m.data);
-                    update();
+                    const nodes = Array.from(visitors.values());
+                    document.getElementById('onlineCount').innerText = nodes.length.toString().padStart(2, '0');
+                    world.htmlElementsData(nodes);
                 }
             });
-            
-            channel.presence.subscribe('leave', (m) => {
-                visitors.delete(m.clientId);
-                update();
-            });
         });
-
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
-    function update() {
-        const arr = Array.from(visitors.values());
-        document.getElementById('onlineCount').innerText = arr.length.toString().padStart(2, '0');
-        world.htmlElementsData(arr);
-    }
-
     world.controls().autoRotate = true;
-    window.onload = start;
+    window.onload = init;
 </script>
 </body>
 </html>
