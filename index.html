@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v219 - PRECISION</title>
+    <title>RAU MONITOR v220 - REAL LOCATION</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -29,7 +29,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status">ESTABELECENDO CONEXÃO DE PRECISÃO...</div>
+    <div id="status">AGUARDANDO COORDENADAS REAIS...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,36 +51,44 @@
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = -1.2;
 
-    async function getPreciseLocation() {
+    async function startPrecisionTracking() {
+        // Primeiro, garantimos que o Uplink está ativo via Cloudflare
+        let country = "un";
         try {
-            // 1. Tenta primeiro o seu nó do Cloudflare
-            const response = await fetch('https://globorau.carlos2022yes.workers.dev/');
-            const data = await response.json();
-            
-            // 2. Se o Cloudflare der uma cidade genérica, tentamos o GPS do navegador para precisão total
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        // Se o GPS responder, usamos os dados reais do dispositivo
-                        render(pos.coords.latitude, pos.coords.longitude, "LOCALIZAÇÃO REAL", data.countryCode);
-                    },
-                    () => {
-                        // Se o usuário negar o GPS, usamos o Cloudflare mesmo (Mechelen ou similar)
-                        render(data.lat, data.lon, data.city, data.countryCode);
-                    },
-                    { timeout: 5000 }
-                );
-            } else {
-                render(data.lat, data.lon, data.city, data.countryCode);
-            }
-        } catch (e) {
-            document.getElementById('status').innerText = "ERRO NO UPLINK PRIVADO";
+            const cf = await fetch('https://globorau.carlos2022yes.workers.dev/').then(r => r.json());
+            country = cf.countryCode;
+        } catch(e) { console.log("Cloudflare Uplink Offline"); }
+
+        // Agora pedimos a localização real ao hardware (Navegador)
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    // SUCESSO: Usa a latitude e longitude exatas do seu GPS/Rede
+                    render(pos.coords.latitude, pos.coords.longitude, "SINAL LOCALIZADO", country);
+                },
+                (err) => {
+                    // FALHA: Se o utilizador negar, volta ao nó do Cloudflare (Mechelen)
+                    fallbackToCloudflare();
+                },
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
+        } else {
+            fallbackToCloudflare();
+        }
+    }
+
+    async function fallbackToCloudflare() {
+        try {
+            const data = await fetch('https://globorau.carlos2022yes.workers.dev/').then(r => r.json());
+            render(data.lat, data.lon, data.city, data.countryCode);
+        } catch(e) {
+            document.getElementById('status').innerText = "ERRO DE SINCRONIZAÇÃO";
         }
     }
 
     function render(lat, lon, city, country) {
         document.getElementById('onlineCount').innerText = "1";
-        document.getElementById('status').innerText = "SINAL IDENTIFICADO EM: " + city.toUpperCase();
+        document.getElementById('status').innerText = "SINAL: " + city.toUpperCase();
         
         const point = { lat: parseFloat(lat), lng: parseFloat(lon), city: city, countryCode: country };
         world.htmlElementsData([point]);
@@ -88,7 +96,7 @@
         setTimeout(() => { world.controls().autoRotateSpeed = -0.3; }, 2600);
     }
 
-    window.onload = getPreciseLocation;
+    window.onload = startPrecisionTracking;
 </script>
 </body>
 </html>
