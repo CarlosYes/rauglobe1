@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v209 - ULTRA STABLE</title>
+    <title>RAU MONITOR v216 - PRIVATE NODE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -14,19 +14,20 @@
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 5, 10, 0.9); border-left: 5px solid #39ff14;
             padding: 15px; color: #fff; pointer-events: none;
-            backdrop-filter: blur(4px);
+            backdrop-filter: blur(5px);
         }
-        .count-on { font-size: 60px; font-weight: 900; line-height: 0.8; color: #39ff14; }
+        .count-on { font-size: 60px; font-weight: 900; line-height: 0.8; color: #39ff14; text-shadow: 0 0 15px rgba(57, 255, 20, 0.5); }
         
+        /* Marcador no Globo */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0,0,0,0.95); padding: 5px 12px; border-radius: 4px;
+            background: rgba(0,0,0,0.95); padding: 6px 14px; border-radius: 4px;
             font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 8px;
             border: 1px solid #39ff14; color: #39ff14; white-space: nowrap;
             transform: translateY(-10px);
         }
-        .flag { width: 18px; height: 12px; border-radius: 2px; object-fit: cover; border: 0.5px solid #39ff14; }
-        .d-rau { width: 12px; height: 12px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 15px #39ff14; animation: p 1.5s infinite; }
+        .flag { width: 18px; height: 12px; object-fit: cover; border: 0.5px solid #39ff14; }
+        .d-rau { width: 12px; height: 12px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 15px #39ff14; animation: p 1.5s infinite; margin-top: 5px; }
         
         @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
@@ -35,7 +36,8 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: SINCRONIZANDO...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">UPLINK: CLOUDFLARE PRIVATE NODE</div>
+    <div id="ip-addr" style="font-size: 9px; color: rgba(57,255,20,0.6); margin-top: 5px;">IP: ---.---.---.---</div>
 </div>
 
 <div id="globeViz"></div>
@@ -60,78 +62,55 @@
             return el;
         });
 
-    // Rotação para a esquerda (Sentido horário inverso)
+    // Rotação inicial para a esquerda
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = -1.5;
 
-    let signalFound = false;
+    async function startPrivateUplink() {
+        try {
+            // Seu link direto do Cloudflare Worker
+            const SATELLITE_URL = 'https://globorau.carlos2022yes.workers.dev/';
 
-    window.renderSignal = function(data, type = "API") {
-        if (signalFound || !data) return;
-        
-        const lat = data.latitude || data.lat || data.coords?.latitude;
-        const lng = data.longitude || data.lon || data.coords?.longitude;
-        const city = (data.city || data.geoplugin_city || "SINAL DETECTADO").toUpperCase();
-        const country = data.country_code || data.countryCode || data.geoplugin_countryCode || "UN";
+            const response = await fetch(SATELLITE_URL);
+            const data = await response.json();
 
-        if (!lat || !lng) return;
-        signalFound = true;
+            // Verifica se recebemos coordenadas válidas
+            if (data.lat && data.lon) {
+                const point = { 
+                    lat: parseFloat(data.lat), 
+                    lng: parseFloat(data.lon), 
+                    city: (data.city || "SINAL ATIVO").toUpperCase(), 
+                    countryCode: data.countryCode || "un" 
+                };
 
-        const point = { lat: parseFloat(lat), lng: parseFloat(lng), city: city, countryCode: country };
-
-        document.getElementById('onlineCount').innerText = "1";
-        document.getElementById('status').innerText = `SINAL: ${city} (${type})`;
-        document.getElementById('status').style.color = "#39ff14";
-
-        world.htmlElementsData([point]);
-        world.pointOfView({ lat: point.lat, lng: point.lng, altitude: 2 }, 3000);
-        
-        setTimeout(() => { world.controls().autoRotateSpeed = -0.3; }, 3100);
-    };
-
-    // Callback para APIs legadas
-    window.finalSignal = (d) => window.renderSignal(d, "SAT 1");
-    window.finalSignalGP = (d) => window.renderSignal(d, "SAT 2");
-
-    async function startTracking() {
-        // ROTA 1: Geolocalização Nativa (Mais rápida se o usuário permitir)
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => window.renderSignal(pos, "GPS"),
-                (err) => console.log("GPS negado, tentando APIs...")
-            );
+                // Atualiza a Interface
+                document.getElementById('onlineCount').innerText = "1";
+                document.getElementById('status').innerText = `SINAL: ${point.city}`;
+                document.getElementById('ip-addr').innerText = `IP: ${data.ip || "PROTECTED"}`;
+                
+                // Renderiza no Globo
+                world.htmlElementsData([point]);
+                world.pointOfView({ lat: point.lat, lng: point.lng, altitude: 1.8 }, 3000);
+                
+                // Mantém rotação lenta para a esquerda após encontrar
+                setTimeout(() => { world.controls().autoRotateSpeed = -0.3; }, 3100);
+            }
+        } catch (e) {
+            console.error("Erro no uplink privado:", e);
+            document.getElementById('status').innerText = "UPLINK ERROR: RECONNECTING...";
+            document.getElementById('status').style.color = "#ff3131";
+            
+            // Backup via GPS Nativo se o Worker falhar
+            navigator.geolocation.getCurrentPosition(p => {
+                const backupPoint = { lat: p.coords.latitude, lng: p.coords.longitude, city: "GPS SIGNAL", countryCode: "un" };
+                document.getElementById('onlineCount').innerText = "1";
+                world.htmlElementsData([backupPoint]);
+                world.pointOfView({ lat: backupPoint.lat, lng: backupPoint.lng, altitude: 1.8 }, 3000);
+            });
         }
-
-        // ROTA 2: IPAPI (JSONP)
-        const s1 = document.createElement('script');
-        s1.src = 'https://ipapi.co/jsonp/?callback=finalSignal';
-        document.body.appendChild(s1);
-
-        // ROTA 3: GeoPlugin (2s depois)
-        setTimeout(() => {
-            if (!signalFound) {
-                const s2 = document.createElement('script');
-                s2.src = 'https://www.geoplugin.net/javascript.gp?callback=finalSignalGP';
-                document.body.appendChild(s2);
-            }
-        }, 2000);
-
-        // ROTA 4: Emergência (Fetch)
-        setTimeout(async () => {
-            if (!signalFound) {
-                try {
-                    const res = await fetch('https://ip-api.com/json/');
-                    const d = await res.json();
-                    window.renderSignal(d, "SAT 3");
-                } catch (e) {
-                    document.getElementById('status').innerText = "ERRO: TENTE RECARREGAR EM 30S";
-                    document.getElementById('status').style.color = "#ff3131";
-                }
-            }
-        }, 5000);
     }
 
-    window.onload = startTracking;
+    window.onload = startPrivateUplink;
 </script>
 </body>
 </html>
