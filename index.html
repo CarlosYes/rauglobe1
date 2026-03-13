@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v104 - COMPATIBILIDADE TOTAL</title>
+    <title>RAU MONITOR v105 - GITHUB DEPLOY</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -12,49 +12,49 @@
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         
         .hud {
-            position: absolute; top: 25px; left: 25px; z-index: 1000;
-            background: rgba(0, 15, 30, 0.9); border-left: 6px solid #00ffff;
-            padding: 20px; color: #fff; pointer-events: none;
-            box-shadow: 0 0 25px rgba(0, 255, 255, 0.2);
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: rgba(0, 0, 0, 0.9); border: 2px solid #39ff14;
+            padding: 15px 25px; color: #39ff14; pointer-events: none;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.3);
         }
-        .count-on { font-size: 55px; font-weight: 900; color: #00ffff; line-height: 0.9; }
-        .status-msg { font-size: 10px; margin-top: 10px; font-family: monospace; color: #00ffff; letter-spacing: 1px; }
+        .count-on { font-size: 50px; font-weight: 900; line-height: 1; }
+        .status-msg { font-size: 10px; margin-top: 5px; font-family: monospace; color: #39ff14; opacity: 0.8; }
 
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0, 255, 255, 0.1); padding: 5px 12px; border-radius: 2px;
-            font-size: 11px; font-weight: 900; border: 1px solid #00ffff; color: #00ffff; 
-            white-space: nowrap; backdrop-filter: blur(4px);
+            background: rgba(0,0,0,0.8); padding: 4px 10px; border-radius: 2px;
+            font-size: 10px; font-weight: 900; border: 1px solid #39ff14; color: #39ff14; 
+            white-space: nowrap; text-transform: uppercase;
         }
         .d-rau { 
-            width: 10px; height: 10px; background: #00ffff; border-radius: 50%; 
-            margin-top: 4px; box-shadow: 0 0 15px #00ffff; 
-            animation: pulse-cyan 1.5s infinite; 
+            width: 8px; height: 8px; background: #39ff14; border-radius: 50%; 
+            margin-top: 4px; box-shadow: 0 0 10px #39ff14; 
+            animation: pulse 1.2s infinite; 
         }
 
-        @keyframes pulse-cyan {
-            0% { transform: scale(1); opacity: 1; }
-            100% { transform: scale(4); opacity: 0; }
-        }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
     <div id="onlineCount" class="count-on">--</div>
-    <div id="status" class="status-msg">A SINCRONIZAR FLUXO...</div>
+    <div id="status" class="status-msg">SINAL: RASTREANDO...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
+    // Credenciais e ID de Sessão Único
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'RAU-V104-' + Math.random().toString(36).substr(2, 4).toUpperCase();
+    const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 6).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
-        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
-        .backgroundColor('#000000').showAtmosphere(true).atmosphereColor('#00ffff')
+        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+        .backgroundColor('#000000')
+        .showAtmosphere(true)
+        .atmosphereColor('#39ff14')
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = `m-rau`;
@@ -62,42 +62,35 @@
             return el;
         });
 
-    // SISTEMA DE DETECÇÃO POR CALLBACK (Ignora bloqueios de CORS do navegador)
-    function getGeoData() {
-        return new Promise((resolve) => {
-            const script = document.createElement('script');
-            // Usando o serviço ipinfo que é extremamente estável
-            script.src = 'https://ipinfo.io/?callback=callbackGeo';
-            document.body.appendChild(script);
-
-            window.callbackGeo = function(data) {
-                const loc = data.loc.split(',');
-                resolve({
-                    lat: parseFloat(loc[0]),
-                    lng: parseFloat(loc[1]),
-                    city: data.city.toUpperCase(),
-                    country: data.country
-                });
-                document.body.removeChild(script);
-            };
-
-            // Caso o serviço demore muito, ativa o bypass
-            setTimeout(() => {
-                if (!window.geoActive) resolve({ lat: 39.5, lng: -8.0, city: "SINAL MANUAL", country: "PT" });
-            }, 4000);
-        });
+    // Motor de Localização Robusto para GitHub Pages
+    async function getDiscovery() {
+        try {
+            // Tentativa 1: ipapi.co (Mais preciso para evitar Zeebrugge)
+            const r = await fetch('https://ipapi.co/json/');
+            const d = await r.json();
+            if (d.latitude) return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() };
+        } catch (e) {
+            try {
+                // Tentativa 2: ip-api.com (Fallback estável)
+                const r = await fetch('https://ip-api.com/json/');
+                const d = await r.json();
+                return { lat: d.lat, lng: d.lon, city: d.city.toUpperCase() };
+            } catch (e2) {
+                // Emergência: Se tudo travar, não dá erro crítico
+                return { lat: 38.7, lng: -9.1, city: "SINAL REGENERADO" };
+            }
+        }
     }
 
-    async function start() {
-        window.geoActive = false;
-        const geo = await getGeoData();
-        window.geoActive = true;
-
+    async function init() {
+        const geo = await getDiscovery();
+        
+        // Inicialização do Ably Realtime
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-global-v104');
+        const channel = ably.channels.get('monitor-rau-signal');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL ESTÁVEL: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL: ${geo.city} [ONLINE]`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
@@ -106,24 +99,25 @@
                     sync();
                 }
             });
-            
+
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId);
                 sync();
             });
         });
 
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.3 }, 2000);
+        // Foca na posição real detectada
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
     function sync() {
-        const data = Array.from(visitors.values());
-        document.getElementById('onlineCount').innerText = data.length.toString().padStart(2, '0');
-        world.htmlElementsData(data);
+        const nodes = Array.from(visitors.values());
+        document.getElementById('onlineCount').innerText = nodes.length.toString().padStart(2, '0');
+        world.htmlElementsData(nodes);
     }
 
     world.controls().autoRotate = true;
-    window.onload = start;
+    window.onload = init;
 </script>
 </body>
 </html>
