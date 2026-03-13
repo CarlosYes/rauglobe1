@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v179</title>
+    <title>RAU MONITOR v180</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: MOTOR DE INJEÇÃO v179...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: PULSOS DE SEGURANÇA v180</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,34 +51,35 @@
             return el;
         });
 
-    // SISTEMA DE DETECÇÃO POR INJEÇÃO (Bypass de rede local)
     function start() {
-        const script = document.createElement('script');
-        // Usamos JSONP para que a resposta seja tratada como código, não como dados (fura o bloqueio)
-        script.src = 'https://ipapi.co/jsonp/?callback=detectRau';
-        document.body.appendChild(script);
+        // Injeção via script para o PC não bloquear o pedido de IP
+        const s = document.createElement('script');
+        s.src = 'https://ipapi.co/jsonp/?callback=rauPulse';
+        document.body.appendChild(s);
     }
 
-    window.detectRau = (d) => {
+    window.rauPulse = (d) => {
         const geo = { 
             lat: parseFloat(d.latitude), 
             lng: parseFloat(d.longitude), 
-            city: (d.city || "SINAL-REAL").toUpperCase(), 
+            city: (d.city || "RAU-USER").toUpperCase(), 
             country: d.country_code 
         };
 
-        // Forçamos o Ably a usar HTTPS Polling para não ser detetado como WebSocket pela operadora
+        // BYPASS DEFINITIVO: Desativa WebSockets e usa apenas pedidos HTTP curtos
+        // Isso impede que a operadora detete uma "sessão viva" e a corte.
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
             useBinaryProtocol: false,
-            transports: ['xhr_polling']
+            transports: ['xhr_polling'],
+            disconnectedRetryTimeout: 1000 // Tenta reconectar em 1 segundo se cair
         });
 
-        const channel = ably.channels.get('rau-discovery-main');
+        const channel = ably.channels.get('rau-discovery-v180');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
+            document.getElementById('status').innerText = `CONECTADO: ${geo.city}`;
             channel.presence.enter({...geo, status: 'online'});
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
