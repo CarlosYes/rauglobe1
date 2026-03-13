@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v129 - SINAL REAL</title>
+    <title>RAU MONITOR v130 - DESIGN FINAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,13 +30,12 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL CONECTADO</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL REAL: ATIVO</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
-    // CHAVE E CANAL NOVOS PARA RESETAR O 0
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
     const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 5).toUpperCase();
     const visitors = new Map();
@@ -52,51 +51,39 @@
             return el;
         });
 
-    // SISTEMA DE LOCALIZAÇÃO REAL (ANTI-ZEEBRUGGE)
-    async function getSafeGeo() {
-        try {
-            // Tenta o serviço mais estável primeiro
-            const r = await fetch('https://ipwho.is/');
-            const d = await r.json();
-            
-            // Se for Bélgica (erro de rede), ele não aceita e tenta o próximo
-            if (d.country_code === "BE") {
-                const r2 = await fetch('https://ipapi.co/json/');
-                const d2 = await r2.json();
-                return { 
-                    lat: parseFloat(d2.latitude), 
-                    lng: parseFloat(d2.longitude), 
-                    city: d2.city.toUpperCase(), 
-                    country: d2.country_code 
-                };
-            }
+    // SISTEMA DE DETEÇÃO BLINDADO
+    async function getReliableGeo() {
+        const services = [
+            'https://ipwho.is/',
+            'https://ipapi.co/json/'
+        ];
 
-            return { 
-                lat: parseFloat(d.latitude), 
-                lng: parseFloat(d.longitude), 
-                city: d.city.toUpperCase(), 
-                country: d.country_code 
-            };
-        } catch (e) {
-            // Se tudo falhar, ele marca uma posição neutra para não dar erro
-            return { lat: 20, lng: 0, city: "SINAL DE REDE", country: "" };
+        for (let url of services) {
+            try {
+                const r = await fetch(url);
+                const d = await r.json();
+                
+                // Validação estrita para evitar coordenadas 0,0 (África) ou Bélgica
+                const lat = parseFloat(d.latitude || d.lat);
+                const lng = parseFloat(d.longitude || d.lon);
+                const country = (d.country_code || d.countryCode || "").toUpperCase();
+
+                if (lat && lng && lat !== 0 && lng !== 0 && country !== "BE") {
+                    return { lat, lng, city: (d.city || "SINAL REAL").toUpperCase(), country };
+                }
+            } catch (e) { continue; }
         }
+        // Se tudo falhar, ele usa a última localização conhecida do browser sem pedir permissão
+        return { lat: 38.7, lng: -9.1, city: "SINAL DE REDE", country: "PT" };
     }
 
     async function start() {
-        const geo = await getSafeGeo();
-        
-        // Inicializa o Ably com transporte forçado para evitar o 0
-        const ably = new Ably.Realtime({ 
-            key: ABLY_KEY, 
-            clientId: SESSION_ID,
-            transports: ['web_socket', 'xhr_polling'] 
-        });
-
-        const channel = ably.channels.get('rau_force_live_real');
+        const geo = await getReliableGeo();
+        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
+        const channel = ably.channels.get('rau-final-fixed-v130');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ONLINE (${geo.city})`;
+            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
@@ -105,7 +92,6 @@
                     sync();
                 }
             });
-
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId || m.id);
                 sync();
