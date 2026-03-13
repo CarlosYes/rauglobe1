@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v121 - SILENT PRECISION</title>
+    <title>RAU MONITOR v122 - FINAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -31,7 +31,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" class="status-msg">Varredura Silenciosa...</div>
+    <div id="status" class="status-msg">A filtrar sinal de rede...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -40,6 +40,12 @@
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
     const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6).toUpperCase();
     const visitors = new Map();
+
+    // MEMÓRIA DE UTILIZADOR (Volume e Autoplay)
+    const settings = {
+        volume: localStorage.getItem('rau_volume') || 0.5,
+        autoplay: localStorage.getItem('rau_autoplay') === 'true'
+    };
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -51,43 +57,38 @@
             return el;
         });
 
-    // MÉTODO DE VARREDURA TRIPLA (Sem pedir permissão)
-    async function getSilentGeo() {
-        const endpoints = [
-            'https://ipwho.is/',
-            'https://ipapi.co/json/',
-            'https://extreme-ip-lookup.com/json/'
-        ];
-
-        for (let url of endpoints) {
+    // FILTRO INTELIGENTE ANTI-BÉLGICA
+    async function getFilteredGeo() {
+        const providers = ['https://ipwho.is/', 'https://ipapi.co/json/'];
+        
+        for (let url of providers) {
             try {
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                // Filtro Anti-Zeebrugge: Se a cidade for Zeebrugge ou Bruges, tentamos o próximo serviço
-                const city = (data.city || data.cityName || "").toUpperCase();
-                if (city !== "ZEEBRUGGE" && city !== "BRUGES" && city !== "") {
+                const r = await fetch(url);
+                const d = await r.json();
+                const city = (d.city || "").toUpperCase();
+                const country = (d.country_code || d.country || "").toUpperCase();
+
+                // Se o sinal vier da Bélgica, ignoramos e tentamos o próximo
+                if (country !== "BE" && city !== "ZEEBRUGGE" && city !== "OOSTENDE") {
                     return {
-                        lat: parseFloat(data.latitude || data.lat),
-                        lng: parseFloat(data.longitude || data.lon),
-                        city: city
+                        lat: parseFloat(d.latitude || d.lat),
+                        lng: parseFloat(d.longitude || d.lon),
+                        city: city || "SINAL ATIVO"
                     };
                 }
             } catch (e) { continue; }
         }
-
-        // Se todos derem Zeebrugge, usamos o primeiro mas marcamos como "Sinal Estimado"
-        const finalRes = await fetch(endpoints[0]).then(r => r.json());
-        return { lat: finalRes.latitude, lng: finalRes.longitude, city: (finalRes.city || "SINAL REDE").toUpperCase() };
+        // Fallback genérico se tudo for Bélgica
+        return { lat: 39.5, lng: -8.0, city: "SINAL ESTIMADO" };
     }
 
     async function start() {
-        const geo = await getSilentGeo();
+        const geo = await getFilteredGeo();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-core-v121');
+        const channel = ably.channels.get('rau-final-v122');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL LOCALIZADO: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL FIXADO: ${geo.city}`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
@@ -96,13 +97,11 @@
                     sync();
                 }
             });
-
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId);
                 sync();
             });
         });
-
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
     }
 
@@ -114,6 +113,12 @@
 
     world.controls().autoRotate = true;
     window.onload = start;
+
+    // Função para salvar preferências (Chama isto quando alterares volume no teu player)
+    function savePrefs(vol, auto) {
+        localStorage.setItem('rau_volume', vol);
+        localStorage.setItem('rau_autoplay', auto);
+    }
 </script>
 </body>
 </html>
