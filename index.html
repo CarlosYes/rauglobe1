@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v112 - SINAL REAL</title>
+    <title>RAU MONITOR v113 - REAL TIME ONLY</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -15,14 +15,14 @@
             background: rgba(0, 5, 10, 0.95); border-left: 5px solid #39ff14;
             padding: 15px; color: #fff; pointer-events: none;
         }
-        .count-on { font-size: 60px; font-weight: 900; line-height: 0.8; color: #39ff14; }
+        .count-on { font-size: 65px; font-weight: 900; line-height: 0.8; color: #39ff14; text-shadow: 0 0 20px rgba(57, 255, 20, 0.6); }
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0,0,0,0.95); padding: 4px 10px; border-radius: 3px;
-            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 6px;
-            border: 1px solid #39ff14; color: #39ff14; white-space: nowrap;
+            background: rgba(0,0,0,0.9); padding: 5px 12px; border-radius: 2px;
+            font-size: 11px; font-weight: 900; border: 1px solid #39ff14; color: #39ff14; 
+            white-space: nowrap; text-transform: uppercase;
         }
-        .d-rau { width: 8px; height: 8px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 15px #39ff14; animation: p 1.2s infinite; }
+        .d-rau { width: 10px; height: 10px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 15px #39ff14; animation: p 1.5s infinite; }
         @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
 </head>
@@ -30,93 +30,81 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">A VARRER SINAL...</div>
+    <div id="status" style="font-size: 10px; margin-top: 12px; font-family: monospace; color: #39ff14; letter-spacing: 1px;">VARREDURA DE REDE ATIVA...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 5);
+    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
-        .backgroundColor('#000000').showAtmosphere(true)
+        .backgroundColor('#000000').showAtmosphere(true).atmosphereColor('#39ff14')
         .htmlElement(d => {
             const el = document.createElement('div');
-            el.className = `m-rau ${d.status}`;
-            const flag = d.country ? `<img src="https://flagcdn.com/w20/${d.country.toLowerCase()}.png" style="width:14px">` : '';
-            el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
+            el.className = `m-rau`;
+            el.innerHTML = `<div class="l-rau">${d.city}</div><div class="d-rau"></div>`;
             return el;
         });
 
-    // SISTEMA DE DETECÇÃO HÍBRIDO (GPS com Timeout + IP Fallback)
     async function getDiscovery() {
-        return new Promise((resolve) => {
-            let resolved = false;
-
-            // 1. Tenta GPS primeiro
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(async (pos) => {
-                    if (resolved) return;
-                    resolved = true;
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    try {
-                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-                        const data = await res.json();
-                        const city = data.address.city || data.address.town || data.address.village || "LOCAL REAL";
-                        resolve({ lat, lng, city: city.toUpperCase(), country: data.address.country_code });
-                    } catch {
-                        resolve({ lat, lng, city: "SINAL GPS", country: "" });
-                    }
-                }, () => {}, { timeout: 4000 });
+        // Tenta apenas APIs de alta precisão sem cidades fixas no código
+        try {
+            const r = await fetch('https://ipwho.is/');
+            const d = await r.json();
+            if (d.success) {
+                return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() };
             }
-
-            // 2. Fallback Automático para IP após 4.5 segundos se o GPS não responder
-            setTimeout(async () => {
-                if (resolved) return;
-                resolved = true;
-                try {
-                    const r = await fetch('https://ipwho.is/');
-                    const d = await r.json();
-                    resolve({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code });
-                } catch {
-                    resolve({ lat: 38.7, lng: -9.1, city: "LISBOA", country: "PT" });
-                }
-            }, 4500);
-        });
+            throw new Error();
+        } catch (e) {
+            try {
+                const r = await fetch('https://ipapi.co/json/');
+                const d = await r.json();
+                return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() };
+            } catch (e2) {
+                return null; // Retorna nulo para dar erro real em vez de Lisboa
+            }
+        }
     }
 
     async function start() {
         const geo = await getDiscovery();
+        
+        if (!geo) {
+            document.getElementById('status').innerText = "ERRO: FALHA NA DETEÇÃO DE ORIGEM";
+            return;
+        }
+
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-pure-discovery');
+        const channel = ably.channels.get('rau-global-live');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
-            channel.presence.enter({...geo, status: 'online'});
+            document.getElementById('status').innerText = `SINAL LOCALIZADO: ${geo.city}`;
+            channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
-                    visitors.set(m.clientId || m.id, { ...m.data, status: 'online' });
-                    updateHUD();
+                    visitors.set(m.clientId, m.data);
+                    sync();
                 }
             });
+
             channel.presence.subscribe('leave', (m) => {
-                visitors.delete(m.clientId || m.id);
-                updateHUD();
+                visitors.delete(m.clientId);
+                sync();
             });
         });
 
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
     }
 
-    function updateHUD() {
-        const arr = Array.from(visitors.values());
-        document.getElementById('onlineCount').innerText = arr.length;
-        world.htmlElementsData(arr);
+    function sync() {
+        const data = Array.from(visitors.values());
+        document.getElementById('onlineCount').innerText = data.length;
+        world.htmlElementsData(data);
     }
 
     world.controls().autoRotate = true;
