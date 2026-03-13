@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v196</title>
+    <title>RAU MONITOR v197</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -29,7 +29,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: SINCRONIZANDO...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: EM BUSCA...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -47,42 +47,54 @@
             return el;
         });
 
-    // Esta função recebe o sinal real do IP via GeoJS
-    window.processarSinal = function(data) {
+    // Função que recebe o sinal real. Sem esta chamada, o contador morre no zero.
+    window.rauCallback = function(data) {
         if (!data || !data.latitude) return;
 
-        const meuPonto = {
+        const p = {
             lat: parseFloat(data.latitude),
             lng: parseFloat(data.longitude),
-            city: (data.city || "SINAL").toUpperCase(),
+            city: (data.city || "SINAL LOCAL").toUpperCase(),
             country_code: data.country_code
         };
 
-        // O contador só muda para 1 após a resposta do servidor
         document.getElementById('onlineCount').innerText = "1";
-        document.getElementById('status').innerText = `SINAL: ${meuPonto.city}`;
+        document.getElementById('status').innerText = `SINAL: ${p.city}`;
         document.getElementById('status').style.color = "#39ff14";
 
-        world.htmlElementsData([meuPonto]);
-        world.pointOfView({ lat: meuPonto.lat, lng: meuPonto.lng, altitude: 2.0 }, 2000);
+        world.htmlElementsData([p]);
+        world.pointOfView({ lat: p.lat, lng: p.lng, altitude: 2.0 }, 2000);
     };
 
-    function iniciar() {
-        // Usamos a técnica de script (JSONP) que o FlagCounter usa para não ser bloqueado
-        const script = document.createElement('script');
-        script.src = 'https://get.geojs.io/v1/ip/geo.js?callback=processarSinal';
+    function ignite() {
+        // Usamos o serviço da Freegeoip injetado como script (JSONP)
+        // Este é o método que contorna o "Erro de Rede" porque o browser o vê como um recurso estático
+        const s = document.createElement('script');
+        s.src = 'https://freegeoip.app/json/?callback=rauCallback';
         
-        script.onerror = () => {
-            document.getElementById('status').innerText = "SINAL: ERRO DE REDE";
+        // Fallback imediato se o primeiro demorar (usando o motor Geoplugin)
+        s.onerror = () => {
+            const b = document.createElement('script');
+            b.src = 'https://www.geoplugin.net/javascript.gp?callback=rauCallbackGP';
+            document.body.appendChild(b);
         };
 
-        document.body.appendChild(script);
+        document.body.appendChild(s);
     }
+
+    window.rauCallbackGP = function(d) {
+        window.rauCallback({
+            latitude: d.geoplugin_latitude,
+            longitude: d.geoplugin_longitude,
+            city: d.geoplugin_city,
+            country_code: d.geoplugin_countryCode
+        });
+    };
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    window.onload = iniciar;
+    window.onload = ignite;
 </script>
 </body>
 </html>
