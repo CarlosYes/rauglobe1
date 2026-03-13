@@ -3,38 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v102 - BYPASS ATIVO</title>
+    <title>RAU MONITOR v104 - COMPATIBILIDADE TOTAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial', sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         
-        /* HUD Frontal */
         .hud {
-            position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.85); border-left: 4px solid #39ff14;
-            padding: 15px 25px; color: #fff; pointer-events: none;
-            backdrop-filter: blur(5px); border-radius: 0 5px 5px 0;
+            position: absolute; top: 25px; left: 25px; z-index: 1000;
+            background: rgba(0, 15, 30, 0.9); border-left: 6px solid #00ffff;
+            padding: 20px; color: #fff; pointer-events: none;
+            box-shadow: 0 0 25px rgba(0, 255, 255, 0.2);
         }
-        .count-on { font-size: 50px; font-weight: 900; color: #39ff14; text-shadow: 0 0 15px rgba(57, 255, 20, 0.5); }
-        .status-msg { font-size: 10px; margin-top: 5px; font-family: monospace; color: #39ff14; text-transform: uppercase; }
+        .count-on { font-size: 55px; font-weight: 900; color: #00ffff; line-height: 0.9; }
+        .status-msg { font-size: 10px; margin-top: 10px; font-family: monospace; color: #00ffff; letter-spacing: 1px; }
 
-        /* Estilo dos Nós no Globo */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0,0,0,0.9); padding: 4px 10px; border-radius: 3px;
-            font-size: 10px; font-weight: 900; display: flex; align-items: center; gap: 6px;
-            border: 1px solid #39ff14; color: #39ff14; white-space: nowrap;
+            background: rgba(0, 255, 255, 0.1); padding: 5px 12px; border-radius: 2px;
+            font-size: 11px; font-weight: 900; border: 1px solid #00ffff; color: #00ffff; 
+            white-space: nowrap; backdrop-filter: blur(4px);
         }
         .d-rau { 
-            width: 8px; height: 8px; background: #39ff14; border-radius: 50%; 
-            margin-top: 4px; box-shadow: 0 0 10px #39ff14; 
-            animation: pulse 1.2s infinite; 
+            width: 10px; height: 10px; background: #00ffff; border-radius: 50%; 
+            margin-top: 4px; box-shadow: 0 0 15px #00ffff; 
+            animation: pulse-cyan 1.5s infinite; 
         }
 
-        @keyframes pulse {
+        @keyframes pulse-cyan {
             0% { transform: scale(1); opacity: 1; }
             100% { transform: scale(4); opacity: 0; }
         }
@@ -44,98 +42,84 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">--</div>
-    <div id="status" class="status-msg">A iniciar varredura...</div>
+    <div id="status" class="status-msg">A SINCRONIZAR FLUXO...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+    const SESSION_ID = 'RAU-V104-' + Math.random().toString(36).substr(2, 4).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
-        .backgroundColor('#000000')
-        .showAtmosphere(true)
-        .atmosphereColor('#39ff14')
+        .backgroundColor('#000000').showAtmosphere(true).atmosphereColor('#00ffff')
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = `m-rau`;
-            const flag = d.country ? `<img src="https://flagcdn.com/w20/${d.country.toLowerCase()}.png" style="width:14px">` : '';
-            el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
+            el.innerHTML = `<div class="l-rau">${d.city}</div><div class="d-rau"></div>`;
             return el;
         });
 
-    // Função Principal de Localização (Com Bypass de Erro)
-    async function getDiscovery() {
-        // Tenta primeiro via API (mais estável para evitar o erro 00)
-        try {
-            const res = await fetch('https://ipapi.co/json/');
-            const d = await res.json();
-            if (d.latitude) {
-                return {
-                    lat: parseFloat(d.latitude),
-                    lng: parseFloat(d.longitude),
-                    city: d.city.toUpperCase(),
-                    country: d.country_code
-                };
-            }
-        } catch (e) {
-            console.log("Fallback 1 falhou...");
-        }
+    // SISTEMA DE DETECÇÃO POR CALLBACK (Ignora bloqueios de CORS do navegador)
+    function getGeoData() {
+        return new Promise((resolve) => {
+            const script = document.createElement('script');
+            // Usando o serviço ipinfo que é extremamente estável
+            script.src = 'https://ipinfo.io/?callback=callbackGeo';
+            document.body.appendChild(script);
 
-        // Fallback para outra API caso a primeira esteja bloqueada
-        try {
-            const res = await fetch('https://ipwho.is/');
-            const d = await res.json();
-            return {
-                lat: parseFloat(d.latitude),
-                lng: parseFloat(d.longitude),
-                city: d.city.toUpperCase(),
-                country: d.country_code
+            window.callbackGeo = function(data) {
+                const loc = data.loc.split(',');
+                resolve({
+                    lat: parseFloat(loc[0]),
+                    lng: parseFloat(loc[1]),
+                    city: data.city.toUpperCase(),
+                    country: data.country
+                });
+                document.body.removeChild(script);
             };
-        } catch (e) {
-            return null;
-        }
+
+            // Caso o serviço demore muito, ativa o bypass
+            setTimeout(() => {
+                if (!window.geoActive) resolve({ lat: 39.5, lng: -8.0, city: "SINAL MANUAL", country: "PT" });
+            }, 4000);
+        });
     }
 
     async function start() {
-        document.getElementById('status').innerText = "SINCRONIZANDO SINAL...";
-        const geo = await getDiscovery();
-        
-        if (!geo) {
-            document.getElementById('status').innerText = "ERRO CRÍTICO DE REDE";
-            return;
-        }
+        window.geoActive = false;
+        const geo = await getGeoData();
+        window.geoActive = true;
 
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-pure-signal-v102');
+        const channel = ably.channels.get('rau-global-v104');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city} [ATIVO]`;
+            document.getElementById('status').innerText = `SINAL ESTÁVEL: ${geo.city}`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
                     visitors.set(m.clientId, m.data);
-                    updateHUD();
+                    sync();
                 }
             });
             
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId);
-                updateHUD();
+                sync();
             });
         });
 
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.3 }, 2000);
     }
 
-    function updateHUD() {
-        const arr = Array.from(visitors.values());
-        document.getElementById('onlineCount').innerText = arr.length.toString().padStart(2, '0');
-        world.htmlElementsData(arr);
+    function sync() {
+        const data = Array.from(visitors.values());
+        document.getElementById('onlineCount').innerText = data.length.toString().padStart(2, '0');
+        world.htmlElementsData(data);
     }
 
     world.controls().autoRotate = true;
