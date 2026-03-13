@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v145 - ZERO DRIFT</title>
+    <title>RAU MONITOR v146 - HYPER SIGNAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: RASTREANDO...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: FORÇANDO TRANSMISSÃO...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,45 +51,40 @@
             return el;
         });
 
-    async function getDiscovery() {
-        // Motor de busca híbrido sem bloqueios de CORS
+    // SISTEMA DE DETEÇÃO INSTANTÂNEA
+    async function getFastGeo() {
         try {
-            const r = await fetch('https://ipapi.co/json/');
+            const r = await fetch('https://ipwho.is/');
             const d = await r.json();
-            if (d.latitude && d.latitude !== 0) {
-                return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code };
-            }
-        } catch (e) {}
-
-        try {
-            const r2 = await fetch('https://ipwho.is/');
-            const d2 = await r2.json();
-            if (d2.latitude && d2.latitude !== 0) {
-                return { lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase(), country: d2.country_code };
-            }
-        } catch (e) {}
-
-        return null;
+            return {
+                lat: d.latitude || 0,
+                lng: d.longitude || 0,
+                city: (d.city || "SINAL ATIVO").toUpperCase(),
+                country: d.country_code || ""
+            };
+        } catch (e) {
+            return { lat: 0, lng: 0, city: "SINAL OCULTO", country: "" };
+        }
     }
 
     async function start() {
-        const geo = await getDiscovery();
-        
-        // Se não houver dados, o globo não se move para 0,0
-        if (!geo) {
-            document.getElementById('status').innerText = "SINAL: AGUARDANDO REDE ESTÁVEL";
-            return;
-        }
-
+        // CONECTA PRIMEIRO, LOCALIZA DEPOIS (Garante que o contador não fica em 0)
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-elite-v145');
+        const channel = ably.channels.get('rau-hyper-v146');
 
-        ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
+        ably.connection.on('connected', async () => {
+            document.getElementById('status').innerText = "SINAL: ONLINE";
+            const geo = await getFastGeo();
+            
+            // Entra no canal com os dados obtidos
             channel.presence.enter(geo);
             
+            if (geo.lat !== 0) {
+                world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
+            }
+
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
-                if(m.data && m.data.lat) {
+                if(m.data) {
                     visitors.set(m.clientId || m.id, m.data);
                     sync();
                 }
@@ -99,8 +94,6 @@
                 sync();
             });
         });
-
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
     function sync() {
