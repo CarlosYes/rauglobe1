@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU GLOBE v163</title>
+    <title>RAU GLOBE v164</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: SINCRONIZANDO CANAL...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: TÚNEL DE DADOS ATIVO</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,30 +51,29 @@
             return el;
         });
 
-    function connect() {
-        // Motor de geolocalização por injeção (CORS Bypass)
+    function init() {
         const script = document.createElement('script');
-        script.src = 'https://ipapi.co/jsonp/?callback=initGlobe';
+        script.src = 'https://ipapi.co/jsonp/?callback=activate';
         document.body.appendChild(script);
     }
 
-    window.initGlobe = (data) => {
+    window.activate = (data) => {
         const myGeo = {
             lat: data.latitude,
             lng: data.longitude,
-            city: (data.city || "RAU-CORE").toUpperCase(),
+            city: (data.city || "RAU-SIGNAL").toUpperCase(),
             country: data.country_code
         };
 
-        // Força ligação via Ably mesmo em redes restritas
+        // PROTOCOLO DE BYPASS: Força túnel HTTPS para evitar o bloqueio da operadora (0 sem VPN)
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
-            useBinaryProtocol: false, // Bypass de firewall de operadora
-            transports: ['xhr_polling', 'xhr_streaming', 'web_socket']
+            useBinaryProtocol: false, 
+            transports: ['xhr_polling'] // O transporte mais resiliente contra filtros de rede
         });
 
-        const channel = ably.channels.get('rau-globe-v163');
+        const channel = ably.channels.get('rau-monitor-v164');
 
         ably.connection.on('connected', () => {
             document.getElementById('status').innerText = `SINAL: ${myGeo.city}`;
@@ -101,7 +100,7 @@
     }
 
     world.controls().autoRotate = true;
-    window.onload = connect;
+    window.onload = init;
 </script>
 </body>
 </html>
