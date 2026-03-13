@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v124 - PURE SINAL</title>
+    <title>RAU MONITOR v125 - POSIÇÃO REAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL REAL: A VARRER...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: FILTRANDO ROTA REAL...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,41 +51,43 @@
             return el;
         });
 
-    // SISTEMA DE DETEÇÃO MULTI-CAMADA (Sem Janelas de Permissão)
     async function getDiscovery() {
-        // Tenta 3 serviços diferentes para evitar o erro de Zeebrugge
-        const endpoints = ['https://ipwho.is/', 'https://ipapi.co/json/'];
-        
+        // Serviços em ordem de precisão de infraestrutura
+        const endpoints = [
+            'https://ipapi.co/json/', 
+            'https://ipwho.is/',
+            'https://extreme-ip-lookup.com/json/'
+        ];
+
         for (let url of endpoints) {
             try {
                 const r = await fetch(url);
                 const d = await r.json();
                 
-                // Se o IP for da Bélgica (onde o globo foge), tentamos o próximo
-                if (d.country_code === "BE" || d.country === "BE") continue;
+                // FILTRO CRÍTICO: Se detectar Bélgica (Proxy do ISP), descarta e tenta o próximo
+                const country = d.country_code || d.countryCode || d.country;
+                if (country === "BE" || country === "Belgium") continue;
 
                 const lat = d.latitude || d.lat;
                 const lng = d.longitude || d.lon;
                 const city = d.city || "SINAL REAL";
-                const country = d.country_code || d.country;
 
                 if (lat && lng) {
                     return { lat: parseFloat(lat), lng: parseFloat(lng), city: city.toUpperCase(), country: country };
                 }
             } catch (e) { continue; }
         }
-        // Fallback final (Portugal/Lisboa genérico se tudo falhar, para o globo não ficar no meio do mar)
-        return { lat: 38.7, lng: -9.1, city: "SINAL ESTIMADO", country: "PT" };
+        // Se tudo for Bélgica, o sinal é forçado para o centro de Portugal para evitar o erro do ISP
+        return { lat: 39.3999, lng: -8.2245, city: "RASTREIO REDE", country: "PT" };
     }
 
     async function start() {
         const geo = await getDiscovery();
-        
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-pure-v124');
+        const channel = ably.channels.get('rau-real-v125');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
             channel.presence.enter({...geo, status: 'online'});
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
