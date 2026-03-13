@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v178</title>
+    <title>RAU MONITOR v179</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: BYPASS DE REDE ATIVO...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: MOTOR DE INJEÇÃO v179...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,22 +51,23 @@
             return el;
         });
 
-    // SISTEMA DE INJEÇÃO POR SCRIPT (Imune ao bloqueio de fetch da operadora)
+    // SISTEMA DE DETECÇÃO POR INJEÇÃO (Bypass de rede local)
     function start() {
-        const s = document.createElement('script');
-        s.src = 'https://ipapi.co/jsonp/?callback=rauDiscovery';
-        document.body.appendChild(s);
+        const script = document.createElement('script');
+        // Usamos JSONP para que a resposta seja tratada como código, não como dados (fura o bloqueio)
+        script.src = 'https://ipapi.co/jsonp/?callback=detectRau';
+        document.body.appendChild(script);
     }
 
-    window.rauDiscovery = (d) => {
+    window.detectRau = (d) => {
         const geo = { 
             lat: parseFloat(d.latitude), 
             lng: parseFloat(d.longitude), 
-            city: (d.city || "SINAL").toUpperCase(), 
+            city: (d.city || "SINAL-REAL").toUpperCase(), 
             country: d.country_code 
         };
 
-        // Força ligação via HTTPS Polling (Simula navegação web comum para evitar o "0")
+        // Forçamos o Ably a usar HTTPS Polling para não ser detetado como WebSocket pela operadora
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
@@ -74,28 +75,28 @@
             transports: ['xhr_polling']
         });
 
-        const channel = ably.channels.get('rau-discovery-v178');
+        const channel = ably.channels.get('rau-discovery-main');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
             channel.presence.enter({...geo, status: 'online'});
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
                     visitors.set(m.clientId || m.id, { ...m.data, status: 'online' });
-                    updateHUD();
+                    sync();
                 }
             });
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId || m.id);
-                updateHUD();
+                sync();
             });
         });
 
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     };
 
-    function updateHUD() {
+    function sync() {
         const data = Array.from(visitors.values());
         document.getElementById('onlineCount').innerText = data.length;
         world.htmlElementsData(data);
