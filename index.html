@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU GLOBE v167</title>
+    <title>RAU GLOBE v168</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: HTTPS TUNNEL v167</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">PROTOCOLO: TÚNEL CAMUFLADO v168</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,30 +51,31 @@
             return el;
         });
 
-    function start() {
+    function init() {
+        // Bypass de CORS e filtros de rede via injeção dinâmica
         const script = document.createElement('script');
-        script.src = 'https://ipapi.co/jsonp/?callback=setup';
+        script.src = 'https://ipapi.co/jsonp/?callback=launch';
         document.body.appendChild(script);
     }
 
-    window.setup = (data) => {
+    window.launch = (data) => {
         const myGeo = {
             lat: data.latitude,
             lng: data.longitude,
-            city: (data.city || "RAU-SIGNAL").toUpperCase(),
+            city: (data.city || "ONLINE").toUpperCase(),
             country: data.country_code
         };
 
-        // BYPASS FINAL: Usa apenas transporte de Polling (Disfarçado de tráfego web comum)
-        // Isso evita que a tua operadora bloqueie o sinal quando desligas a VPN.
+        // FORÇA BRUTA: Desativa protocolos binários e usa apenas XHR Polling.
+        // Isto faz com que o Ably pareça tráfego de site comum, furando o bloqueio da tua rede local.
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
-            useBinaryProtocol: false,
+            useBinaryProtocol: false, 
             transports: ['xhr_polling'] 
         });
 
-        const channel = ably.channels.get('rau-final-2026');
+        const channel = ably.channels.get('rau-monitor-core');
 
         ably.connection.on('connected', () => {
             document.getElementById('status').innerText = `SINAL: ${myGeo.city}`;
@@ -101,7 +102,7 @@
     }
 
     world.controls().autoRotate = true;
-    window.onload = start;
+    window.onload = init;
 </script>
 </body>
 </html>
