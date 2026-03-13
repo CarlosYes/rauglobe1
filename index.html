@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v176</title>
+    <title>RAU MONITOR v177</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: BYPASS DE REDE v176...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: DETECÇÃO NATIVA ATIVA...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,33 +51,39 @@
             return el;
         });
 
-    // SISTEMA DE INJEÇÃO PURA: Não usa fetch. Carrega como um script de sistema.
-    function ignite() {
+    function init() {
+        // Se o browser suportar geo nativa (imune a bloqueios de rede)
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => connect({ lat: pos.coords.latitude, lng: pos.coords.longitude, city: "LOCALIZAÇÃO REAL", country: "" }),
+                () => fallback()
+            );
+        } else { fallback(); }
+    }
+
+    // Se a geo nativa for recusada, usa injeção de script (Bypass)
+    function fallback() {
         const s = document.createElement('script');
-        s.src = 'https://ipapi.co/jsonp/?callback=rauExecute';
+        s.src = 'https://ipapi.co/jsonp/?callback=extGeo';
         document.body.appendChild(s);
     }
 
-    window.rauExecute = (d) => {
-        const geo = { 
-            lat: parseFloat(d.latitude), 
-            lng: parseFloat(d.longitude), 
-            city: (d.city || "RAU-SIGNAL").toUpperCase(), 
-            country: d.country_code 
-        };
+    window.extGeo = (d) => {
+        connect({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code });
+    }
 
-        // Força ligação via HTTPS Polling (Disfarçado de tráfego web comum)
+    function connect(geo) {
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
             useBinaryProtocol: false,
-            transports: ['xhr_polling']
+            transports: ['xhr_polling'] // Túnel de segurança
         });
 
-        const channel = ably.channels.get('rau-discovery-core');
+        const channel = ably.channels.get('rau-pure-discovery');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `CONECTADO: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
             channel.presence.enter({...geo, status: 'online'});
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
@@ -93,7 +99,7 @@
         });
 
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
-    };
+    }
 
     function sync() {
         const data = Array.from(visitors.values());
@@ -102,7 +108,7 @@
     }
 
     world.controls().autoRotate = true;
-    window.onload = ignite;
+    window.onload = init;
 </script>
 </body>
 </html>
