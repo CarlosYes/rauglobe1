@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v186</title>
+    <title>RAU MONITOR v187</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -29,7 +29,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">1</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">A PROCURAR SINAL...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL DETETADO</div>
 </div>
 
 <div id="globeViz"></div>
@@ -47,31 +47,31 @@
             return el;
         });
 
-    // FUNÇÃO DE CALLBACK (Injetada via Script para evitar erros de CORS/Bloqueio)
-    window.setRauLocation = function(data) {
-        const myLocation = {
+    // Função que recebe os dados do IP sem passar por bloqueios de segurança do PC
+    window.renderRau = function(data) {
+        const myPoint = {
             lat: parseFloat(data.latitude),
             lng: parseFloat(data.longitude),
             city: (data.city || "SINAL").toUpperCase(),
             country: data.country_code
         };
 
-        document.getElementById('status').innerText = `SINAL: ${myLocation.city}`;
-        world.htmlElementsData([myLocation]);
-        world.pointOfView({ lat: myLocation.lat, lng: myLocation.lng, altitude: 2.0 }, 2000);
+        document.getElementById('status').innerText = `SINAL: ${myPoint.city}`;
+        world.htmlElementsData([myPoint]);
+        world.pointOfView({ lat: myPoint.lat, lng: myPoint.lng, altitude: 2.0 }, 2000);
     };
 
-    function init() {
-        // Criamos o elemento script dinamicamente como o XatRadio faz
-        const script = document.createElement('script');
-        script.src = 'https://ipapi.co/jsonp/?callback=setRauLocation';
-        document.body.appendChild(script);
+    function start() {
+        // Injeção de script puro - contorna erros de detecção e bloqueios de rede
+        const s = document.createElement('script');
+        s.src = 'https://ipapi.co/jsonp/?callback=renderRau';
+        document.body.appendChild(s);
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    window.onload = init;
+    window.onload = start;
 </script>
 </body>
 </html>
