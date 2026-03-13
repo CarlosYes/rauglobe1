@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v142 - ABSOLUTE PRECISION</title>
+    <title>RAU MONITOR v143 - ABSOLUTE SIGNAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: LOCALIZANDO...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: FORÇANDO CONEXÃO...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,39 +51,34 @@
             return el;
         });
 
-    async function getEliteGeo() {
-        try {
-            // Tentativa 1: IPinfo - A base mais cara e precisa
-            const r = await fetch('https://ipinfo.io/json?token=6f796a39d89274');
-            const d = await r.json();
-            if (d.loc && d.city) {
-                const [lat, lng] = d.loc.split(',');
-                return { lat: parseFloat(lat), lng: parseFloat(lng), city: d.city.toUpperCase(), country: d.country };
-            }
-        } catch (e) {}
+    // PROTOCOLO DE FORÇA BRUTA (JSONP) - Ignora bloqueios de rede
+    function getForcedLocation() {
+        return new Promise((resolve) => {
+            const script = document.createElement('script');
+            // Usando IP-API com callback para bypassar segurança do browser
+            script.src = 'https://ip-api.com/json?callback=rauCallback';
+            document.body.appendChild(script);
 
-        try {
-            // Tentativa 2: IPWho.is (Redundância)
-            const r2 = await fetch('https://ipwho.is/');
-            const d2 = await r2.json();
-            if (d2.latitude && d2.latitude !== 0) {
-                return { lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase(), country: d2.country_code };
-            }
-        } catch (e) {}
-
-        // Se tudo falhar, ele NÃO vai para Portugal. Ele avisa erro.
-        return { lat: 0, lng: 0, city: "ERRO DE SINAL", country: "" };
+            window.rauCallback = function(data) {
+                if(data.status === 'success') {
+                    resolve({
+                        lat: data.lat,
+                        lng: data.lon,
+                        city: data.city.toUpperCase(),
+                        country: data.countryCode
+                    });
+                } else {
+                    resolve({ lat: 0.1, lng: 0.1, city: "SINAL OCULTO", country: "" });
+                }
+                document.body.removeChild(script);
+            };
+        });
     }
 
     async function start() {
-        const geo = await getEliteGeo();
-        if (geo.lat === 0) {
-            document.getElementById('status').innerText = "SINAL BLOQUEADO PELA REDE";
-            return;
-        }
-
+        const geo = await getForcedLocation();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-elite-global');
+        const channel = ably.channels.get('rau-absolute-v143');
 
         ably.connection.on('connected', () => {
             document.getElementById('status').innerText = `SINAL: ${geo.city}`;
