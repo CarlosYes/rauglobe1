@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v116 - ULTRA PRECISION</title>
+    <title>RAU MONITOR v117 - FORCE REALTIME</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -12,34 +12,34 @@
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 0, 0, 0.9); border-left: 5px solid #39ff14;
-            padding: 20px; color: #fff; pointer-events: none;
+            background: rgba(0, 5, 10, 0.95); border-left: 5px solid #39ff14;
+            padding: 15px; color: #fff; pointer-events: none;
         }
-        .count-on { font-size: 70px; font-weight: 900; line-height: 0.8; color: #39ff14; }
-        .status-msg { font-size: 11px; margin-top: 10px; font-family: monospace; color: #39ff14; text-transform: uppercase; letter-spacing: 1px; }
+        .count-on { font-size: 65px; font-weight: 900; line-height: 0.8; color: #39ff14; }
+        .status-msg { font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14; text-transform: uppercase; }
 
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: #000; padding: 5px 12px; border-radius: 2px;
-            font-size: 12px; font-weight: 900; border: 1.5px solid #39ff14; color: #39ff14; 
-            white-space: nowrap; box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
+            background: rgba(0,0,0,0.9); padding: 4px 10px; border-radius: 2px;
+            font-size: 11px; font-weight: 900; border: 1px solid #39ff14; color: #39ff14; 
+            white-space: nowrap;
         }
-        .d-rau { width: 12px; height: 12px; background: #39ff14; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 20px #39ff14; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
+        .d-rau { width: 8px; height: 8px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 15px #39ff14; animation: p 1.2s infinite; }
+        @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" class="status-msg">A sintonizar sinal...</div>
+    <div id="status" class="status-msg">A FORÇAR RASTREIO...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+    const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 6).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -52,48 +52,47 @@
             return el;
         });
 
-    // SISTEMA DE DETECÇÃO À PROVA DE FALHAS
-    async function getPreciseGeo() {
+    // MÉTODO JSONP: Injeta a localização ignorando bloqueios de rede
+    function forceDiscovery() {
         return new Promise((resolve) => {
-            let done = false;
+            const script = document.createElement('script');
+            // Usando extreme-ip-lookup que aceita JSONP para bypass de segurança
+            script.src = 'https://extreme-ip-lookup.com/json/?callback=callbackGeo';
+            document.body.appendChild(script);
 
-            // 1. TENTA GPS (ALTA PRECISÃO)
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(async (pos) => {
-                    if (done) return; done = true;
-                    try {
-                        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`);
-                        const d = await r.json();
-                        const city = d.address.city || d.address.town || d.address.village || "LOCALIZAÇÃO REAL";
-                        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, city: city.toUpperCase() });
-                    } catch {
-                        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, city: "SINAL GPS" });
-                    }
-                }, () => {}, { timeout: 3000 });
-            }
+            window.callbackGeo = function(data) {
+                const geo = {
+                    lat: parseFloat(data.lat),
+                    lng: parseFloat(data.lon),
+                    city: (data.city || "DESCONHECIDO").toUpperCase()
+                };
+                document.body.removeChild(script);
+                resolve(geo);
+            };
 
-            // 2. FALLBACK INSTANTÂNEO (IP-API COM BYPASS)
+            // Segundo motor de busca caso o primeiro demore
             setTimeout(async () => {
-                if (done) return; done = true;
                 try {
-                    const r = await fetch('https://ipwho.is/');
+                    const r = await fetch('https://ipapi.co/json/');
                     const d = await r.json();
                     resolve({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() });
-                } catch {
-                    // SE TUDO FALHAR, USA O LOCAL DA CONEXÃO
-                    resolve({ lat: 38.7, lng: -9.1, city: "ERRO DE VARREDURA" });
+                } catch(e) {
+                    // Se falhar tudo, tenta o ipwho.is (último recurso)
+                    const r2 = await fetch('https://ipwho.is/');
+                    const d2 = await r2.json();
+                    resolve({ lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase() });
                 }
-            }, 3500);
+            }, 2500);
         });
     }
 
     async function start() {
-        const geo = await getPreciseGeo();
+        const geo = await forceDiscovery();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-core-v116');
+        const channel = ably.channels.get('rau-live-v117');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL ATIVO: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
