@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v139 - SINAL FORÇADO</title>
+    <title>RAU MONITOR v140 - SINAL PROFISSIONAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: A RECONECTAR...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: SINCRONIZANDO...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,12 +51,18 @@
             return el;
         });
 
-    // SISTEMA DE BYPASS DE REDE
-    async function getForcedGeo() {
+    // SISTEMA DE ALTA DISPONIBILIDADE (CLOUDFLARE + IPWHOIS)
+    async function getStableGeo() {
         try {
-            // Tenta o serviço mais "aberto" para evitar o erro de rede protegida
-            const r = await fetch('https://ipapi.co/json/');
+            // Passo 1: Obter IP real via Cloudflare (impossível de bloquear)
+            const traceReq = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
+            const traceText = await traceReq.text();
+            const ip = traceText.match(/ip=(.*)/)[1];
+
+            // Passo 2: Localizar IP com motor secundário sem limites
+            const r = await fetch(`https://ipwho.is/${ip}`);
             const d = await r.json();
+            
             if (d.latitude && d.latitude !== 0) {
                 return {
                     lat: parseFloat(d.latitude),
@@ -65,33 +71,25 @@
                     country: d.country_code
                 };
             }
-        } catch (e) {}
+        } catch (e) { console.error("Erro na deteção:", e); }
 
-        // Fallback imediato via IPWHOIS caso o primeiro falhe
-        const r2 = await fetch('https://ipwho.is/');
-        const d2 = await r2.json();
-        return {
-            lat: d2.latitude,
-            lng: d2.longitude,
-            city: (d2.city || "SINAL REAL").toUpperCase(),
-            country: d2.country_code
-        };
+        // Fallback final: Se tudo explodir, ele não foge para África
+        return { lat: 39.5, lng: -8.0, city: "REDE LOCAL", country: "PT" }; 
     }
 
     async function start() {
-        const geo = await getForcedGeo();
+        const geo = await getStableGeo();
         
-        // Força a conexão Ably a ignorar protocolos bloqueados
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
-            transports: ['web_socket'] 
+            transportParams: { heartbeatInterval: 5000 }
         });
 
-        const channel = ably.channels.get('rau-force-v139');
+        const channel = ably.channels.get('rau_final_pro_v140');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `ONLINE: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
