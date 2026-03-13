@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v158 - ZERO CORS</title>
+    <title>RAU GLOBE v160</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: SINCRONIZAÇÃO TOTAL...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: SINCRONIZAÇÃO DE SEGURANÇA...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,32 +51,37 @@
             return el;
         });
 
-    async function start() {
-        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-monitor-v158');
+    function forceConnect() {
+        const script = document.createElement('script');
+        script.src = 'https://ipapi.co/jsonp/?callback=initRau';
+        document.body.appendChild(script);
+    }
 
-        ably.connection.on('connected', () => {
-            // O Ably fornece metadados da ligação. Vamos usá-los para evitar bloqueios de rede.
-            // Para forçar a localização sem "Lisboa", usamos um túnel JSONP (infalível contra CORS)
-            const script = document.createElement('script');
-            script.src = 'https://ipapi.co/jsonp/?callback=solve';
-            document.body.appendChild(script);
+    window.initRau = (data) => {
+        const myGeo = {
+            lat: data.latitude,
+            lng: data.longitude,
+            city: (data.city || "SINAL ATIVO").toUpperCase(),
+            country: data.country_code
+        };
+
+        // PROTOCOLO DE ELITE 2026: Tenta WebSockets, mas aceita fallbacks de HTTP se a rede bloquear
+        const ably = new Ably.Realtime({ 
+            key: ABLY_KEY, 
+            clientId: SESSION_ID,
+            transportParams: { heartbeatInterval: 10000 },
+            transports: ['web_socket', 'xhr_streaming', 'xhr_polling'] // Ordem de tentativa para bater o bloqueio
         });
 
-        window.solve = (data) => {
-            const myData = {
-                lat: data.latitude,
-                lng: data.longitude,
-                city: (data.city || "SINAL ATIVO").toUpperCase(),
-                country: data.country_code
-            };
+        const channel = ably.channels.get('rau-globe-v160');
 
-            document.getElementById('status').innerText = `CONECTADO: ${myData.city}`;
-            channel.presence.enter(myData);
-            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.0 }, 2000);
+        ably.connection.on('connected', () => {
+            document.getElementById('status').innerText = `CONECTADO: ${myGeo.city}`;
+            channel.presence.enter(myGeo);
+            world.pointOfView({ lat: myGeo.lat, lng: myGeo.lng, altitude: 2.5 }, 2000);
 
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
-                if(m.data && m.data.lat) {
+                if(m.data) {
                     visitors.set(m.clientId || m.id, m.data);
                     sync();
                 }
@@ -85,8 +90,12 @@
                 visitors.delete(m.clientId || m.id);
                 sync();
             });
-        };
-    }
+        });
+
+        ably.connection.on('failed', () => {
+            document.getElementById('status').innerText = "SINAL BLOQUEADO PELA OPERADORA";
+        });
+    };
 
     function sync() {
         const data = Array.from(visitors.values());
@@ -95,7 +104,7 @@
     }
 
     world.controls().autoRotate = true;
-    window.onload = start;
+    window.onload = forceConnect;
 </script>
 </body>
 </html>
