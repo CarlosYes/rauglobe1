@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v175</title>
+    <title>RAU MONITOR v176</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,14 +30,14 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: TUNELAMENTO CLOUDFLARE...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: BYPASS DE REDE v176...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'R' + Math.random().toString(36).substr(2, 4).toUpperCase();
+    const SESSION_ID = 'R-' + Math.random().toString(36).substr(2, 4).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -51,59 +51,58 @@
             return el;
         });
 
-    // SISTEMA DE DETECÇÃO POR INJEÇÃO (Bypass de operadora)
-    function start() {
-        // Se o fetch falha, usamos a injeção de script que a operadora não bloqueia
-        const script = document.createElement('script');
-        script.src = 'https://ipapi.co/jsonp/?callback=initGlobalRau';
-        document.body.appendChild(script);
+    // SISTEMA DE INJEÇÃO PURA: Não usa fetch. Carrega como um script de sistema.
+    function ignite() {
+        const s = document.createElement('script');
+        s.src = 'https://ipapi.co/jsonp/?callback=rauExecute';
+        document.body.appendChild(s);
     }
 
-    window.initGlobalRau = (d) => {
+    window.rauExecute = (d) => {
         const geo = { 
             lat: parseFloat(d.latitude), 
             lng: parseFloat(d.longitude), 
-            city: (d.city || "LOCAL-SINAL").toUpperCase(), 
+            city: (d.city || "RAU-SIGNAL").toUpperCase(), 
             country: d.country_code 
         };
 
-        // Forçar Ably a usar apenas o porto 443 (HTTPS comum) disfarçado
+        // Força ligação via HTTPS Polling (Disfarçado de tráfego web comum)
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
-            useBinaryProtocol: false, 
+            useBinaryProtocol: false,
             transports: ['xhr_polling']
         });
 
-        const channel = ably.channels.get('rau-pure-discovery');
+        const channel = ably.channels.get('rau-discovery-core');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
+            document.getElementById('status').innerText = `CONECTADO: ${geo.city}`;
             channel.presence.enter({...geo, status: 'online'});
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
                     visitors.set(m.clientId || m.id, { ...m.data, status: 'online' });
-                    updateHUD();
+                    sync();
                 }
             });
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId || m.id);
-                updateHUD();
+                sync();
             });
         });
 
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     };
 
-    function updateHUD() {
-        const arr = Array.from(visitors.values());
-        document.getElementById('onlineCount').innerText = arr.length;
-        world.htmlElementsData(arr);
+    function sync() {
+        const data = Array.from(visitors.values());
+        document.getElementById('onlineCount').innerText = data.length;
+        world.htmlElementsData(data);
     }
 
     world.controls().autoRotate = true;
-    window.onload = start;
+    window.onload = ignite;
 </script>
 </body>
 </html>
