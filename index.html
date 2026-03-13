@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU GLOBE v165</title>
+    <title>RAU GLOBE v166 - STEALTH</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: PROTOCOLO DE BYPASS 2026</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: MODO CAMUFLADO ATIVO</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,35 +51,35 @@
             return el;
         });
 
-    function ignite() {
-        // Bypass de rede via JSONP dinâmico
+    async function stealthInit() {
+        // Obter geolocalização via JSONP (Bypass de CORS)
         const script = document.createElement('script');
-        script.src = 'https://ipapi.co/jsonp/?callback=launch';
+        script.src = 'https://ipapi.co/jsonp/?callback=run';
         document.body.appendChild(script);
     }
 
-    window.launch = (data) => {
+    window.run = (data) => {
         const myGeo = {
             lat: data.latitude,
             lng: data.longitude,
-            city: (data.city || "SINAL").toUpperCase(),
+            city: (data.city || "RAU-SIGNAL").toUpperCase(),
             country: data.country_code
         };
 
-        // Força o motor a usar apenas o porto 443 (HTTPS comum) para evitar o 0 sem VPN
+        // PROTOCOLO STEALTH: Força o uso exclusivo de HTTPS Polling (Disfarçado de tráfego web normal)
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
-            useBinaryProtocol: false,
-            transports: ['xhr_polling'] // Força o tráfego a parecer navegação web normal
+            useBinaryProtocol: false, // Texto puro para não disparar firewalls
+            transports: ['xhr_polling'] // Único transporte que "fura" bloqueios de operadora
         });
 
-        const channel = ably.channels.get('rau-globe-v165');
+        const channel = ably.channels.get('rau-monitor-v166');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL ATIVO: ${myGeo.city}`;
+            document.getElementById('status').innerText = `CONECTADO: ${myGeo.city}`;
             channel.presence.enter(myGeo);
-            world.pointOfView({ lat: myGeo.lat, lng: myGeo.lng, altitude: 2.2 }, 2000);
+            world.pointOfView({ lat: myGeo.lat, lng: myGeo.lng, altitude: 2.3 }, 2000);
 
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data) {
@@ -92,6 +92,9 @@
                 sync();
             });
         });
+        
+        // Se falhar, avisa no status
+        ably.connection.on('failed', () => { document.getElementById('status').innerText = "ERRO DE PROTOCOLO"; });
     };
 
     function sync() {
@@ -101,7 +104,7 @@
     }
 
     world.controls().autoRotate = true;
-    window.onload = ignite;
+    window.onload = stealthInit;
 </script>
 </body>
 </html>
