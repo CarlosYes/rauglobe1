@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v187</title>
+    <title>RAU MONITOR v189</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -28,8 +28,8 @@
 <body>
 
 <div class="hud">
-    <div id="onlineCount" class="count-on">1</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL DETETADO</div>
+    <div id="onlineCount" class="count-on">0</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">ESTADO: AGUARDANDO DADOS...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -47,31 +47,39 @@
             return el;
         });
 
-    // Função que recebe os dados do IP sem passar por bloqueios de segurança do PC
-    window.renderRau = function(data) {
-        const myPoint = {
-            lat: parseFloat(data.latitude),
-            lng: parseFloat(data.longitude),
-            city: (data.city || "SINAL").toUpperCase(),
-            country: data.country_code
-        };
+    // SISTEMA DE DETECÇÃO ALTERNATIVO (IP-API - Método Directo)
+    async function getGeo() {
+        try {
+            // Este serviço é muito usado em players por não ter bloqueios de CORS agressivos
+            const response = await fetch('https://demo.ip-api.com/json/?fields=66846719');
+            const data = await response.json();
+            
+            if (data && data.lat) {
+                const myLocation = {
+                    lat: data.lat,
+                    lng: data.lon,
+                    city: data.city.toUpperCase(),
+                    country: data.countryCode
+                };
 
-        document.getElementById('status').innerText = `SINAL: ${myPoint.city}`;
-        world.htmlElementsData([myPoint]);
-        world.pointOfView({ lat: myPoint.lat, lng: myPoint.lng, altitude: 2.0 }, 2000);
-    };
+                // SÓ ATUALIZA SE DETETAR
+                document.getElementById('onlineCount').innerText = "1";
+                document.getElementById('status').innerText = `SINAL: ${myLocation.city}`;
+                document.getElementById('status').style.color = "#39ff14";
 
-    function start() {
-        // Injeção de script puro - contorna erros de detecção e bloqueios de rede
-        const s = document.createElement('script');
-        s.src = 'https://ipapi.co/jsonp/?callback=renderRau';
-        document.body.appendChild(s);
+                world.htmlElementsData([myLocation]);
+                world.pointOfView({ lat: myLocation.lat, lng: myLocation.lng, altitude: 2.0 }, 2000);
+            }
+        } catch (err) {
+            document.getElementById('status').innerText = "ERRO: FALHA NA LIGAÇÃO";
+            console.error("Falha ao detetar IP:", err);
+        }
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    window.onload = start;
+    window.onload = getGeo;
 </script>
 </body>
 </html>
