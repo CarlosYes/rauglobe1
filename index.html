@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU GLOBE v162</title>
+    <title>RAU GLOBE v163</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: RASTREIO DE REDE ATIVO</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: SINCRONIZANDO CANAL...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,8 +51,8 @@
             return el;
         });
 
-    function startMonitor() {
-        // Bypass de CORS via JSONP - O GitHub não consegue bloquear isto
+    function connect() {
+        // Motor de geolocalização por injeção (CORS Bypass)
         const script = document.createElement('script');
         script.src = 'https://ipapi.co/jsonp/?callback=initGlobe';
         document.body.appendChild(script);
@@ -62,45 +62,46 @@
         const myGeo = {
             lat: data.latitude,
             lng: data.longitude,
-            city: (data.city || "ONLINE").toUpperCase(),
+            city: (data.city || "RAU-CORE").toUpperCase(),
             country: data.country_code
         };
 
-        // Conexão Ably otimizada para redes restritas
+        // Força ligação via Ably mesmo em redes restritas
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
-            transports: ['xhr_polling', 'xhr_streaming', 'web_socket'] 
+            useBinaryProtocol: false, // Bypass de firewall de operadora
+            transports: ['xhr_polling', 'xhr_streaming', 'web_socket']
         });
 
-        const channel = ably.channels.get('rau-monitor-2026');
+        const channel = ably.channels.get('rau-globe-v163');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `CONECTADO: ${myGeo.city}`;
+            document.getElementById('status').innerText = `SINAL: ${myGeo.city}`;
             channel.presence.enter(myGeo);
-            world.pointOfView({ lat: myGeo.lat, lng: myGeo.lng, altitude: 2.3 }, 2000);
+            world.pointOfView({ lat: myGeo.lat, lng: myGeo.lng, altitude: 2.2 }, 2000);
 
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data) {
                     visitors.set(m.clientId || m.id, m.data);
-                    updateCount();
+                    sync();
                 }
             });
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId || m.id);
-                updateCount();
+                sync();
             });
         });
     };
 
-    function updateCount() {
+    function sync() {
         const data = Array.from(visitors.values());
         document.getElementById('onlineCount').innerText = data.length;
         world.htmlElementsData(data);
     }
 
     world.controls().autoRotate = true;
-    window.onload = startMonitor;
+    window.onload = connect;
 </script>
 </body>
 </html>
