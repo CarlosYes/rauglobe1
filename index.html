@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v136 - SINAL FIXO</title>
+    <title>RAU MONITOR v137 - PURE PRECISION</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">ESTADO: MONITORIZAÇÃO ATIVA</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: A AGUARDAR COORDENADAS...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,12 +51,10 @@
             return el;
         });
 
-    async function getPreciseGeo() {
-        // Fallback robusto para evitar o ponto 0 (África)
-        const safetyExit = { lat: 38.7, lng: -9.1, city: "SINAL LISBOA", country: "PT" }; 
-        
+    // MOTOR DE PRECISÃO TOTAL
+    async function getDiscovery() {
+        // Tenta IPinfo primeiro (Elite)
         try {
-            // Tentativa 1: IPinfo (Elite)
             const r = await fetch('https://ipinfo.io/json?token=6f796a39d89274');
             const d = await r.json();
             if (d.loc && !d.loc.startsWith('0,0')) {
@@ -65,22 +63,29 @@
             }
         } catch (e) {}
 
-        try {
-            // Tentativa 2: IPWho.is (Rápido)
-            const r2 = await fetch('https://ipwho.is/');
-            const d2 = await r2.json();
-            if (d2.latitude && d2.latitude !== 0) {
-                return { lat: d2.latitude, lng: d2.longitude, city: d2.city.toUpperCase(), country: d2.country_code };
-            }
-        } catch (e) {}
-
-        return safetyExit;
+        // Se o IP falhar, pede ao hardware do dispositivo (GPS/Wi-Fi)
+        return new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                // Se o GPS der a posição, tentamos converter em nome de cidade
+                resolve({ 
+                    lat: pos.coords.latitude, 
+                    lng: pos.coords.longitude, 
+                    city: "POSIÇÃO REAL", 
+                    country: "" 
+                });
+            }, () => {
+                // Caso extremo: se até o GPS falhar, ele usa o sinal bruto do IPWhoIs
+                fetch('https://ipwho.is/').then(r => r.json()).then(d => {
+                    resolve({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase(), country: d.country_code });
+                });
+            });
+        });
     }
 
     async function start() {
-        const geo = await getPreciseGeo();
+        const geo = await getDiscovery();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-final-sync');
+        const channel = ably.channels.get('rau-pure-live-v137');
 
         ably.connection.on('connected', () => {
             document.getElementById('status').innerText = `SINAL: ${geo.city}`;
