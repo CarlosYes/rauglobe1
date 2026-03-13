@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v174</title>
+    <title>RAU MONITOR v175</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,14 +30,14 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: RASTREANDO IP...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: TUNELAMENTO CLOUDFLARE...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'R-' + Math.random().toString(36).substr(2, 4).toUpperCase();
+    const SESSION_ID = 'R' + Math.random().toString(36).substr(2, 4).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -51,44 +51,28 @@
             return el;
         });
 
-    // SISTEMA DE DETECÇÃO EM CASCATA: Se um falhar, o próximo tenta.
-    async function getGeo() {
-        const services = [
-            { url: 'https://ipapi.co/json/', lat: 'latitude', lng: 'longitude', city: 'city', country: 'country_code' },
-            { url: 'https://ipwho.is/', lat: 'latitude', lng: 'longitude', city: 'city', country: 'country_code' },
-            { url: 'https://extreme-ip-lookup.com/json/?key=demo', lat: 'lat', lng: 'lon', city: 'city', country: 'countryCode' },
-            { url: 'https://freeipapi.com/api/json', lat: 'latitude', lng: 'longitude', city: 'cityName', country: 'countryCode' }
-        ];
-
-        for (let s of services) {
-            try {
-                const r = await fetch(s.url, { priority: 'high' });
-                const d = await r.json();
-                if (d[s.lat]) {
-                    return {
-                        lat: parseFloat(d[s.lat]),
-                        lng: parseFloat(d[s.lng]),
-                        city: d[s.city].toUpperCase(),
-                        country: d[s.country]
-                    };
-                }
-            } catch (e) { console.log("Serviço bloqueado, tentando próximo..."); }
-        }
-        return null;
+    // SISTEMA DE DETECÇÃO POR INJEÇÃO (Bypass de operadora)
+    function start() {
+        // Se o fetch falha, usamos a injeção de script que a operadora não bloqueia
+        const script = document.createElement('script');
+        script.src = 'https://ipapi.co/jsonp/?callback=initGlobalRau';
+        document.body.appendChild(script);
     }
 
-    async function start() {
-        const geo = await getGeo();
-        if (!geo) {
-            document.getElementById('status').innerText = "ERRO: REDE BLOQUEOU TODOS OS SERVIÇOS";
-            return;
-        }
+    window.initGlobalRau = (d) => {
+        const geo = { 
+            lat: parseFloat(d.latitude), 
+            lng: parseFloat(d.longitude), 
+            city: (d.city || "LOCAL-SINAL").toUpperCase(), 
+            country: d.country_code 
+        };
 
+        // Forçar Ably a usar apenas o porto 443 (HTTPS comum) disfarçado
         const ably = new Ably.Realtime({ 
             key: ABLY_KEY, 
             clientId: SESSION_ID,
             useBinaryProtocol: false, 
-            transports: ['xhr_polling'] // Força o tráfego a parecer navegação normal
+            transports: ['xhr_polling']
         });
 
         const channel = ably.channels.get('rau-pure-discovery');
@@ -110,7 +94,7 @@
         });
 
         world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
-    }
+    };
 
     function updateHUD() {
         const arr = Array.from(visitors.values());
