@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v150 - 2026 EDGE</title>
+    <title>RAU MONITOR v151 - PURE EDGE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: LINK 2026 ATIVO</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: SINCRONIZANDO CANAL...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -51,35 +51,31 @@
             return el;
         });
 
-    function start() {
-        // Conexão direta via WebSocket Protegido
-        const ably = new Ably.Realtime({ 
-            key: ABLY_KEY, 
-            clientId: SESSION_ID,
-            echoMessages: false
+    async function start() {
+        const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
+        const channel = ably.channels.get('rau-monitor-v151');
+
+        ably.connection.on('connected', () => {
+            // Usamos o motor do IP-API que permite JSONP (invisível ao bloqueio do GitHub)
+            const script = document.createElement('script');
+            script.src = 'https://ipapi.co/jsonp/?callback=processGeo';
+            document.body.appendChild(script);
         });
 
-        const channel = ably.channels.get('rau-2026-v150');
+        window.processGeo = (data) => {
+            const myData = {
+                lat: data.latitude,
+                lng: data.longitude,
+                city: data.city.toUpperCase(),
+                country: data.country_code
+            };
 
-        ably.connection.on('connected', async () => {
-            // O Ably deteta o teu IP automaticamente no servidor. 
-            // Vamos usar o IPWHOIS apenas para traduzir as coordenadas se necessário,
-            // mas a âncora é feita por Websocket.
-            fetch('https://ipwho.is/').then(r => r.json()).then(geo => {
-                const myData = {
-                    lat: geo.latitude,
-                    lng: geo.longitude,
-                    city: geo.city ? geo.city.toUpperCase() : "SINAL REAL",
-                    country: geo.country_code || ""
-                };
-
-                document.getElementById('status').innerText = `CONECTADO: ${myData.city}`;
-                channel.presence.enter(myData);
-                world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.0 }, 2000);
-            });
+            document.getElementById('status').innerText = `SINAL ATIVO: ${myData.city}`;
+            channel.presence.enter(myData);
+            world.pointOfView({ lat: myData.lat, lng: myData.lng, altitude: 2.0 }, 2000);
 
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
-                if(m.data && m.data.lat) {
+                if(m.data) {
                     visitors.set(m.clientId || m.id, m.data);
                     sync();
                 }
@@ -88,7 +84,7 @@
                 visitors.delete(m.clientId || m.id);
                 sync();
             });
-        });
+        };
     }
 
     function sync() {
