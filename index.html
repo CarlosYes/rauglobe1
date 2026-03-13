@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v127 - SINAL REAL</title>
+    <title>RAU MONITOR v128 - SINAL REAL</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -30,7 +30,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">RASTREANDO POSIÇÃO REAL...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #39ff14;">SINAL: CONECTADO</div>
 </div>
 
 <div id="globeViz"></div>
@@ -46,62 +46,49 @@
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = `m-rau`;
-            // CIDADE + BANDEIRA conforme pediste originalmente
             const flag = d.country ? `<img src="https://flagcdn.com/w20/${d.country.toLowerCase()}.png" style="width:14px">` : '';
             el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    async function getPreciseLocation() {
-        // Lista de serviços para cruzar dados e evitar a Bélgica
-        const services = [
-            'https://ipwho.is/',
-            'https://ipapi.co/json/',
-            'https://extreme-ip-lookup.com/json/'
-        ];
-
-        for (let url of services) {
-            try {
-                const r = await fetch(url);
-                const d = await r.json();
-                const countryCode = (d.country_code || d.countryCode || "").toUpperCase();
-                
-                // Ignora se o sinal estiver a vir de um datacenter belga
-                if (countryCode === "BE") continue;
-
-                const lat = d.latitude || d.lat;
-                const lng = d.longitude || d.lon;
-                const city = d.city || d.cityName;
-
-                if (lat && lng && city) {
-                    return { 
-                        lat: parseFloat(lat), 
-                        lng: parseFloat(lng), 
-                        city: city.toUpperCase(), 
-                        country: countryCode 
-                    };
-                }
-            } catch (e) { continue; }
-        }
-        // Se tudo falhar, tenta o GPS do browser (última linha de defesa para precisão)
+    // SISTEMA ANTI-BLOQUEIO (JSONP)
+    function fetchGeo() {
         return new Promise((resolve) => {
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, city: "LOCALIZAÇÃO REAL", country: "" });
-            }, () => {
-                resolve({ lat: 0, lng: 0, city: "OFFLINE", country: "" });
-            });
+            const script = document.createElement('script');
+            script.src = 'https://extreme-ip-lookup.com/json/?callback=rauCallback';
+            document.body.appendChild(script);
+
+            window.rauCallback = (data) => {
+                // Se detectar Bélgica (Proxy do ISP), força uma segunda verificação
+                if (data.countryCode === "BE") {
+                    fetch('https://ipwho.is/').then(r => r.json()).then(d => {
+                        resolve({
+                            lat: parseFloat(d.latitude),
+                            lng: parseFloat(d.longitude),
+                            city: (d.city || "SINAL REAL").toUpperCase(),
+                            country: d.country_code
+                        });
+                    });
+                } else {
+                    resolve({
+                        lat: parseFloat(data.lat),
+                        lng: parseFloat(data.lon),
+                        city: (data.city || "SINAL REAL").toUpperCase(),
+                        country: data.countryCode
+                    });
+                }
+                document.body.removeChild(script);
+            };
         });
     }
 
     async function start() {
-        const geo = await getPreciseLocation();
+        const geo = await fetchGeo();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-final-v127');
+        const channel = ably.channels.get('rau-final-v128');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL: ${geo.city}`;
             channel.presence.enter(geo);
-            
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
                     visitors.set(m.clientId || m.id, m.data);
