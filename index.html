@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v195</title>
+    <title>RAU MONITOR v196</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -29,7 +29,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: PROCURANDO...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: SINCRONIZANDO...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -42,42 +42,47 @@
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
-            const flag = d.countryCode ? `<img src="https://flagcdn.com/w20/${d.countryCode.toLowerCase()}.png" style="width:14px">` : '';
+            const flag = d.country_code ? `<img src="https://flagcdn.com/w20/${d.country_code.toLowerCase()}.png" style="width:14px">` : '';
             el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    // Esta função recebe o sinal real do IP
-    window.getSignal = function(data) {
-        if (!data || data.status !== "success") return;
+    // Esta função recebe o sinal real do IP via GeoJS
+    window.processarSinal = function(data) {
+        if (!data || !data.latitude) return;
 
-        const loc = {
-            lat: parseFloat(data.lat),
-            lng: parseFloat(data.lon),
+        const meuPonto = {
+            lat: parseFloat(data.latitude),
+            lng: parseFloat(data.longitude),
             city: (data.city || "SINAL").toUpperCase(),
-            countryCode: data.countryCode
+            country_code: data.country_code
         };
 
-        // Só atualiza o contador aqui
+        // O contador só muda para 1 após a resposta do servidor
         document.getElementById('onlineCount').innerText = "1";
-        document.getElementById('status').innerText = `SINAL: ${loc.city}`;
+        document.getElementById('status').innerText = `SINAL: ${meuPonto.city}`;
         document.getElementById('status').style.color = "#39ff14";
 
-        world.htmlElementsData([loc]);
-        world.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 2.0 }, 2000);
+        world.htmlElementsData([meuPonto]);
+        world.pointOfView({ lat: meuPonto.lat, lng: meuPonto.lng, altitude: 2.0 }, 2000);
     };
 
-    function start() {
-        // Usamos injeção de script para evitar erros de CORS (bloqueio de rede)
-        const s = document.createElement('script');
-        s.src = 'https://extreme-ip-lookup.com/json/?callback=getSignal';
-        document.body.appendChild(s);
+    function iniciar() {
+        // Usamos a técnica de script (JSONP) que o FlagCounter usa para não ser bloqueado
+        const script = document.createElement('script');
+        script.src = 'https://get.geojs.io/v1/ip/geo.js?callback=processarSinal';
+        
+        script.onerror = () => {
+            document.getElementById('status').innerText = "SINAL: ERRO DE REDE";
+        };
+
+        document.body.appendChild(script);
     }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    window.onload = start;
+    window.onload = iniciar;
 </script>
 </body>
 </html>
