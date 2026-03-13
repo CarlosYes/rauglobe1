@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v191</title>
+    <title>RAU MONITOR v192</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -29,7 +29,7 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">ESTADO: RASTREANDO IP...</div>
+    <div id="status" style="font-size: 10px; margin-top: 10px; font-family: monospace; color: #ff3131;">SINAL: AGUARDANDO DISPOSITIVO...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -42,56 +42,58 @@
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
-            const flag = d.country ? `<img src="https://flagcdn.com/w20/${d.country.toLowerCase()}.png" style="width:14px">` : '';
-            el.innerHTML = `<div class="l-rau">${flag}<span>${d.city}</span></div><div class="d-rau"></div>`;
+            el.innerHTML = `<div class="l-rau"><span>SINAL LOCAL</span></div><div class="d-rau"></div>`;
             return el;
         });
 
-    // MÉTODO FLAG-COUNTER: Carregamento de recurso passivo
-    function track() {
-        const script = document.createElement('script');
-        // Usamos o endpoint JSONP que se comporta como o rastreador do FlagCounter
-        script.src = 'https://ipapi.co/jsonp/?callback=activateSignal';
-        
-        script.onerror = () => {
-            // Se o primeiro falhar, usamos o backup instantâneo (Geoplugin)
-            const backup = document.createElement('script');
-            backup.src = 'https://www.geoplugin.net/javascript.gp?callback=activateSignalGP';
-            document.body.appendChild(backup);
-        };
-        
-        document.body.appendChild(script);
+    function getNativeLocation() {
+        // O Browser pergunta diretamente ao Hardware (Windows/Android/iOS)
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const loc = {
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude,
+                        city: "LOCALIZAÇÃO ATIVA"
+                    };
+
+                    // SÓ ATUALIZA APÓS CONFIRMAÇÃO DO DISPOSITIVO
+                    document.getElementById('onlineCount').innerText = "1";
+                    document.getElementById('status').innerText = "SINAL DETETADO VIA HARDWARE";
+                    document.getElementById('status').style.color = "#39ff14";
+
+                    world.htmlElementsData([loc]);
+                    world.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 2.0 }, 2000);
+                },
+                (err) => {
+                    document.getElementById('status').innerText = "SINAL: ACESSO NEGADO PELO PC";
+                    // Se o hardware falhar, tentamos o método de IP do FlagCounter como backup
+                    const s = document.createElement('script');
+                    s.src = 'https://www.geoplugin.net/javascript.gp?callback=fallbackGeo';
+                    document.body.appendChild(s);
+                }
+            );
+        } else {
+            document.getElementById('status').innerText = "ERRO: NAVEGADOR SEM GPS";
+        }
     }
 
-    window.activateSignal = function(data) {
-        if(!data.latitude) return;
-        render(data.latitude, data.longitude, data.city, data.country_code);
+    window.fallbackGeo = function(d) {
+        if(d.geoplugin_latitude) {
+            document.getElementById('onlineCount').innerText = "1";
+            document.getElementById('status').innerText = "SINAL: DETETADO VIA IP (BACKUP)";
+            document.getElementById('status').style.color = "#39ff14";
+            
+            const loc = { lat: parseFloat(d.geoplugin_latitude), lng: parseFloat(d.geoplugin_longitude) };
+            world.htmlElementsData([loc]);
+            world.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 2.0 }, 2000);
+        }
     };
-
-    window.activateSignalGP = function(d) {
-        render(d.geoplugin_latitude, d.geoplugin_longitude, d.geoplugin_city, d.geoplugin_countryCode);
-    };
-
-    function render(lat, lng, city, country) {
-        const loc = {
-            lat: parseFloat(lat),
-            lng: parseFloat(lng),
-            city: city.toUpperCase(),
-            country: country
-        };
-
-        document.getElementById('onlineCount').innerText = "1";
-        document.getElementById('status').innerText = `SINAL: ${loc.city}`;
-        document.getElementById('status').style.color = "#39ff14";
-
-        world.htmlElementsData([loc]);
-        world.pointOfView({ lat: loc.lat, lng: loc.lng, altitude: 2.0 }, 2000);
-    }
 
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.5;
 
-    window.onload = track;
+    window.onload = getNativeLocation;
 </script>
 </body>
 </html>
