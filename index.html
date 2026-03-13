@@ -2,40 +2,30 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAU MONITOR v231 - ULTIMATE TRACE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: 'Arial Black', sans-serif; }
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
-        
-        /* HUD Interface */
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
             background: rgba(0, 5, 10, 0.9); border-left: 5px solid #39ff14;
             padding: 15px; color: #fff; pointer-events: none; backdrop-filter: blur(5px);
         }
         .count-on { font-size: 60px; font-weight: 900; line-height: 0.8; color: #39ff14; }
-        
-        /* Marcadores no Globo */
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
             background: rgba(0,0,0,0.95); padding: 6px 14px; border-radius: 4px;
             font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 8px;
             white-space: nowrap; transition: all 0.5s;
         }
-        
-        /* Status de Cores */
         .status-online { border: 1px solid #39ff14; color: #39ff14; }
         .status-offline { border: 1px solid #8b0000; color: #8b0000; opacity: 0.6; }
         .flag { width: 20px; height: 14px; object-fit: cover; border: 0.5px solid currentColor; }
-        
-        /* Pontos (Dots) */
         .d-rau { width: 12px; height: 12px; border-radius: 50%; margin-top: 5px; }
         .dot-online { background: #39ff14; box-shadow: 0 0 15px #39ff14; animation: p 1.5s infinite; }
         .dot-offline { background: #8b0000; box-shadow: 0 0 5px #8b0000; }
-
         @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
 </head>
@@ -49,9 +39,6 @@
 <div id="globeViz"></div>
 
 <script>
-    const WORKER_URL = 'https://globorau.carlos2022yes.workers.dev/';
-    let allVisitors = [];
-
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
         .backgroundColor('#000000')
@@ -66,7 +53,7 @@
 
             el.innerHTML = `
                 <div class="l-rau ${statusClass}">
-                    <img src="https://flagcdn.com/w40/${countryCode}.png" class="flag" onerror="this.src='https://flagcdn.com/w40/un.png'">
+                    <img src="https://flagcdn.com/w40/${countryCode}.png" class="flag">
                     <span>${d.city}</span>
                 </div>
                 <div class="d-rau ${dotClass}"></div>
@@ -79,66 +66,37 @@
 
     async function updateMonitor() {
         try {
-            // Busca o histórico completo do seu Cloudflare Worker
-            const response = await fetch(WORKER_URL);
+            const response = await fetch('https://globorau.carlos2022yes.workers.dev/');
             const history = await response.json();
 
-            if (Array.isArray(history) && history.length > 0) {
+            if (Array.isArray(history)) {
                 const now = Date.now();
-                
-                // Mapeia os dados do banco KV para o Globo
-                allVisitors = history.map(v => ({
-                    lat: parseFloat(v.lat),
-                    lng: parseFloat(v.lon),
+                const points = history.map(v => ({
+                    lat: v.lat,
+                    lng: v.lng,
                     city: v.city,
-                    countryCode: v.countryCode,
-                    // Se entrou nos últimos 10 minutos (600.000ms), fica VERDE
-                    active: (now - v.timestamp) < 600000, 
-                    id: v.timestamp
+                    countryCode: v.country,
+                    active: (now - v.timestamp) < 300000 // Verde por 5 minutos
                 }));
 
-                renderUI();
-
-                // Foca a câmera no visitante mais recente (Sua posição)
-                const lastVisitor = allVisitors[allVisitors.length - 1];
-                world.pointOfView({ 
-                    lat: lastVisitor.lat, 
-                    lng: lastVisitor.lng, 
-                    altitude: 1.8 
-                }, 2000);
+                world.htmlElementsData(points);
+                
+                // Foca no último sinal recebido
+                const last = points[points.length - 1];
+                if (last) {
+                    world.pointOfView({ lat: last.lat, lng: last.lng, altitude: 1.8 }, 2000);
+                    document.getElementById('onlineCount').innerText = points.filter(p => p.active).length;
+                    document.getElementById('status').innerText = "SINAL: " + last.city;
+                }
             }
         } catch (e) {
-            console.error("Erro ao conectar com o Monitor:", e);
-            document.getElementById('status').innerText = "ERRO DE CONEXÃO";
+            console.log("Aguardando Worker...");
         }
     }
 
-    function renderUI() {
-        // Conta apenas os que estão "online" (verdes)
-        const onlineNow = allVisitors.filter(v => v.active).length;
-        document.getElementById('onlineCount').innerText = onlineNow;
-        
-        if (allVisitors.length > 0) {
-            const lastCity = allVisitors[allVisitors.length - 1].city;
-            document.getElementById('status').innerText = "ÚLTIMO SINAL: " + lastCity;
-        }
-
-        // Atualiza os elementos no globo
-        world.htmlElementsData(allVisitors);
-    }
-
-    // Inicializa e atualiza a cada 30 segundos
     window.onload = () => {
         updateMonitor();
-        setInterval(updateMonitor, 30000);
-    };
-
-    // Segurança contra inspeção básica
-    document.addEventListener('contextmenu', e => e.preventDefault());
-    document.onkeydown = (e) => {
-        if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74)) || (e.ctrlKey && e.keyCode == 85)) {
-            return false;
-        }
+        setInterval(updateMonitor, 20000);
     };
 </script>
 </body>
