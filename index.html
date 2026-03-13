@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>RAU MONITOR v225 - REAL POSITION</title>
+    <title>RAU MONITOR v227 - DEEP TRACE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -28,7 +28,8 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status">SINAL: RASTREIO REAL ATIVO...</div>
+    <div id="status">SINAL: RASTREIO DE ALTA PRECISÃO...</div>
+    <div id="debug" style="font-size: 8px; color: rgba(57,255,20,0.4); margin-top: 5px; font-family: monospace;"></div>
 </div>
 
 <div id="globeViz"></div>
@@ -49,30 +50,20 @@
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = -1.3;
 
-    async function getRealPosition() {
+    async function deepTrace() {
         try {
-            // Usando IP-API (Endpoint JSON) que é muito mais preciso para localização real por rede
-            // do que os cabeçalhos do Cloudflare.
-            const response = await fetch('http://ip-api.com/json/?fields=status,message,country,countryCode,regionName,city,lat,lon,query');
-            
-            // Se o teu site for HTTPS, precisamos de um fallback para uma API que suporte SSL:
-            let data;
-            if (window.location.protocol === 'https:') {
-                const resSSL = await fetch('https://ipapi.co/json/');
-                data = await resSSL.json();
-            } else {
-                data = await response.json();
-            }
+            // Em vez de perguntar ao Cloudflare (que te vê em Mechelen), 
+            // vamos perguntar à ip-api (via HTTPS/JSON)
+            const response = await fetch('https://ipapi.co/json/');
+            const data = await response.json();
 
             if (data.city) {
-                const lat = data.lat || data.latitude;
-                const lon = data.lon || data.longitude;
-                const city = data.city.toUpperCase();
-                
-                render(lat, lon, city);
+                // Se esta API ainda disser Mechelen, significa que para o mundo exterior, 
+                // o teu sinal "nasce" lá.
+                render(data.latitude, data.longitude, data.city.toUpperCase());
             }
         } catch (e) {
-            // Se falhar, usa o teu Cloudflare Worker apenas para não ficar a 0
+            // Backup silencioso via teu Worker
             const cf = await fetch('https://globorau.carlos2022yes.workers.dev/').then(r => r.json());
             render(cf.lat, cf.lon, cf.city.toUpperCase());
         }
@@ -82,12 +73,13 @@
         document.getElementById('onlineCount').innerText = "1";
         document.getElementById('status').innerText = "SINAL: " + city;
         
-        world.htmlElementsData([{ lat: parseFloat(lat), lng: parseFloat(lon), city }]);
-        world.pointOfView({ lat: parseFloat(lat), lng: parseFloat(lon), altitude: 1.8 }, 2500);
+        const point = { lat: parseFloat(lat), lng: parseFloat(lon), city: city };
+        world.htmlElementsData([point]);
+        world.pointOfView({ lat: point.lat, lng: point.lng, altitude: 1.8 }, 2500);
         setTimeout(() => { world.controls().autoRotateSpeed = -0.25; }, 2600);
     }
 
-    window.onload = getRealPosition;
+    window.onload = deepTrace;
 </script>
 </body>
 </html>
