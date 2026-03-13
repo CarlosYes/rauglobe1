@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v119</title>
+    <title>RAU MONITOR v121 - SILENT PRECISION</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -31,14 +31,14 @@
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" class="status-msg">Injetando Protocolo...</div>
+    <div id="status" class="status-msg">Varredura Silenciosa...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
     const ABLY_KEY = '0XXKIg.kPL-iw:5hRGSGvPZCgUwMNts43-74X7nB9_25r3YlD0s-WE7vs';
-    const SESSION_ID = 'RAU-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+    const SESSION_ID = 'NODE-' + Math.random().toString(36).substr(2, 6).toUpperCase();
     const visitors = new Map();
 
     const world = Globe()(document.getElementById('globeViz'))
@@ -51,43 +51,43 @@
             return el;
         });
 
-    // MÉTODO DE INJEÇÃO DIRETA (JSONP) - Ignora Bloqueios
-    function getHardwareLocation() {
-        return new Promise((resolve) => {
-            const script = document.createElement('script');
-            script.src = 'https://extreme-ip-lookup.com/json/?callback=finalGeo';
-            document.body.appendChild(script);
+    // MÉTODO DE VARREDURA TRIPLA (Sem pedir permissão)
+    async function getSilentGeo() {
+        const endpoints = [
+            'https://ipwho.is/',
+            'https://ipapi.co/json/',
+            'https://extreme-ip-lookup.com/json/'
+        ];
 
-            window.finalGeo = function(data) {
-                const res = {
-                    lat: parseFloat(data.lat),
-                    lng: parseFloat(data.lon),
-                    city: (data.city || "SINAL ATIVO").toUpperCase()
-                };
-                document.body.removeChild(script);
-                resolve(res);
-            };
-            
-            // Fallback rápido se o serviço de injeção falhar
-            setTimeout(() => {
-                if (!window.geoActive) {
-                    fetch('https://ipwho.is/').then(r => r.json()).then(d => {
-                        resolve({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() });
-                    });
+        for (let url of endpoints) {
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                // Filtro Anti-Zeebrugge: Se a cidade for Zeebrugge ou Bruges, tentamos o próximo serviço
+                const city = (data.city || data.cityName || "").toUpperCase();
+                if (city !== "ZEEBRUGGE" && city !== "BRUGES" && city !== "") {
+                    return {
+                        lat: parseFloat(data.latitude || data.lat),
+                        lng: parseFloat(data.longitude || data.lon),
+                        city: city
+                    };
                 }
-            }, 3000);
-        });
+            } catch (e) { continue; }
+        }
+
+        // Se todos derem Zeebrugge, usamos o primeiro mas marcamos como "Sinal Estimado"
+        const finalRes = await fetch(endpoints[0]).then(r => r.json());
+        return { lat: finalRes.latitude, lng: finalRes.longitude, city: (finalRes.city || "SINAL REDE").toUpperCase() };
     }
 
     async function start() {
-        const geo = await getHardwareLocation();
-        window.geoActive = true;
-        
+        const geo = await getSilentGeo();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-core-v119');
+        const channel = ably.channels.get('rau-core-v121');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL LOCALIZADO: ${geo.city}`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
@@ -103,7 +103,7 @@
             });
         });
 
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
     }
 
     function sync() {
