@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RAU MONITOR v113 - REAL TIME ONLY</title>
+    <title>RAU MONITOR v115 - ABSOLUTE REALTIME</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
@@ -12,25 +12,28 @@
         #globeViz { width: 100vw; height: 100vh; position: absolute; }
         .hud {
             position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(0, 5, 10, 0.95); border-left: 5px solid #39ff14;
-            padding: 15px; color: #fff; pointer-events: none;
+            background: rgba(0, 0, 0, 0.9); border-left: 5px solid #39ff14;
+            padding: 20px; color: #fff; pointer-events: none;
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.2);
         }
-        .count-on { font-size: 65px; font-weight: 900; line-height: 0.8; color: #39ff14; text-shadow: 0 0 20px rgba(57, 255, 20, 0.6); }
+        .count-on { font-size: 70px; font-weight: 900; line-height: 0.8; color: #39ff14; }
+        .status-msg { font-size: 11px; margin-top: 10px; font-family: monospace; color: #39ff14; text-transform: uppercase; letter-spacing: 2px; }
+
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
-            background: rgba(0,0,0,0.9); padding: 5px 12px; border-radius: 2px;
-            font-size: 11px; font-weight: 900; border: 1px solid #39ff14; color: #39ff14; 
-            white-space: nowrap; text-transform: uppercase;
+            background: #000; padding: 5px 12px; border-radius: 2px;
+            font-size: 12px; font-weight: 900; border: 1.5px solid #39ff14; color: #39ff14; 
+            white-space: nowrap; box-shadow: 0 0 15px rgba(57, 255, 20, 0.4);
         }
-        .d-rau { width: 10px; height: 10px; background: #39ff14; border-radius: 50%; box-shadow: 0 0 15px #39ff14; animation: p 1.5s infinite; }
-        @keyframes p { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
+        .d-rau { width: 12px; height: 12px; background: #39ff14; border-radius: 50%; margin-top: 5px; box-shadow: 0 0 20px #39ff14; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
     </style>
 </head>
 <body>
 
 <div class="hud">
     <div id="onlineCount" class="count-on">0</div>
-    <div id="status" style="font-size: 10px; margin-top: 12px; font-family: monospace; color: #39ff14; letter-spacing: 1px;">VARREDURA DE REDE ATIVA...</div>
+    <div id="status" class="status-msg">A LOCALIZAR HARDWARE...</div>
 </div>
 
 <div id="globeViz"></div>
@@ -42,7 +45,9 @@
 
     const world = Globe()(document.getElementById('globeViz'))
         .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
-        .backgroundColor('#000000').showAtmosphere(true).atmosphereColor('#39ff14')
+        .backgroundColor('#000000')
+        .showAtmosphere(true)
+        .atmosphereColor('#39ff14')
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = `m-rau`;
@@ -50,58 +55,57 @@
             return el;
         });
 
-    async function getDiscovery() {
-        // Tenta apenas APIs de alta precisão sem cidades fixas no código
-        try {
-            const r = await fetch('https://ipwho.is/');
-            const d = await r.json();
-            if (d.success) {
-                return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() };
+    // O MELHOR MÉTODO: GPS NATIVO + REVERSE GEOCODING
+    async function getAbsoluteLocation() {
+        return new Promise((resolve) => {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(async (position) => {
+                    const { latitude, longitude } = position.coords;
+                    try {
+                        // Converte as coordenadas GPS exatas no nome da tua cidade real
+                        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+                        const d = await r.json();
+                        const city = d.address.city || d.address.town || d.address.village || "LOCALIZAÇÃO REAL";
+                        resolve({ lat: latitude, lng: longitude, city: city.toUpperCase() });
+                    } catch {
+                        resolve({ lat: latitude, lng: longitude, city: "SINAL GPS" });
+                    }
+                }, async () => {
+                    // Fallback de Segurança apenas se o GPS for negado
+                    const r = await fetch('https://ipapi.co/json/');
+                    const d = await r.json();
+                    resolve({ lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() });
+                }, { enableHighAccuracy: true, timeout: 10000 });
             }
-            throw new Error();
-        } catch (e) {
-            try {
-                const r = await fetch('https://ipapi.co/json/');
-                const d = await r.json();
-                return { lat: d.latitude, lng: d.longitude, city: d.city.toUpperCase() };
-            } catch (e2) {
-                return null; // Retorna nulo para dar erro real em vez de Lisboa
-            }
-        }
+        });
     }
 
     async function start() {
-        const geo = await getDiscovery();
-        
-        if (!geo) {
-            document.getElementById('status').innerText = "ERRO: FALHA NA DETEÇÃO DE ORIGEM";
-            return;
-        }
-
+        const geo = await getAbsoluteLocation();
         const ably = new Ably.Realtime({ key: ABLY_KEY, clientId: SESSION_ID });
-        const channel = ably.channels.get('rau-global-live');
+        const channel = ably.channels.get('rau-final-core');
 
         ably.connection.on('connected', () => {
-            document.getElementById('status').innerText = `SINAL LOCALIZADO: ${geo.city}`;
+            document.getElementById('status').innerText = `SINAL REAL: ${geo.city}`;
             channel.presence.enter(geo);
             
             channel.presence.subscribe(['enter', 'present', 'update'], (m) => {
                 if(m.data && m.data.lat) {
                     visitors.set(m.clientId, m.data);
-                    sync();
+                    update();
                 }
             });
 
             channel.presence.subscribe('leave', (m) => {
                 visitors.delete(m.clientId);
-                sync();
+                update();
             });
         });
 
-        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.2 }, 2000);
+        world.pointOfView({ lat: geo.lat, lng: geo.lng, altitude: 2.0 }, 2000);
     }
 
-    function sync() {
+    function update() {
         const data = Array.from(visitors.values());
         document.getElementById('onlineCount').innerText = data.length;
         world.htmlElementsData(data);
