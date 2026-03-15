@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR v60 - UNLIMITED</title>
+    <title>RAU RADAR v60 - FIX</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -18,7 +18,7 @@
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
             background: #39ff14; color: #000; padding: 4px 10px; border-radius: 2px;
-            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 6px;
+            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 8px;
             white-space: nowrap; border: 1px solid #fff; box-shadow: 0 0 10px #39ff14;
         }
         .l-rau img { width: 22px; height: 15px; object-fit: cover; border: 1px solid #000; }
@@ -40,7 +40,7 @@
 <div id="globeViz"></div>
 
 <script>
-    // 1. CONFIGURAÇÃO DE DIA/NOITE (Agora são 13:15 = AZUL)
+    // 1. Configuração Dia/Noite (Azul agora às 13:17)
     const hora = new Date().getHours();
     const eDia = hora >= 7 && hora < 19;
     const corFundo = eDia ? '#87CEEB' : '#000000';
@@ -69,30 +69,26 @@
         });
 
     async function init() {
-        let data = null;
-        
-        // TENTATIVA 1: API Directa (Rápida e síncrona)
         try {
+            // Usando ipapi.co que é HTTPS e não bloqueia o GitHub
             const res = await fetch('https://ipapi.co/json/');
             const d = await res.json();
-            if(d.city) data = { lat: d.latitude, lng: d.longitude, city: d.city, countryCode: d.country_code };
-        } catch (e) { console.log("Tentativa 1 falhou."); }
 
-        // TENTATIVA 2: Backup se a primeira estiver limitada
-        if (!data) {
-            try {
-                const res = await fetch('https://reallyfreegeoip.org/json/');
-                const d = await res.json();
-                data = { lat: d.latitude, lng: d.longitude, city: d.city, countryCode: d.country_code };
-            } catch (e) { console.log("Tentativa 2 falhou."); }
-        }
+            if (d.city) {
+                document.getElementById('status').innerText = `FIXADO: ${d.city.toUpperCase()}`;
+                
+                const dataPoint = {
+                    lat: d.latitude,
+                    lng: d.longitude,
+                    city: d.city,
+                    countryCode: d.country_code
+                };
 
-        if (data) {
-            document.getElementById('status').innerText = `FIXADO: ${data.city.toUpperCase()}`;
-            world.htmlElementsData([data]);
-            world.pointOfView({ lat: data.lat, lng: data.lng, altitude: 1.8 }, 2000);
-        } else {
-            document.getElementById('status').innerText = "VARREDURA OFFLINE";
+                world.htmlElementsData([dataPoint]);
+                world.pointOfView({ lat: d.latitude, lng: d.longitude, altitude: 1.8 }, 2000);
+            }
+        } catch (e) {
+            document.getElementById('status').innerText = "ERRO: CONTACTE O SUPORTE";
         }
     }
 
