@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAU RADAR - FLAG FIX</title>
+    <title>RAU RADAR v60 - UNLIMITED</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/globe.gl"></script>
     <style>
@@ -18,12 +18,10 @@
         .m-rau { display: flex; flex-direction: column; align-items: center; }
         .l-rau {
             background: #39ff14; color: #000; padding: 4px 10px; border-radius: 2px;
-            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 8px;
+            font-size: 11px; font-weight: 900; display: flex; align-items: center; gap: 6px;
             white-space: nowrap; border: 1px solid #fff; box-shadow: 0 0 10px #39ff14;
         }
-        /* ESTILO DA BANDEIRA IGUAL AO ORIGINAL */
-        .l-rau img { width: 20px; height: 14px; object-fit: cover; border: 1px solid #000; }
-        
+        .l-rau img { width: 22px; height: 15px; object-fit: cover; border: 1px solid #000; }
         .d-rau { 
             width: 12px; height: 12px; background: #fff; border-radius: 50%; 
             margin-top: 5px; border: 2px solid #39ff14; 
@@ -35,14 +33,14 @@
 <body>
 
 <div class="hud">
-    <div style="font-size: 10px; letter-spacing: 5px;">RAU SYSTEM</div>
-    <div id="status" style="font-size: 14px; color: #fff; margin-top: 10px; font-family: monospace;">A RASTREAR POSIÇÃO...</div>
+    <div style="font-size: 10px; letter-spacing: 5px;">RAU SYSTEM v60</div>
+    <div id="status" style="font-size: 14px; color: #fff; margin-top: 10px; font-family: monospace;">A RASTREAR...</div>
 </div>
 
 <div id="globeViz"></div>
 
 <script>
-    // 1. LÓGICA DE DIA/NOITE (Baseada na hora atual: 13:10)
+    // 1. CONFIGURAÇÃO DE DIA/NOITE (Agora são 13:15 = AZUL)
     const hora = new Date().getHours();
     const eDia = hora >= 7 && hora < 19;
     const corFundo = eDia ? '#87CEEB' : '#000000';
@@ -60,7 +58,6 @@
         .htmlElement(d => {
             const el = document.createElement('div');
             el.className = 'm-rau';
-            // VOLTAMOS AO USO DE IMAGEM DA BANDEIRA (PNG) COMO NO ORIGINAL
             const flagUrl = `https://flagcdn.com/w40/${d.countryCode.toLowerCase()}.png`;
             el.innerHTML = `
                 <div class="l-rau">
@@ -72,30 +69,30 @@
         });
 
     async function init() {
+        let data = null;
+        
+        // TENTATIVA 1: API Directa (Rápida e síncrona)
         try {
-            // Usando o motor de localização do original (ip-api.com)
-            const res = await fetch('http://ip-api.com/json/');
-            const d = await res.json();
-
-            document.getElementById('status').innerText = `FIXADO: ${d.city.toUpperCase()}`;
-
-            const dataPoint = {
-                lat: d.lat,
-                lng: d.lon,
-                city: d.city,
-                countryCode: d.countryCode
-            };
-
-            world.htmlElementsData([dataPoint]);
-            world.pointOfView({ lat: d.lat, lng: d.lon, altitude: 1.8 }, 2000);
-
-        } catch (e) {
-            // Backup se o primeiro falhar
             const res = await fetch('https://ipapi.co/json/');
             const d = await res.json();
-            const dataPoint = { lat: d.latitude, lng: d.longitude, city: d.city, countryCode: d.country_code };
-            world.htmlElementsData([dataPoint]);
-            world.pointOfView({ lat: d.latitude, lng: d.longitude, altitude: 1.8 }, 2000);
+            if(d.city) data = { lat: d.latitude, lng: d.longitude, city: d.city, countryCode: d.country_code };
+        } catch (e) { console.log("Tentativa 1 falhou."); }
+
+        // TENTATIVA 2: Backup se a primeira estiver limitada
+        if (!data) {
+            try {
+                const res = await fetch('https://reallyfreegeoip.org/json/');
+                const d = await res.json();
+                data = { lat: d.latitude, lng: d.longitude, city: d.city, countryCode: d.country_code };
+            } catch (e) { console.log("Tentativa 2 falhou."); }
+        }
+
+        if (data) {
+            document.getElementById('status').innerText = `FIXADO: ${data.city.toUpperCase()}`;
+            world.htmlElementsData([data]);
+            world.pointOfView({ lat: data.lat, lng: data.lng, altitude: 1.8 }, 2000);
+        } else {
+            document.getElementById('status').innerText = "VARREDURA OFFLINE";
         }
     }
 
